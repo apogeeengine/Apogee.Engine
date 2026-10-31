@@ -1,0 +1,12 @@
+{
+  "name": "implot",
+  "project": "Source/Apogee.Native.ImPlot",
+  "namespace": "Apogee.Native.ImPlot",
+  "className": "Plot",
+  "library": { "name": "cimgui", "linux": ["libcimgui.so"], "windows": ["cimgui.dll"], "macos": ["libcimgui.dylib"] },
+  "includeDirs": ["Native/imgui"],
+  "includes": ["apogee_implot.h"],
+  "ownDirs": ["Native/imgui"],
+  "stripPrefixes": ["aplot_", "APLOT_"],
+  "excludeConstants": ["^APOGEE_IMPLOT_H$"]
+}

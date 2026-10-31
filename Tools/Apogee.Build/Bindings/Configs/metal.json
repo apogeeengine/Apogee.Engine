@@ -1,0 +1,16 @@
+{
+  "name": "metal",
+  "project": "Source/Apogee.Native.Metal",
+  "namespace": "Apogee.Native.Metal",
+  "className": "Mtl",
+  "library": {
+    "name": "metal_c",
+    "linux": [],
+    "windows": [],
+    "macos": ["libmetal_c.dylib"]
+  },
+  "includeDirs": ["Native/metal_c"],
+  "includes": ["apogee_metal.h"],
+  "ownDirs": ["Native/metal_c"],
+  "stripPrefixes": ["apogee_mtl_", "APOGEE_MTL_", "ApogeeMtl"]
+}

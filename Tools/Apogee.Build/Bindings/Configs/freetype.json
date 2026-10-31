@@ -1,0 +1,26 @@
+{
+  "name": "freetype",
+  "project": "Source/Apogee.Native.FreeType",
+  "namespace": "Apogee.Native.FreeType",
+  "className": "FT",
+  "library": {
+    "name": "freetype",
+    "linux": ["libfreetype.so"],
+    "windows": ["freetype.dll"],
+    "macos": ["libfreetype.dylib"]
+  },
+  "includeDirs": ["ThirdParty/freetype/include", "Native/freetype"],
+  // The headers of what the library is built with (ThirdParty/README.md): not the bitmap fonts (bdf, winfonts), PFR, the GX and OpenType validators, the cache,
+  // the SVG hooks, LZW and bzip2.
+  "includes": [
+    "ft2build.h", "freetype/freetype.h", "freetype/ftadvanc.h", "freetype/ftbbox.h", "freetype/ftbitmap.h", "freetype/ftcid.h", "freetype/ftcolor.h",
+    "freetype/ftfntfmt.h", "freetype/ftgasp.h", "freetype/ftglyph.h", "freetype/ftgzip.h", "freetype/ftlcdfil.h", "freetype/ftlist.h", "freetype/ftmm.h",
+    "freetype/ftmodapi.h", "freetype/ftoutln.h", "freetype/ftparams.h", "freetype/ftsizes.h", "freetype/ftsnames.h", "freetype/ftstroke.h",
+    "freetype/ftsynth.h", "freetype/fttrigon.h", "freetype/t1tables.h", "freetype/tttables.h", "freetype/tttags.h"
+  ],
+  "ownDirs": ["ThirdParty/freetype/include"],
+  "defines": ["FT_CONFIG_OPTIONS_H=<apogee_ftoption.h>"],
+  "stripPrefixes": ["FT_"],
+  // Deprecated no-ops of ftpatent.c, which is not built (the patents they were about have expired).
+  "excludeFunctions": ["^FT_Face_CheckTrueTypePatents$", "^FT_Face_SetUnpatentedHinting$"]
+}

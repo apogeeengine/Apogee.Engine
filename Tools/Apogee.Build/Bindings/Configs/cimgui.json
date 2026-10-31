@@ -1,0 +1,18 @@
+{
+  "name": "cimgui",
+  "project": "Source/Apogee.Native.CImGui",
+  "namespace": "Apogee.Native.CImGui",
+  "className": "ImGui",
+  "library": {
+    "name": "cimgui",
+    "linux": ["libcimgui.so"],
+    "windows": ["cimgui.dll"],
+    "macos": ["libcimgui.dylib"]
+  },
+  "includeDirs": ["ThirdParty/cimgui"],
+  "includes": ["cimgui.h"],
+  "ownDirs": ["ThirdParty/cimgui"],
+  "defines": ["CIMGUI_DEFINE_ENUMS_AND_STRUCTS", "IMGUI_ENABLE_FREETYPE", "IMGUI_ENABLE_STB_TRUETYPE"],
+  "stripPrefixes": ["ig"],
+  "excludeConstants": ["^IMGUI_", "^IM_", "^CIMGUI_", "^CONST$", "^API$", "^EXTERN$"]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "zstd",
+  "project": "Source/Apogee.Native.Zstd",
+  "namespace": "Apogee.Native.Zstd",
+  "className": "Zstd",
+  "library": {
+    "name": "zstd",
+    "linux": ["libzstd.so"],
+    "windows": ["zstd.dll"],
+    "macos": ["libzstd.dylib"]
+  },
+  "includeDirs": ["ThirdParty/zstd/lib"],
+  "includes": ["zstd.h", "zstd_errors.h"],
+  "ownDirs": ["ThirdParty/zstd/lib"],
+  // The stable API only: ZSTD_STATIC_LINKING_ONLY (the experimental and advanced calls) is not defined. ZSTD_CONTENTSIZE_UNKNOWN and _ERROR are
+  // (0ULL - 1) and (0ULL - 2): the macro evaluator has no C integer types, so they are in Source/Apogee.Native.Zstd/Zstd.ContentSize.cs.
+  "stripPrefixes": ["ZSTD_"],
+  "excludeConstants": ["^ZSTD(LIB|ERRORLIB)_", "^ZSTD_CONTENTSIZE_", "^ZSTD_(H_235446|VERSION_NUMBER|VERSION_STRING|CLEVEL_DEFAULT|NB_)"]
+}

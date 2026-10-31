@@ -1,0 +1,35 @@
+{
+  "name": "vma",
+  "project": "Source/Apogee.Native.Vma",
+  "namespace": "Apogee.Native.Vma",
+  "className": "Vma",
+  "library": {
+    "name": "vma",
+    "linux": ["libvma.so"],
+    "windows": ["vma.dll"],
+    "macos": ["libvma.dylib"]
+  },
+  "includeDirs": ["ThirdParty/vma/include", "ThirdParty/vulkan/include"],
+  "includes": ["vk_mem_alloc.h"],
+  "ownDirs": ["ThirdParty/vma/include"],
+  "stripPrefixes": ["vma", "Vma", "VMA_"],
+  // The opaque structs behind the handle typedefs: Allocator* is a VmaAllocator.
+  "renames": {
+    "VmaAllocator_T": "Allocator",
+    "VmaPool_T": "Pool",
+    "VmaAllocation_T": "Allocation",
+    "VmaDefragmentationContext_T": "DefragmentationContext",
+    "VmaVirtualAllocation_T": "VirtualAllocation",
+    "VmaVirtualBlock_T": "VirtualBlock"
+  },
+  // Vulkan's handles, structs and enums come from Apogee.Native.Vulkan under their C names.
+  "foreignTypes": { "^Vk": "Apogee.Native.Vulkan" },
+  "typeMap": {
+    "VkBool32": "uint",
+    "VkMemoryPropertyFlags": "VkMemoryPropertyFlagBits",
+    "VkMemoryMapFlags": "VkMemoryMapFlagBits",
+    "VkExternalMemoryHandleTypeFlagsKHR": "VkExternalMemoryHandleTypeFlagBits",
+    "VkFlags": "uint",
+    "VkDeviceSize": "ulong"
+  }
+}

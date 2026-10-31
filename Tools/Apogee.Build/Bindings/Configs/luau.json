@@ -1,0 +1,37 @@
+{
+  "name": "luau",
+  "project": "Source/Apogee.Native.Luau",
+  "namespace": "Apogee.Native.Luau",
+  "className": "Lua",
+  "library": {
+    "name": "luau",
+    "linux": ["libluau.so"],
+    "windows": ["luau.dll"],
+    "macos": ["libluau.dylib"]
+  },
+  "includeDirs": ["ThirdParty/luau/VM/include", "ThirdParty/luau/Compiler/include", "Native/luau"],
+  "includes": ["lua.h", "lualib.h", "luacode.h", "apogee_luau.h"],
+  "ownDirs": ["ThirdParty/luau/VM/include", "ThirdParty/luau/Compiler/include", "Native/luau"],
+  "stripPrefixes": ["apogee_luau_", "APOGEE_LUAU_", "lua_", "LUA_"],
+  // The shim's functions get names that do not collide with the lua_ ones they wrap (lua_pcall, lua_resume, luau_load, lua_close).
+  "renames": {
+    "apogee_luau_result": "CallResult",
+    "apogee_luau_newstate": "NewVm",
+    "apogee_luau_close": "CloseVm",
+    "apogee_luau_pcall": "ProtectedCall",
+    "apogee_luau_resume": "ProtectedResume",
+    "apogee_luau_load": "LoadSource",
+    "apogee_luau_pushfunction": "PushManagedFunction"
+  },
+  // lua_isinteger64 is declared as a function and defined as a macro: there is no symbol.
+  "excludeFunctions": [
+    "^lua_isinteger64$",
+    // Managed code must not be unwound by a longjmp (Native/luau/apogee_luau.h), so the bindings leave out what raises an error on
+    // input a script controls: errors, calls and metamethods, argument checks, yields, and C functions pushed without our wrapper.
+    "^lua_(break|call|concat|cpcall|equal|error|getfield|gettable|lessthan|next|pcallyieldable|pushcclosurek|resumeerror|setfield|settable|yield)$",
+    "^luaL_(argerrorL|callmeta|check.*|findtable|opt.*|register|tolstring|typeerrorL)$",
+    // The state is made and closed by the shim, which owns the allocator and the accounting behind it.
+    "^lua_(close|newstate)$", "^luaL_newstate$"
+  ],
+  "excludeConstants": ["^LUA_API$", "^LUALIB_API$", "^LUACODE_API$", "^APOGEE_LUAU_API$", "^LUAI_", "^LUA_NORETURN$", "^LUA_PRINTF_ATTR$", "^LUA_USE_", "^LUA_VECTOR_SIZE$"]
+}

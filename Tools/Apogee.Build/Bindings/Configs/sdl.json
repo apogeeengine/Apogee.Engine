@@ -1,0 +1,23 @@
+{
+  "name": "sdl",
+  "project": "Source/Apogee.Native.Sdl",
+  "namespace": "Apogee.Native.Sdl",
+  "className": "SDL",
+  "library": {
+    "name": "SDL3",
+    "linux": ["libSDL3.so.0", "libSDL3.so"],
+    "windows": ["SDL3.dll"],
+    "macos": ["libSDL3.0.dylib", "libSDL3.dylib"]
+  },
+  "includeDirs": ["ThirdParty/sdl/include"],
+  "includes": ["SDL3/SDL.h", "SDL3/SDL_vulkan.h"],
+  "ownDirs": ["ThirdParty/sdl/include/SDL3"],
+  "stripPrefixes": ["SDL_"],
+  // SDL_vulkan.h declares the Vulkan handles it passes around (VkInstance, VkSurfaceKHR…) as opaque structs of its own.
+  "foreignTypes": { "^Vk": "Apogee.Native.Vulkan" },
+  "excludeConstants": ["^SDL_PLATFORM_", "^SDL_ARRAYSIZE$", "^SDL_NULL_WHILE_LOOP_CONDITION$", "^SDL_DECLSPEC$", "^SDL_MAIN"],
+  "flagsEnums": [
+    { "name": "InitFlags", "typedef": "SDL_InitFlags", "underlying": "uint", "macroPrefix": "SDL_INIT_" },
+    { "name": "WindowFlags", "typedef": "SDL_WindowFlags", "underlying": "ulong", "macroPrefix": "SDL_WINDOW_", "exclude": ["^SDL_WINDOW_SURFACE_VSYNC_"] }
+  ]
+}

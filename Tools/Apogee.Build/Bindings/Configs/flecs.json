@@ -1,0 +1,35 @@
+{
+  "name": "flecs",
+  "project": "Source/Apogee.Native.Flecs",
+  "namespace": "Apogee.Native.Flecs",
+  "className": "Ecs",
+  "library": {
+    "name": "flecs",
+    "linux": ["libflecs.so"],
+    "windows": ["flecs.dll"],
+    "macos": ["libflecs.dylib"]
+  },
+  "includeDirs": ["ThirdParty/flecs/include"],
+  "includes": ["flecs.h"],
+  "ownDirs": ["ThirdParty/flecs/include"],
+  // The library is built with FLECS_NDEBUG (Native/flecs/CMakeLists.txt). Debug builds of Flecs have bigger structs
+  // (ecs_ref_t, ecs_map_t…), so the headers must be read with the same define or the layouts differ from the binary's.
+  "defines": ["FLECS_NDEBUG"],
+  "stripPrefixes": ["ecs_", "Ecs"],
+  "stripSuffixes": ["_t"],
+  // Declared in flecs.h but not exported by the library (internal containers, and getters that are compiled out).
+  "excludeFunctions": [
+    "^flecs_(sparse|hashmap|hm|stack)_",
+    "^flecs_(check_exclusive_world_access_(read|write)|chrparse|dump_backtrace|table_observed_count)$",
+    "^ecs_(component_record_memory_get|id_is_any|os_perf_trace_(push|pop)_|table_component_memory_get|table_memory_get|value_(fini|new)_w_type_info)$"
+  ],
+  // ecs_id(EcsComponent) is the symbol FLECS_IDEcsComponentID_: the entity ids of components are named ComponentId.
+  "globalRenames": {
+    "^FLECS_IDecs_(.+)_tID_$": "ecs_$1_id",
+    "^FLECS_ID(.+)ID_$": "$1_id"
+  },
+  // ecs_http_*: declared without FLECS_API, so a Windows build does not export them. The allocator counters are FLECS_DBG_API,
+  // exported only by debug builds. The pipeline query's component id is declared but never defined.
+  "excludeGlobals": ["^ecs_http_", "^ecs_(block|stack)_allocator_", "^FLECS_IDEcsPipelineQueryID_$"],
+  "excludeConstants": ["^FLECS_", "^ECS_", "^EcsLog", "^ecs_"]
+}

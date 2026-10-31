@@ -1,0 +1,25 @@
+{
+  "name": "steam",
+  "kind": "steam",
+  "project": "Source/Apogee.Native.Steam",
+  "namespace": "Apogee.Native.Steam",
+  "className": "Steam",
+  "library": {
+    "name": "steam_api",
+    "linux": ["libsteam_api.so"],
+    "windows": ["steam_api64.dll"],
+    "macos": ["libsteam_api.dylib"]
+  },
+  // Valve's flat API. The SDK's headers are not in the repository (Valve's license: ThirdParty/README.md); `./build.sh sdk steam <zip>` puts them in ThirdParty/steamworks/include,
+  // and they are needed only to regenerate these bindings, which are committed.
+  "steamApi": "ThirdParty/steamworks/include/steam/steam_api.json",
+  "flatHeader": "ThirdParty/steamworks/include/steam/steam_api_flat.h",
+  // What the engine uses: the user and the app, friends and the overlay, stats and achievements, cloud files, Workshop items, screenshots and the timeline. Networking, matchmaking,
+  // Steam Input and the game server interfaces are left out (the engine uses SDL for controllers and has no Steam multiplayer yet).
+  "interfaces": ["ISteamUser", "ISteamFriends", "ISteamUtils", "ISteamApps", "ISteamUserStats", "ISteamRemoteStorage", "ISteamUGC", "ISteamScreenshots", "ISteamTimeline"],
+  "includeFunctions": [
+    "^SteamAPI_(InitFlat|Shutdown|RunCallbacks|IsSteamRunning|RestartAppIfNecessary|ReleaseCurrentThreadMemory|GetHSteamPipe|GetHSteamUser)$",
+    "^SteamAPI_(SteamUser|SteamFriends|SteamUtils|SteamApps|SteamUserStats|SteamRemoteStorage|SteamUGC|SteamScreenshots|SteamTimeline)_v\\d+$",
+    "^SteamAPI_ManualDispatch_"
+  ]
+}

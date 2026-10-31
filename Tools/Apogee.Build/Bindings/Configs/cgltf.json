@@ -1,0 +1,17 @@
+{
+  "name": "cgltf",
+  "project": "Source/Apogee.Native.Cgltf",
+  "namespace": "Apogee.Native.Cgltf",
+  "className": "Cgltf",
+  "library": {
+    "name": "cgltf",
+    "linux": ["libcgltf.so"],
+    "windows": ["cgltf.dll"],
+    "macos": ["libcgltf.dylib"]
+  },
+  "includeDirs": ["ThirdParty/cgltf"],
+  "includes": ["cgltf.h"],
+  "ownDirs": ["ThirdParty/cgltf"],
+  "stripPrefixes": ["cgltf_"],
+  "excludeConstants": ["^CGLTF_"]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "jolt",
+  "project": "Source/Apogee.Native.Jolt",
+  "namespace": "Apogee.Native.Jolt",
+  "className": "Jolt",
+  "library": {
+    "name": "jolt",
+    "linux": ["libjolt.so"],
+    "windows": ["jolt.dll"],
+    "macos": ["libjolt.dylib"]
+  },
+  // Our own C API over Jolt Physics (Native/jolt/apogee_jolt.h): handles and plain structs, written for what the engine needs.
+  "includeDirs": ["Native/jolt"],
+  "includes": ["apogee_jolt.h"],
+  "ownDirs": ["Native/jolt"],
+  // Functions and constants lose their prefix; the types keep theirs (AjBodyDesc, AjWorld): BodyDesc, VehicleDesc and World are the engine's own names for other things.
+  "stripPrefixes": ["aj_", "AJ_"],
+  "excludeConstants": ["^APOGEE_JOLT_H$"]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "openal",
+  "project": "Source/Apogee.Native.OpenAL",
+  "namespace": "Apogee.Native.OpenAL",
+  "className": "OpenAL",
+  "library": {
+    "name": "openal",
+    "linux": ["libopenal.so.1", "libopenal.so"],
+    "windows": ["OpenAL32.dll", "soft_oal.dll"],
+    "macos": ["libopenal.1.dylib", "libopenal.dylib"]
+  },
+  // OpenAL Soft's own exports include its extensions (EFX effects and filters, loopback rendering), so AL_ALEXT_PROTOTYPES declares them as plain functions.
+  "includeDirs": ["ThirdParty/openal-soft/include"],
+  "includes": ["AL/al.h", "AL/alc.h", "AL/alext.h", "AL/efx.h"],
+  "ownDirs": ["ThirdParty/openal-soft/include"],
+  "defines": ["AL_ALEXT_PROTOTYPES"],
+  // Left out: the debug extension (EXT), the functions the header declares but the library does not export (static buffers, foldback, play-at-time, events, reopen), the direct-context variants (every function again with a context argument), EAX (Windows-only compatibility), and the default, minimum and maximum
+  // of every effect parameter: they are float macros and the generator reads them as integers. The engine writes the ranges it needs itself.
+  "excludeFunctions": ["Direct(SOFT|EXT)?$", "^EAX", "EXT$", "^alBufferDataStatic$", "^alRequestFoldback", "^alSourcePlayAtTimev?SOFT$", "^alcEvent", "^alcGetProcAddress2$", "^alcReopenDeviceSOFT$"],
+  "excludeConstants": ["^AL_[A-Z0-9_]+_(DEFAULT|MIN|MAX)_", "^AL_[A-Z0-9_]+_(DEFAULT|MIN|MAX)$", "^AL_EFFECT_DEFAULT", "^AL_DEFAULT_(AIR|ROOM)"]
+}

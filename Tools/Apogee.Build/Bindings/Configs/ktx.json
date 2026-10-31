@@ -1,0 +1,26 @@
+{
+  "name": "ktx",
+  "project": "Source/Apogee.Native.Ktx",
+  "namespace": "Apogee.Native.Ktx",
+  "className": "Ktx",
+  "library": {
+    "name": "ktx",
+    "linux": ["libktx.so"],
+    "windows": ["ktx.dll"],
+    "macos": ["libktx.dylib"]
+  },
+  "includeDirs": ["ThirdParty/ktx/include"],
+  "includes": ["ktx.h"],
+  "ownDirs": ["ThirdParty/ktx/include"],
+  "defines": ["KHRONOS_STATIC", "KTX_OMIT_VULKAN=1", "KTX_FEATURE_KTX1", "KTX_FEATURE_KTX2"],
+  "stripPrefixes": ["ktx_", "KTX_", "ktx"],
+  "stripSuffixes": ["_e"],
+  // ktxTexture2_GetOETF returns the raw uint (deprecated); ktxTexture2_GetOETF_e returns the enum and takes the plain name.
+  "renames": { "ktxTexture2_GetOETF": "Texture2GetOetfAsUint" },
+  // Declared in ktx.h but not built (ThirdParty/README.md): the ASTC encoder and decoder (UASTC is transcoded to ASTC when loaded),
+  // and the OpenGL loader and upload.
+  "excludeFunctions": [
+    "^ktxLoadOpenGL$", "^ktxTexture_GLUpload$", "^ktxTexture2_(CompressAstc|DecodeAstc)"
+  ],
+  "excludeGlobals": ["^KTX_ETC1S_"]
+}

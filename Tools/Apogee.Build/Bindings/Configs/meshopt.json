@@ -1,0 +1,17 @@
+{
+  "name": "meshopt",
+  "project": "Source/Apogee.Native.Meshopt",
+  "namespace": "Apogee.Native.Meshopt",
+  "className": "Meshopt",
+  "library": {
+    "name": "meshoptimizer",
+    "linux": ["libmeshoptimizer.so"],
+    "windows": ["meshoptimizer.dll"],
+    "macos": ["libmeshoptimizer.dylib"]
+  },
+  "includeDirs": ["ThirdParty/meshoptimizer/src"],
+  "includes": ["meshoptimizer.h"],
+  "ownDirs": ["ThirdParty/meshoptimizer/src"],
+  "stripPrefixes": ["meshopt_", "MESHOPTIMIZER_"],
+  "excludeConstants": ["^MESHOPTIMIZER_(API|EXPERIMENTAL|ALLOC_CALLCONV)$"]
+}

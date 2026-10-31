@@ -1,0 +1,18 @@
+{
+  "name": "audiodecode",
+  "project": "Source/Apogee.Native.AudioDecode",
+  "namespace": "Apogee.Native.AudioDecode",
+  "className": "AudioDecode",
+  "library": {
+    "name": "audio_decode",
+    "linux": ["libaudio_decode.so"],
+    "windows": ["audio_decode.dll"],
+    "macos": ["libaudio_decode.dylib"]
+  },
+  // Our own C API over the audio decoders (Native/audio_decode/apogee_audio.h): a whole file in memory in, float samples out.
+  "includeDirs": ["Native/audio_decode"],
+  "includes": ["apogee_audio.h"],
+  "ownDirs": ["Native/audio_decode"],
+  "stripPrefixes": ["aa_", "AA_"],
+  "excludeConstants": ["^APOGEE_AUDIO_H$"]
+}

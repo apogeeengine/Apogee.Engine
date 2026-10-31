@@ -1,0 +1,12 @@
+{
+  "name": "imguizmo",
+  "project": "Source/Apogee.Native.ImGuizmo",
+  "namespace": "Apogee.Native.ImGuizmo",
+  "className": "Gizmo",
+  "library": { "name": "cimgui", "linux": ["libcimgui.so"], "windows": ["cimgui.dll"], "macos": ["libcimgui.dylib"] },
+  "includeDirs": ["Native/imgui"],
+  "includes": ["apogee_imguizmo.h"],
+  "ownDirs": ["Native/imgui"],
+  "stripPrefixes": ["agz_", "AGZ_"],
+  "excludeConstants": ["^APOGEE_IMGUIZMO_H$"]
+}

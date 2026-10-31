@@ -1,0 +1,12 @@
+{
+  "name": "imnodes",
+  "project": "Source/Apogee.Native.ImNodes",
+  "namespace": "Apogee.Native.ImNodes",
+  "className": "Nodes",
+  "library": { "name": "cimgui", "linux": ["libcimgui.so"], "windows": ["cimgui.dll"], "macos": ["libcimgui.dylib"] },
+  "includeDirs": ["Native/imgui"],
+  "includes": ["apogee_imnodes.h"],
+  "ownDirs": ["Native/imgui"],
+  "stripPrefixes": ["anodes_", "ANODES_"],
+  "excludeConstants": ["^APOGEE_IMNODES_H$"]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "net",
+  "project": "Source/Apogee.Native.Net",
+  "namespace": "Apogee.Native.Net",
+  "className": "Net",
+  "library": {
+    "name": "apogee_net",
+    "linux": ["libapogee_net.so"],
+    "windows": ["apogee_net.dll"],
+    "macos": ["libapogee_net.dylib"]
+  },
+  // Our own C API over GameNetworkingSockets (Native/net/apogee_net.h): connections as integers, everything GNS says as events from a poll.
+  "includeDirs": ["Native/net"],
+  "includes": ["apogee_net.h"],
+  "ownDirs": ["Native/net"],
+  "stripPrefixes": ["an_", "AN_"],
+  "excludeConstants": ["^APOGEE_NET_H$"]
+}

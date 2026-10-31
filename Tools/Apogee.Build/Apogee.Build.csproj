@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsAotCompatible>false</IsAotCompatible>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Default</AnalysisMode>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ClangSharp.Interop" Version="21.1.8.4" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Bindings/Configs/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

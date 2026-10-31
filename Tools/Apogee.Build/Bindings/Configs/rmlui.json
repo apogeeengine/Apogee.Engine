@@ -1,0 +1,12 @@
+{
+  "name": "rmlui",
+  "project": "Source/Apogee.Native.RmlUi",
+  "namespace": "Apogee.Native.RmlUi",
+  "className": "Rml",
+  "library": { "name": "rmlui", "linux": ["librmlui.so"], "windows": ["rmlui.dll"], "macos": ["librmlui.dylib"] },
+  "includeDirs": ["Native/rmlui"],
+  "includes": ["apogee_rmlui.h"],
+  "ownDirs": ["Native/rmlui"],
+  "stripPrefixes": ["ar_", "AR_"],
+  "excludeConstants": ["^APOGEE_RMLUI_H$"]
+}

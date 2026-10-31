@@ -1,0 +1,18 @@
+{
+  "name": "slang",
+  "project": "Source/Apogee.Native.Slang",
+  "namespace": "Apogee.Native.Slang",
+  "className": "Slang",
+  "library": {
+    "name": "slang_c",
+    "linux": ["libslang_c.so"],
+    "windows": ["slang_c.dll"],
+    "macos": ["libslang_c.dylib"]
+  },
+  // Slang's own API is C++ and COM: this binds our C shim over it (Native/slang_c).
+  "includeDirs": ["Native/slang_c"],
+  "includes": ["apogee_slang.h"],
+  "ownDirs": ["Native/slang_c"],
+  "stripPrefixes": ["apogee_slang_", "ApogeeSlang"],
+  "excludeConstants": ["^APOGEE_SLANG_"]
+}
