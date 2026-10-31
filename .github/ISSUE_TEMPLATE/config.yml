@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question, idea or "does this work on my machine?"
+    url: https://github.com/apogeeengine/Apogee.Engine/discussions
+    about: Use Discussions for questions, feature ideas and platform reports. Issues are for bugs with a minimal reproduction.
+  - name: Security problem
+    url: https://github.com/apogeeengine/Apogee.Engine/security/advisories/new
+    about: Report vulnerabilities privately, not in a public issue.

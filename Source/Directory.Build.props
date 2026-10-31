@@ -1,0 +1,8 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Engine code must stay trimming and NativeAOT safe: the analyzers run on every build. -->
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,38 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+    <Company>Apogee</Company>
+    <Copyright>Copyright 2026 The Apogee Engine Authors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/apogeeengine/Apogee.Engine</RepositoryUrl>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)Bin/$(MSBuildProjectName)/</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Bin/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+
+  <!--
+    A NativeAOT program is compiled for a fixed instruction set (the JIT asks the CPU when the program starts; ahead-of-time code cannot), and a CPU without it does
+    not start the game. The default of x64 is already x86-64-v2 (SSE4.2 and POPCNT: Vector128 at full speed, no AVX2, so Vector256.IsHardwareAccelerated is false); it is
+    written down here so that it is a decision. -p:ApogeeAotInstructionSet=x86-64-v3 builds for AVX2 and FMA (Intel since 2013, AMD since 2015) at the price of the older CPUs. An
+    Apple-silicon Mac is at least an M1, which adds atomics, CRC, rounding multiply and dot products. See Docs/manual/core/profiling.md.
+  -->
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <ApogeeAotArchitecture>$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)</ApogeeAotArchitecture>
+    <ApogeeAotArchitecture Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.EndsWith('-x64'))">X64</ApogeeAotArchitecture>
+    <ApogeeAotArchitecture Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.EndsWith('-arm64'))">Arm64</ApogeeAotArchitecture>
+    <ApogeeAotOperatingSystem>linux</ApogeeAotOperatingSystem>
+    <ApogeeAotOperatingSystem Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx</ApogeeAotOperatingSystem>
+    <ApogeeAotOperatingSystem Condition="'$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('osx-'))">osx</ApogeeAotOperatingSystem>
+    <ApogeeAotOperatingSystem Condition="'$(RuntimeIdentifier)' != '' and !$(RuntimeIdentifier.StartsWith('osx-'))">other</ApogeeAotOperatingSystem>
+    <ApogeeAotInstructionSet Condition="'$(ApogeeAotInstructionSet)' == '' and '$(ApogeeAotArchitecture)' == 'X64'">x86-64-v2</ApogeeAotInstructionSet>
+    <ApogeeAotInstructionSet Condition="'$(ApogeeAotInstructionSet)' == '' and '$(ApogeeAotArchitecture)' == 'Arm64' and '$(ApogeeAotOperatingSystem)' == 'osx'">apple-m1</ApogeeAotInstructionSet>
+    <IlcInstructionSet Condition="'$(IlcInstructionSet)' == ''">$(ApogeeAotInstructionSet)</IlcInstructionSet>
+  </PropertyGroup>
+</Project>

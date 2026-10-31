@@ -1,0 +1,9 @@
+Apogee Engine
+Copyright 2026 The Apogee Engine Authors
+
+This product includes software developed by The Apogee Engine Authors
+(https://github.com/apogeeengine/Apogee.Engine).
+
+The engine links, loads or vendors third-party libraries, each under its own
+license. Their notices, and what a game that ships them must include, are in
+Legal/THIRD_PARTY_NOTICES.md.

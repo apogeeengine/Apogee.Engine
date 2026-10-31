@@ -1,0 +1,7 @@
+# Prebuilt native binaries (ThirdParty/<lib>/lib/<rid>/) and sample assets are Git LFS objects. A library's own lib/ source
+# directory (libktx's) and the checksum files are not: only the per-platform directories match.
+ThirdParty/*/lib/linux-*/** filter=lfs diff=lfs merge=lfs -text
+ThirdParty/*/lib/win-*/** filter=lfs diff=lfs merge=lfs -text
+ThirdParty/*/lib/osx-*/** filter=lfs diff=lfs merge=lfs -text
+Samples/**/Assets/** filter=lfs diff=lfs merge=lfs -text
+Samples/**/Assets/**/*.md !filter !diff !merge text
