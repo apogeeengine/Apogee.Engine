@@ -1,0 +1,4 @@
+c6df0e058bfafcd4411dbc2309e2d17c56493713ce832c9b11db10ccbb995fa5  lib/linux-x64/libSDL3.so.0
+626285366f11d66a70912cc767f00330b985e618b696aee1cfe0ca2f41357f4c  lib/osx-universal/libSDL3.dylib
+4f053391ed8659d5f0d234e2836d4fda9fcc2c6222fb188f4219ec3afcb2fbb7  lib/win-arm64/SDL3.dll
+2b4b128d8d510cc2d442693cf848c050d700d43dc667afe9e5fd82b0570d667e  lib/win-x64/SDL3.dll

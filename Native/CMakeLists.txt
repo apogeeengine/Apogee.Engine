@@ -1,0 +1,47 @@
+cmake_minimum_required(VERSION 3.20)
+project(ApogeeNative C CXX)
+if(APPLE)
+  enable_language(OBJC)
+endif()
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_C_VISIBILITY_PRESET hidden)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Libraries land in Bin/native/<rid>, where the tests and the samples pick them up.
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  set(APOGEE_OS win)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set(APOGEE_OS osx)
+else()
+  set(APOGEE_OS linux)
+endif()
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+  set(APOGEE_ARCH arm64)
+else()
+  set(APOGEE_ARCH x64)
+endif()
+set(APOGEE_OUT "${CMAKE_CURRENT_LIST_DIR}/../Bin/native/${APOGEE_OS}-${APOGEE_ARCH}")
+set(APOGEE_THIRDPARTY "${CMAKE_CURRENT_LIST_DIR}/../ThirdParty")
+
+function(apogee_library target)
+  set_target_properties(${target} PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${APOGEE_OUT}"
+    RUNTIME_OUTPUT_DIRECTORY "${APOGEE_OUT}")
+  foreach(config Debug Release RelWithDebInfo MinSizeRel)
+    string(TOUPPER ${config} upper)
+    set_target_properties(${target} PROPERTIES
+      LIBRARY_OUTPUT_DIRECTORY_${upper} "${APOGEE_OUT}"
+      RUNTIME_OUTPUT_DIRECTORY_${upper} "${APOGEE_OUT}")
+  endforeach()
+endfunction()
+
+add_subdirectory(vma)
+if(APPLE)
+endif()
