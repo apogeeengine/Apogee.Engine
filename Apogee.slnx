@@ -1,6 +1,10 @@
 <Solution>
+  <Folder Name="/Source/">
+    <Project Path="Source/Apogee.Core/Apogee.Core.csproj" />
+  </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/Apogee.Build.Tests/Apogee.Build.Tests.csproj" />
+    <Project Path="Tests/Apogee.Core.Tests/Apogee.Core.Tests.csproj" />
   </Folder>
   <Folder Name="/Tools/">
     <Project Path="Tools/Apogee.Build/Apogee.Build.csproj" />
