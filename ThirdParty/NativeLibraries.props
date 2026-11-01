@@ -1,0 +1,18 @@
+<Project>
+  <!--
+    Copies the native libraries for the current platform next to a project's output: the vendored ones in
+    ThirdParty/<lib>/lib/<rid>, and the ones ./build.sh native built into Bin/native/<rid>.
+  -->
+  <PropertyGroup>
+    <NativeOs Condition="$([MSBuild]::IsOSPlatform('Windows'))">win</NativeOs>
+    <NativeOs Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx</NativeOs>
+    <NativeOs Condition="'$(NativeOs)' == ''">linux</NativeOs>
+    <NativeArch>$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant())</NativeArch>
+    <NativeRid>$(NativeOs)-$(NativeArch)</NativeRid>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)*/lib/$(NativeRid)/*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Condition="'$(NativeOs)' == 'osx'" Include="$(MSBuildThisFileDirectory)*/lib/osx-universal/*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(MSBuildThisFileDirectory)../Bin/native/$(NativeRid)/*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
