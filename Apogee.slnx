@@ -5,11 +5,13 @@
     <Project Path="Source/Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
     <Project Path="Source/Apogee.Native.Vma/Apogee.Native.Vma.csproj" />
     <Project Path="Source/Apogee.Native.Vulkan/Apogee.Native.Vulkan.csproj" />
+    <Project Path="Source/Apogee.Platform/Apogee.Platform.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/Apogee.Build.Tests/Apogee.Build.Tests.csproj" />
     <Project Path="Tests/Apogee.Core.Tests/Apogee.Core.Tests.csproj" />
     <Project Path="Tests/Apogee.Interop.Tests/Apogee.Interop.Tests.csproj" />
+    <Project Path="Tests/Apogee.Platform.Tests/Apogee.Platform.Tests.csproj" />
   </Folder>
   <Folder Name="/Tools/">
     <Project Path="Tools/Apogee.Build/Apogee.Build.csproj" />
