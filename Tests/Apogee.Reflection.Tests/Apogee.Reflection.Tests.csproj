@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AnalysisMode>Default</AnalysisMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Source/Apogee.Reflection/Apogee.Reflection.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" />
+  </ItemGroup>
+</Project>
