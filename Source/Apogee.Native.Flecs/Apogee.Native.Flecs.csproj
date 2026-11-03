@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
+  </ItemGroup>
+</Project>

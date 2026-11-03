@@ -42,6 +42,7 @@ function(apogee_library target)
   endforeach()
 endfunction()
 
+add_subdirectory(flecs)
 add_subdirectory(vma)
 if(APPLE)
 endif()
