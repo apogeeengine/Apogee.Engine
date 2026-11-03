@@ -1,0 +1,11 @@
+# stb_image as a shared library. The header has no export macro, so every function is exported.
+add_library(stb_image SHARED stb_image.c)
+target_include_directories(stb_image PRIVATE "${APOGEE_THIRDPARTY}/stb")
+set_target_properties(stb_image PROPERTIES C_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON)
+if(NOT WIN32)
+  target_link_libraries(stb_image PRIVATE m)
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(stb_image PRIVATE -Wl,--no-undefined)
+endif()
+apogee_library(stb_image)

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The mod.xml at the root of a package (the base game's, a mod's): what it is, what it needs, and what it brings. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:simpleType name="PackageId">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[a-z0-9_]{1,64}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="Path">
+    <xs:attribute name="path" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:element name="Mod">
+    <xs:annotation>
+      <xs:documentation>A package: the base game or a mod. Its id is the name of its folder (or of its .zip).</xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Dependency" minOccurs="0" maxOccurs="unbounded">
+          <xs:annotation>
+            <xs:documentation>A package that has to be there, and the versions of it that this one works with (for example &gt;=1.2 or ^1.0).</xs:documentation>
+          </xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="id" type="PackageId" use="required"/>
+            <xs:attribute name="version" type="xs:string" default="*"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Script" type="Path" minOccurs="0" maxOccurs="unbounded">
+          <xs:annotation>
+            <xs:documentation>A Luau script that runs when the package loads, in the order written.</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="Content" type="Path" minOccurs="0" maxOccurs="unbounded">
+          <xs:annotation>
+            <xs:documentation>A folder of definitions (.xml).</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="Schema" type="Path" minOccurs="0" maxOccurs="unbounded">
+          <xs:annotation>
+            <xs:documentation>A folder of schemas (.xsd) for the definitions the package adds.</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="id" type="PackageId" use="required"/>
+      <xs:attribute name="name" type="xs:string"/>
+      <xs:attribute name="version" type="xs:string" use="required"/>
+      <xs:attribute name="author" type="xs:string"/>
+      <xs:attribute name="description" type="xs:string"/>
+      <xs:attribute name="apiVersion" type="xs:positiveInteger" default="1"/>
+      <xs:attribute name="gameVersion" type="xs:string" default="*"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

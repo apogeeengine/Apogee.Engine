@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- <asset>.import.xml, beside an asset: how to import it. Every attribute is optional. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Import">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Variant" minOccurs="0" maxOccurs="unbounded">
+          <xs:annotation><xs:documentation>Shaders: one more version of the shader to compile, with these preprocessor defines (the version without defines is always compiled).</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Define" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:attribute name="name" type="xs:string" use="required"/>
+                  <xs:attribute name="value" type="xs:string" default="1"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="srgb" type="xs:boolean" default="true">
+        <xs:annotation><xs:documentation>Textures: the colors are sRGB (color maps) or linear (normal maps, roughness, masks).</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="normalMap" type="xs:boolean" default="false">
+        <xs:annotation><xs:documentation>Textures: the image is a normal map. It is linear whatever srgb says, and is compressed without RDO so that normals stay accurate.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="compression" default="uastc">
+        <xs:annotation><xs:documentation>Textures: uastc stores GPU-compressed blocks (Basis Universal UASTC in KTX 2, transcoded to BC7 or ASTC when loaded, RGBA8 where the GPU has neither); none stores RGBA8.</xs:documentation></xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="uastc"/>
+            <xs:enumeration value="none"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="mips" type="xs:boolean" default="true">
+        <xs:annotation><xs:documentation>Textures: build the mip chain.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="optimize" type="xs:boolean" default="true">
+        <xs:annotation><xs:documentation>Models: merge duplicate vertices and reorder for the GPU's vertex cache.</xs:documentation></xs:annotation>
+      </xs:attribute>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Core/Apogee.Core.csproj" />
+    <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
+    <ProjectReference Include="../Apogee.Native.Cgltf/Apogee.Native.Cgltf.csproj" />
+    <ProjectReference Include="../Apogee.Native.Stb/Apogee.Native.Stb.csproj" />
+    <ProjectReference Include="../Apogee.Native.Ktx/Apogee.Native.Ktx.csproj" />
+    <ProjectReference Include="../Apogee.Native.Meshopt/Apogee.Native.Meshopt.csproj" />
+    <ProjectReference Include="../Apogee.Native.Zstd/Apogee.Native.Zstd.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The schema of a package's mod.xml. -->
+    <EmbeddedResource Include="Packages/mod.xsd" LogicalName="Packages/mod.xsd" />
+    <!-- The schema of the <asset>.import.xml settings files. -->
+    <EmbeddedResource Include="Import/import.xsd" LogicalName="Import/import.xsd" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Apogee.Content.Tests" />
+  </ItemGroup>
+</Project>
