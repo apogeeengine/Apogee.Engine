@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Core/Apogee.Core.csproj" />
+    <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
+    <ProjectReference Include="../Apogee.Content/Apogee.Content.csproj" />
+    <ProjectReference Include="../Apogee.Reflection/Apogee.Reflection.csproj" />
+    <ProjectReference Include="../Apogee.Ecs/Apogee.Ecs.csproj" />
+    <ProjectReference Include="../Apogee.Native.Luau/Apogee.Native.Luau.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The engine's Luau modules: required as @engine/<name>. -->
+    <EmbeddedResource Include="Lib/**/*.luau" LogicalName="Lib/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Apogee.Scripting.Tests" />
+  </ItemGroup>
+</Project>

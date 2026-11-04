@@ -7,6 +7,7 @@
     <Project Path="Source/Apogee.Native.Cgltf/Apogee.Native.Cgltf.csproj" />
     <Project Path="Source/Apogee.Native.Flecs/Apogee.Native.Flecs.csproj" />
     <Project Path="Source/Apogee.Native.Ktx/Apogee.Native.Ktx.csproj" />
+    <Project Path="Source/Apogee.Native.Luau/Apogee.Native.Luau.csproj" />
     <Project Path="Source/Apogee.Native.Meshopt/Apogee.Native.Meshopt.csproj" />
     <Project Path="Source/Apogee.Native.Zstd/Apogee.Native.Zstd.csproj" />
     <Project Path="Source/Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
@@ -16,6 +17,7 @@
     <Project Path="Source/Apogee.Platform/Apogee.Platform.csproj" />
     <Project Path="Source/Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" />
     <Project Path="Source/Apogee.Reflection/Apogee.Reflection.csproj" />
+    <Project Path="Source/Apogee.Scripting/Apogee.Scripting.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/Apogee.Build.Tests/Apogee.Build.Tests.csproj" />
@@ -25,6 +27,7 @@
     <Project Path="Tests/Apogee.Interop.Tests/Apogee.Interop.Tests.csproj" />
     <Project Path="Tests/Apogee.Platform.Tests/Apogee.Platform.Tests.csproj" />
     <Project Path="Tests/Apogee.Reflection.Tests/Apogee.Reflection.Tests.csproj" />
+    <Project Path="Tests/Apogee.Scripting.Tests/Apogee.Scripting.Tests.csproj" />
   </Folder>
   <Folder Name="/Tools/">
     <Project Path="Tools/Apogee.Build/Apogee.Build.csproj" />
