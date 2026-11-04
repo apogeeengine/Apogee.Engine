@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Core/Apogee.Core.csproj" />
+    <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
+    <ProjectReference Include="../Apogee.Platform/Apogee.Platform.csproj" />
+    <ProjectReference Include="../Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
+    <ProjectReference Include="../Apogee.Native.Vulkan/Apogee.Native.Vulkan.csproj" />
+    <ProjectReference Include="../Apogee.Native.Vma/Apogee.Native.Vma.csproj" />
+    <ProjectReference Include="../Apogee.Native.Metal/Apogee.Native.Metal.csproj" />
+    <ProjectReference Include="../Apogee.Native.Slang/Apogee.Native.Slang.csproj" />
+  </ItemGroup>
+</Project>

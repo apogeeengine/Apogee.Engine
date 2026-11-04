@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AnalysisMode>Default</AnalysisMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Source/Apogee.Graphics/Apogee.Graphics.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Platform/Apogee.Platform.csproj" />
+    <Compile Include="../Apogee.Native.Tests/NativeRequirements.cs" Link="NativeRequirements.cs" />
+  </ItemGroup>
+  <Import Project="../../ThirdParty/NativeLibraries.props" />
+</Project>

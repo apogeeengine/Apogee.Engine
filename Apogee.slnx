@@ -3,6 +3,7 @@
     <Project Path="Source/Apogee.Content/Apogee.Content.csproj" />
     <Project Path="Source/Apogee.Core/Apogee.Core.csproj" />
     <Project Path="Source/Apogee.Ecs/Apogee.Ecs.csproj" />
+    <Project Path="Source/Apogee.Graphics/Apogee.Graphics.csproj" />
     <Project Path="Source/Apogee.Interop/Apogee.Interop.csproj" />
     <Project Path="Source/Apogee.Native.Cgltf/Apogee.Native.Cgltf.csproj" />
     <Project Path="Source/Apogee.Native.Flecs/Apogee.Native.Flecs.csproj" />
@@ -26,6 +27,7 @@
     <Project Path="Tests/Apogee.Content.Tests/Apogee.Content.Tests.csproj" />
     <Project Path="Tests/Apogee.Core.Tests/Apogee.Core.Tests.csproj" />
     <Project Path="Tests/Apogee.Ecs.Tests/Apogee.Ecs.Tests.csproj" />
+    <Project Path="Tests/Apogee.Graphics.Tests/Apogee.Graphics.Tests.csproj" />
     <Project Path="Tests/Apogee.Interop.Tests/Apogee.Interop.Tests.csproj" />
     <Project Path="Tests/Apogee.Platform.Tests/Apogee.Platform.Tests.csproj" />
     <Project Path="Tests/Apogee.Reflection.Tests/Apogee.Reflection.Tests.csproj" />
