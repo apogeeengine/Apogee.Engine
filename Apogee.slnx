@@ -8,9 +8,11 @@
     <Project Path="Source/Apogee.Native.Flecs/Apogee.Native.Flecs.csproj" />
     <Project Path="Source/Apogee.Native.Ktx/Apogee.Native.Ktx.csproj" />
     <Project Path="Source/Apogee.Native.Luau/Apogee.Native.Luau.csproj" />
+    <Project Path="Source/Apogee.Native.Metal/Apogee.Native.Metal.csproj" />
     <Project Path="Source/Apogee.Native.Meshopt/Apogee.Native.Meshopt.csproj" />
     <Project Path="Source/Apogee.Native.Zstd/Apogee.Native.Zstd.csproj" />
     <Project Path="Source/Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
+    <Project Path="Source/Apogee.Native.Slang/Apogee.Native.Slang.csproj" />
     <Project Path="Source/Apogee.Native.Stb/Apogee.Native.Stb.csproj" />
     <Project Path="Source/Apogee.Native.Vma/Apogee.Native.Vma.csproj" />
     <Project Path="Source/Apogee.Native.Vulkan/Apogee.Native.Vulkan.csproj" />

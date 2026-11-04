@@ -1,0 +1,12 @@
+ed64f15ec0ed0072aaa101023ded4ed7fd227b3905f05281018a948552bb67ba  lib/linux-x64/libslang-compiler.so.0.2026.19
+48da8229fb226bc38217c832b44af55e3d8e36fc8c0214df96c9853425b25f61  lib/linux-x64/libslang-glslang-2026.19.so
+4647f4bfa92233fc3aa65d855bb6ec8b454bb57e64b3f8c6c60349cc139b0f48  lib/osx-arm64/libslang-compiler.0.2026.19.dylib
+f8bf5f42b89d2dfd56a0d77738057b0b2a988306b2577b7d08118c89299ad9e1  lib/osx-arm64/libslang-glslang-2026.19.dylib
+66aa31f906281d8531fe037daf65efe3d2ec1aa0a966c0ea161ab381e2c7636a  lib/osx-x64/libslang-compiler.0.2026.19.dylib
+27d91edaa977fa4262f2bc7857014e5490525ef362bb022554101101c8b85b6a  lib/osx-x64/libslang-glslang-2026.19.dylib
+90c48dff69fc8b3a94eefb7db3d343d8f7d090e6e4f5f4211b9c0fd8cc92508f  lib/win-arm64/slang-compiler.dll
+7e7477cccb7bfaa59531d6dbd77e720f1ea6d26bea9358f876c102855f4492ce  lib/win-arm64/slang-compiler.lib
+36f54a682a2e2885e3bed387e0d983ac86ccf9d8e89f47a527a4b4a1ac9af470  lib/win-arm64/slang-glslang.dll
+26cc5c10d7b7fd4e160f11a7bcef835a9fb42a240e6265d28b0f8ab587de057c  lib/win-x64/slang-compiler.dll
+e5dcaeb8a170932efaf17b9baccbda1247f5d46554986eeb186888c3bd30ec3b  lib/win-x64/slang-compiler.lib
+33949342117f8d195a581d5a23689c2819400f5a161706d73148f0dc0db1c13a  lib/win-x64/slang-glslang.dll
