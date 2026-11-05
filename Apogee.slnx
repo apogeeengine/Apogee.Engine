@@ -18,6 +18,7 @@
     <Project Path="Source/Apogee.Native.Vma/Apogee.Native.Vma.csproj" />
     <Project Path="Source/Apogee.Native.Vulkan/Apogee.Native.Vulkan.csproj" />
     <Project Path="Source/Apogee.Platform/Apogee.Platform.csproj" />
+    <Project Path="Source/Apogee.Rendering/Apogee.Rendering.csproj" />
     <Project Path="Source/Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" />
     <Project Path="Source/Apogee.Reflection/Apogee.Reflection.csproj" />
     <Project Path="Source/Apogee.Scripting/Apogee.Scripting.csproj" />
@@ -31,6 +32,7 @@
     <Project Path="Tests/Apogee.Interop.Tests/Apogee.Interop.Tests.csproj" />
     <Project Path="Tests/Apogee.Platform.Tests/Apogee.Platform.Tests.csproj" />
     <Project Path="Tests/Apogee.Reflection.Tests/Apogee.Reflection.Tests.csproj" />
+    <Project Path="Tests/Apogee.Rendering.Tests/Apogee.Rendering.Tests.csproj" />
     <Project Path="Tests/Apogee.Scripting.Tests/Apogee.Scripting.Tests.csproj" />
   </Folder>
   <Folder Name="/Tools/">
