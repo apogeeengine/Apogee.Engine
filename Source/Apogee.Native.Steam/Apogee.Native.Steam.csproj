@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Steam's callback structs are packed to 8 bytes on Windows and to 4 elsewhere (VALVE_CALLBACK_PACK_* in steamclientpublic.h), so the binding is built for the operating system it runs on. -->
+    <SteamPack8 Condition="$(RuntimeIdentifier.StartsWith('win'))">true</SteamPack8>
+    <SteamPack8 Condition="'$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))">true</SteamPack8>
+    <DefineConstants Condition="'$(SteamPack8)' == 'true'">$(DefineConstants);APOGEE_STEAM_PACK8</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
+  </ItemGroup>
+</Project>

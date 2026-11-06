@@ -2,6 +2,7 @@
   <Folder Name="/Source/">
     <Project Path="Source/Apogee.Audio/Apogee.Audio.csproj" />
     <Project Path="Source/Apogee.Network/Apogee.Network.csproj" />
+    <Project Path="Source/Apogee.Steam/Apogee.Steam.csproj" />
     <Project Path="Source/Apogee.Content/Apogee.Content.csproj" />
     <Project Path="Source/Apogee.Core/Apogee.Core.csproj" />
     <Project Path="Source/Apogee.Ecs/Apogee.Ecs.csproj" />
@@ -22,6 +23,7 @@
     <Project Path="Source/Apogee.Native.AudioDecode/Apogee.Native.AudioDecode.csproj" />
     <Project Path="Source/Apogee.Native.OpenAL/Apogee.Native.OpenAL.csproj" />
     <Project Path="Source/Apogee.Native.Net/Apogee.Native.Net.csproj" />
+    <Project Path="Source/Apogee.Native.Steam/Apogee.Native.Steam.csproj" />
     <Project Path="Source/Apogee.Native.Vma/Apogee.Native.Vma.csproj" />
     <Project Path="Source/Apogee.Native.Vulkan/Apogee.Native.Vulkan.csproj" />
     <Project Path="Source/Apogee.Physics/Apogee.Physics.csproj" />
@@ -34,6 +36,7 @@
   <Folder Name="/Tests/">
     <Project Path="Tests/Apogee.Audio.Tests/Apogee.Audio.Tests.csproj" />
     <Project Path="Tests/Apogee.Network.Tests/Apogee.Network.Tests.csproj" />
+    <Project Path="Tests/Apogee.Steam.Tests/Apogee.Steam.Tests.csproj" />
     <Project Path="Tests/Apogee.Build.Tests/Apogee.Build.Tests.csproj" />
     <Project Path="Tests/Apogee.Content.Tests/Apogee.Content.Tests.csproj" />
     <Project Path="Tests/Apogee.Core.Tests/Apogee.Core.Tests.csproj" />

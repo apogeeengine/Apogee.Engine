@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Core/Apogee.Core.csproj" />
+    <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
+    <ProjectReference Include="../Apogee.Content/Apogee.Content.csproj" />
+    <ProjectReference Include="../Apogee.Reflection/Apogee.Reflection.csproj" />
+    <ProjectReference Include="../Apogee.Native.Steam/Apogee.Native.Steam.csproj" />
+    <ProjectReference Include="../Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Apogee.Steam.Tests" />
+  </ItemGroup>
+</Project>
