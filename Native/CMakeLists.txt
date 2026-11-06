@@ -44,6 +44,8 @@ endfunction()
 
 add_subdirectory(flecs)
 add_subdirectory(luau)
+add_subdirectory(freetype)
+add_subdirectory(imgui)
 add_subdirectory(vma)
 add_subdirectory(meshoptimizer)
 add_subdirectory(cgltf)

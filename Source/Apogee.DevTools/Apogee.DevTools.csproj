@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Core/Apogee.Core.csproj" />
+    <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
+    <ProjectReference Include="../Apogee.Platform/Apogee.Platform.csproj" />
+    <ProjectReference Include="../Apogee.Reflection/Apogee.Reflection.csproj" />
+    <ProjectReference Include="../Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+    <ProjectReference Include="../Apogee.Graphics/Apogee.Graphics.csproj" />
+    <ProjectReference Include="../Apogee.Rendering/Apogee.Rendering.csproj" />
+    <ProjectReference Include="../Apogee.Native.CImGui/Apogee.Native.CImGui.csproj" />
+    <ProjectReference Include="../Apogee.Native.ImGuizmo/Apogee.Native.ImGuizmo.csproj" />
+    <ProjectReference Include="../Apogee.Native.ImPlot/Apogee.Native.ImPlot.csproj" />
+    <ProjectReference Include="../Apogee.Native.ImNodes/Apogee.Native.ImNodes.csproj" />
+    <ProjectReference Include="../Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Apogee.DevTools.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Compiled at run time like the renderer's shaders, and shipped next to the program in the same Shaders folder. -->
+    <Content Include="Shaders/*.slang" Link="Shaders/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
