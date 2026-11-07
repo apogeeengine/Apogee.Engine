@@ -5,6 +5,7 @@
     <Project Path="Source/Apogee.Steam/Apogee.Steam.csproj" />
     <Project Path="Source/Apogee.UI/Apogee.UI.csproj" />
     <Project Path="Source/Apogee.Host/Apogee.Host.csproj" />
+    <Project Path="Source/Apogee.Editor/Apogee.Editor.csproj" />
     <Project Path="Source/Apogee.Content/Apogee.Content.csproj" />
     <Project Path="Source/Apogee.Core/Apogee.Core.csproj" />
     <Project Path="Source/Apogee.DevTools/Apogee.DevTools.csproj" />
@@ -54,6 +55,7 @@
     <Project Path="Tests/Apogee.DevTools.Tests/Apogee.DevTools.Tests.csproj" />
     <Project Path="Tests/Apogee.Ecs.Tests/Apogee.Ecs.Tests.csproj" />
     <Project Path="Tests/Apogee.Host.Tests/Apogee.Host.Tests.csproj" />
+    <Project Path="Tests/Apogee.Editor.Tests/Apogee.Editor.Tests.csproj" />
     <Project Path="Tests/Apogee.Graphics.Tests/Apogee.Graphics.Tests.csproj" />
     <Project Path="Tests/Apogee.Input.Tests/Apogee.Input.Tests.csproj" />
     <Project Path="Tests/Apogee.Interop.Tests/Apogee.Interop.Tests.csproj" />
