@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AnalysisMode>Default</AnalysisMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Source/Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Flecs/Apogee.Native.Flecs.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Luau/Apogee.Native.Luau.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.CImGui/Apogee.Native.CImGui.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Vulkan/Apogee.Native.Vulkan.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Vma/Apogee.Native.Vma.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Meshopt/Apogee.Native.Meshopt.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Cgltf/Apogee.Native.Cgltf.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Stb/Apogee.Native.Stb.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.AudioDecode/Apogee.Native.AudioDecode.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.OpenAL/Apogee.Native.OpenAL.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Net/Apogee.Native.Net.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Ktx/Apogee.Native.Ktx.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Jolt/Apogee.Native.Jolt.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.RmlUi/Apogee.Native.RmlUi.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.ImGuizmo/Apogee.Native.ImGuizmo.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.ImPlot/Apogee.Native.ImPlot.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.ImNodes/Apogee.Native.ImNodes.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Steam/Apogee.Native.Steam.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Slang/Apogee.Native.Slang.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Zstd/Apogee.Native.Zstd.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.FreeType/Apogee.Native.FreeType.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Metal/Apogee.Native.Metal.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Import Project="../../ThirdParty/NativeLibraries.props" />
+</Project>

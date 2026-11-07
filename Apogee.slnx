@@ -54,6 +54,7 @@
     <Project Path="Tests/Apogee.Graphics.Tests/Apogee.Graphics.Tests.csproj" />
     <Project Path="Tests/Apogee.Input.Tests/Apogee.Input.Tests.csproj" />
     <Project Path="Tests/Apogee.Interop.Tests/Apogee.Interop.Tests.csproj" />
+    <Project Path="Tests/Apogee.Native.Tests/Apogee.Native.Tests.csproj" />
     <Project Path="Tests/Apogee.Physics.Tests/Apogee.Physics.Tests.csproj" />
     <Project Path="Tests/Apogee.Platform.Tests/Apogee.Platform.Tests.csproj" />
     <Project Path="Tests/Apogee.Reflection.Tests/Apogee.Reflection.Tests.csproj" />
