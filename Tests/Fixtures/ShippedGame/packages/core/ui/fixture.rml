@@ -1,0 +1,17 @@
+<rml>
+<head>
+  <style>
+    body { display: flex; align-items: center; justify-content: center; }
+    .card { padding: 16px; background-color: #1e222d; border-radius: 8px; }
+    .title { font-size: 20px; font-weight: bold; color: #e6e9f0; }
+    .muted { color: #9aa3b5; }
+  </style>
+  <script src="fixture.luau"/>
+</head>
+<body data-model="fixture">
+  <div class="card" onclick="clicked(event)">
+    <span class="title">Fixture game</span><br/>
+    <span class="muted">clicks: {{clicks}}</span>
+  </div>
+</body>
+</rml>

@@ -1,0 +1,4 @@
+<Mod id="patcher" name="Fixture mod" version="1.0.0" author="Apogee" description="A mod of the fixture game." apiVersion="1">
+  <Dependency id="core" version="^1.0"/>
+  <Script path="main.luau"/>
+</Mod>

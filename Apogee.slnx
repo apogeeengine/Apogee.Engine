@@ -40,6 +40,7 @@
     <Project Path="Source/Apogee.Rendering/Apogee.Rendering.csproj" />
     <Project Path="Source/Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" />
     <Project Path="Source/Apogee.Reflection/Apogee.Reflection.csproj" />
+    <Project Path="Source/Apogee.Runtime/Apogee.Runtime.csproj" />
     <Project Path="Source/Apogee.Scripting/Apogee.Scripting.csproj" />
   </Folder>
   <Folder Name="/Tests/">
@@ -61,6 +62,7 @@
     <Project Path="Tests/Apogee.Platform.Tests/Apogee.Platform.Tests.csproj" />
     <Project Path="Tests/Apogee.Reflection.Tests/Apogee.Reflection.Tests.csproj" />
     <Project Path="Tests/Apogee.Rendering.Tests/Apogee.Rendering.Tests.csproj" />
+    <Project Path="Tests/Apogee.Runtime.Tests/Apogee.Runtime.Tests.csproj" />
     <Project Path="Tests/Apogee.Scripting.Tests/Apogee.Scripting.Tests.csproj" />
   </Folder>
   <Folder Name="/Tools/">

@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Core/Apogee.Core.csproj" />
+    <ProjectReference Include="../Apogee.Host/Apogee.Host.csproj" />
+    <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
+    <ProjectReference Include="../Apogee.Ecs/Apogee.Ecs.csproj" />
+    <ProjectReference Include="../Apogee.Platform/Apogee.Platform.csproj" />
+    <ProjectReference Include="../Apogee.Input/Apogee.Input.csproj" />
+    <ProjectReference Include="../Apogee.Physics/Apogee.Physics.csproj" />
+    <ProjectReference Include="../Apogee.Audio/Apogee.Audio.csproj" />
+    <ProjectReference Include="../Apogee.Steam/Apogee.Steam.csproj" />
+    <ProjectReference Include="../Apogee.Network/Apogee.Network.csproj" />
+    <ProjectReference Include="../Apogee.Content/Apogee.Content.csproj" />
+    <ProjectReference Include="../Apogee.Graphics/Apogee.Graphics.csproj" />
+    <ProjectReference Include="../Apogee.Rendering/Apogee.Rendering.csproj" />
+    <ProjectReference Include="../Apogee.DevTools/Apogee.DevTools.csproj" />
+    <ProjectReference Include="../Apogee.UI/Apogee.UI.csproj" />
+    <ProjectReference Include="../Apogee.Reflection/Apogee.Reflection.csproj" />
+    <ProjectReference Include="../Apogee.Scripting/Apogee.Scripting.csproj" />
+    <ProjectReference Include="../Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+    <ProjectReference Include="../Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
+    <ProjectReference Include="../Apogee.Native.Flecs/Apogee.Native.Flecs.csproj" />
+    <ProjectReference Include="../Apogee.Native.Luau/Apogee.Native.Luau.csproj" />
+    <ProjectReference Include="../Apogee.Native.Jolt/Apogee.Native.Jolt.csproj" />
+    <ProjectReference Include="../Apogee.Native.Steam/Apogee.Native.Steam.csproj" />
+    <ProjectReference Include="../Apogee.Native.OpenAL/Apogee.Native.OpenAL.csproj" />
+    <ProjectReference Include="../Apogee.Native.Net/Apogee.Native.Net.csproj" />
+    <ProjectReference Include="../Apogee.Native.CImGui/Apogee.Native.CImGui.csproj" />
+    <ProjectReference Include="../Apogee.Native.Vulkan/Apogee.Native.Vulkan.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Apogee.Runtime.Tests" />
+  </ItemGroup>
+  <Import Project="../../ThirdParty/NativeLibraries.props" />
+</Project>
