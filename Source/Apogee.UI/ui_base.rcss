@@ -1,0 +1,95 @@
+/*
+ * The engine's base stylesheet, added under every document's own (so a document or a mod overrides anything here). RmlUi has no built-in stylesheet: without these rules a div is
+ * inline and takes no width or height, text has no font, and a lot of what a page expects is missing. The sizing is border-box, as in CSS resets.
+ */
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	width: 100%;
+	height: 100%;
+	font-family: Inter;
+	font-size: 16px;
+	color: #e5e7eb;
+	line-height: 1.4;
+}
+
+/* Block elements. RmlUi's built-in element types know their own tags, and the rest are generic elements that default to inline. */
+body, div, p, h1, h2, h3, h4, h5, h6, section, header, footer, main, nav, aside, article, form, fieldset, ul, ol, li, pre, blockquote, hr, figure {
+	display: block;
+}
+
+h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
+h2 { font-size: 1.5em; font-weight: bold; margin: 0.75em 0; }
+h3 { font-size: 1.17em; font-weight: bold; margin: 0.83em 0; }
+h4 { font-weight: bold; margin: 1em 0; }
+h5 { font-size: 0.83em; font-weight: bold; margin: 1.17em 0; }
+h6 { font-size: 0.67em; font-weight: bold; margin: 1.33em 0; }
+p { margin: 1em 0; }
+ul, ol { margin: 1em 0; padding-left: 2em; }
+li { display: block; }   /* RmlUi has no list-item display or bullets: list markers are the document's to draw */
+hr { height: 1px; margin: 0.5em 0; background-color: #4b5563; }
+pre, code { font-family: Inter; }
+pre { white-space: pre; }
+
+em, i { font-style: italic; }
+strong, b { font-weight: bold; }
+small { font-size: 0.83em; }
+a { color: #60a5fa; cursor: pointer; }
+a:hover { color: #93c5fd; text-decoration: underline; }
+br { display: block; }
+
+/* Form controls: RmlUi implements the behavior, the look is ours. */
+input, select, textarea, button {
+	font-family: Inter;
+	font-size: 1em;
+	color: #f9fafb;
+}
+
+input.text, input.password, input.number, textarea, select {
+	display: inline-block;
+	height: 2em;
+	padding: 0.25em 0.5em;
+	background-color: #1f2937;
+	border: 1px #4b5563;
+	border-radius: 0.25em;
+	cursor: text;
+}
+
+input.text:focus, input.password:focus, input.number:focus, textarea:focus {
+	border-color: #3b82f6;
+}
+
+textarea { height: 6em; }
+
+button, input.submit, input.button {
+	display: inline-block;
+	padding: 0.4em 0.9em;
+	background-color: #374151;
+	border-radius: 0.25em;
+	cursor: pointer;
+	text-align: center;
+}
+
+button:hover, input.submit:hover, input.button:hover { background-color: #4b5563; }
+button:active, input.submit:active, input.button:active { background-color: #1f2937; }
+button:disabled, input:disabled { opacity: 0.5; cursor: unavailable; }
+
+/* Tables. */
+table { box-sizing: border-box; display: table; }
+tr { box-sizing: border-box; display: table-row; }
+td, th { box-sizing: border-box; display: table-cell; padding: 0.25em 0.5em; }
+th { font-weight: bold; }
+col { box-sizing: border-box; display: table-column; }
+colgroup { display: table-column-group; }
+thead, tbody, tfoot { display: table-row-group; }
+
+/* Scrollbars of containers with overflow: auto or scroll. */
+scrollbarvertical { width: 12px; }
+scrollbarhorizontal { height: 12px; }
+scrollbarvertical slidertrack, scrollbarhorizontal slidertrack { background-color: #1f2937; }
+scrollbarvertical sliderbar, scrollbarhorizontal sliderbar { background-color: #6b7280; border-radius: 6px; }
+scrollbarvertical sliderbar:hover, scrollbarhorizontal sliderbar:hover { background-color: #9ca3af; }
+scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc, scrollbarhorizontal sliderarrowdec, scrollbarhorizontal sliderarrowinc { width: 0; height: 0; }

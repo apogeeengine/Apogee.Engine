@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Core/Apogee.Core.csproj" />
+    <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
+    <ProjectReference Include="../Apogee.Content/Apogee.Content.csproj" />
+    <ProjectReference Include="../Apogee.Platform/Apogee.Platform.csproj" />
+    <ProjectReference Include="../Apogee.Reflection/Apogee.Reflection.csproj" />
+    <ProjectReference Include="../Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+    <ProjectReference Include="../Apogee.Graphics/Apogee.Graphics.csproj" />
+    <ProjectReference Include="../Apogee.Rendering/Apogee.Rendering.csproj" />
+    <ProjectReference Include="../Apogee.Native.RmlUi/Apogee.Native.RmlUi.csproj" />
+    <ProjectReference Include="../Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Apogee.UI.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The default font and the base stylesheet travel inside the assembly, so a shipped game needs no files for them. -->
+    <EmbeddedResource Include="Fonts/*.ttf" LogicalName="Apogee.UI.Fonts.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="ui_base.rcss" LogicalName="Apogee.UI.ui_base.rcss" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Compiled at run time like the renderer's shaders, and shipped next to the program in the same Shaders folder. -->
+    <Content Include="Shaders/*.slang" Link="Shaders/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -3,6 +3,7 @@
     <Project Path="Source/Apogee.Audio/Apogee.Audio.csproj" />
     <Project Path="Source/Apogee.Network/Apogee.Network.csproj" />
     <Project Path="Source/Apogee.Steam/Apogee.Steam.csproj" />
+    <Project Path="Source/Apogee.UI/Apogee.UI.csproj" />
     <Project Path="Source/Apogee.Content/Apogee.Content.csproj" />
     <Project Path="Source/Apogee.Core/Apogee.Core.csproj" />
     <Project Path="Source/Apogee.DevTools/Apogee.DevTools.csproj" />
@@ -15,6 +16,7 @@
     <Project Path="Source/Apogee.Native.Flecs/Apogee.Native.Flecs.csproj" />
     <Project Path="Source/Apogee.Native.FreeType/Apogee.Native.FreeType.csproj" />
     <Project Path="Source/Apogee.Native.Jolt/Apogee.Native.Jolt.csproj" />
+    <Project Path="Source/Apogee.Native.RmlUi/Apogee.Native.RmlUi.csproj" />
     <Project Path="Source/Apogee.Native.ImGuizmo/Apogee.Native.ImGuizmo.csproj" />
     <Project Path="Source/Apogee.Native.ImPlot/Apogee.Native.ImPlot.csproj" />
     <Project Path="Source/Apogee.Native.ImNodes/Apogee.Native.ImNodes.csproj" />
@@ -43,6 +45,7 @@
     <Project Path="Tests/Apogee.Audio.Tests/Apogee.Audio.Tests.csproj" />
     <Project Path="Tests/Apogee.Network.Tests/Apogee.Network.Tests.csproj" />
     <Project Path="Tests/Apogee.Steam.Tests/Apogee.Steam.Tests.csproj" />
+    <Project Path="Tests/Apogee.UI.Tests/Apogee.UI.Tests.csproj" />
     <Project Path="Tests/Apogee.Build.Tests/Apogee.Build.Tests.csproj" />
     <Project Path="Tests/Apogee.Content.Tests/Apogee.Content.Tests.csproj" />
     <Project Path="Tests/Apogee.Core.Tests/Apogee.Core.Tests.csproj" />
