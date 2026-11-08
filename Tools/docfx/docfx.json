@@ -1,0 +1,34 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../../Source",
+          "files": [
+            "Apogee.Audio/*.csproj",
+            "Apogee.Content/*.csproj",
+            "Apogee.Core/*.csproj",
+            "Apogee.DevTools/*.csproj",
+            "Apogee.Ecs/*.csproj",
+            "Apogee.Graphics/*.csproj",
+            "Apogee.Host/*.csproj",
+            "Apogee.Input/*.csproj",
+            "Apogee.Interop/*.csproj",
+            "Apogee.Network/*.csproj",
+            "Apogee.Physics/*.csproj",
+            "Apogee.Platform/*.csproj",
+            "Apogee.Reflection/*.csproj",
+            "Apogee.Rendering/*.csproj",
+            "Apogee.Scripting/*.csproj",
+            "Apogee.Steam/*.csproj",
+            "Apogee.UI/*.csproj"
+          ]
+        }
+      ],
+      "dest": "../../Bin/docfx/csharp",
+      "outputFormat": "markdown",
+      "disableGitFeatures": true,
+      "properties": { "Configuration": "Release" }
+    }
+  ]
+}
