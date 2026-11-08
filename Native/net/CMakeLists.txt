@@ -11,7 +11,8 @@ elseif(APPLE)
 else()
   set(GNS_NAMES libGameNetworkingSockets.so libGameNetworkingSockets.so.1)
 endif()
-find_library(GNS_LIBRARY NAMES ${GNS_NAMES} PATHS "${APOGEE_OUT}" "${GNS_LIBS}" NO_DEFAULT_PATH)
+# macOS binaries are universal (arm64 and x86_64 in one file).
+find_library(GNS_LIBRARY NAMES ${GNS_NAMES} PATHS "${APOGEE_OUT}" "${GNS_LIBS}" "${GNS}/lib/osx-universal" NO_DEFAULT_PATH)
 
 if(NOT GNS_LIBRARY)
   message(STATUS "apogee_net: GameNetworkingSockets is not in ${APOGEE_OUT} or ${GNS_LIBS}: not built (networking stays off)")
