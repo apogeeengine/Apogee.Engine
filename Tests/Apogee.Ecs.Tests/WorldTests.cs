@@ -52,6 +52,40 @@ public unsafe class WorldTests
         return new World();
     }
 
+    [Fact]
+    public void WorldsCanBeMadeOnManyThreadsAtOnce()
+    {
+        // Flecs sets up its clock the first time a world is made; threads that race to make the first ones used to divide by an unset timebase (SIGFPE on Intel Macs).
+        NativeRequirements.Require(typeof(Flecs).Assembly, "flecs");
+        var failures = new System.Collections.Concurrent.ConcurrentBag<Exception>();
+        var threads = new System.Threading.Thread[16];
+        using var start = new System.Threading.Barrier(threads.Length);
+        for (int i = 0; i < threads.Length; i++)
+        {
+            threads[i] = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    start.SignalAndWait();
+                    using var world = new World();
+                    world.CreateEntity("probe");
+                }
+                catch (Exception e)
+                {
+                    failures.Add(e);
+                }
+            });
+            threads[i].Start();
+        }
+
+        foreach (System.Threading.Thread thread in threads)
+        {
+            thread.Join();
+        }
+
+        Assert.Empty(failures);
+    }
+
     // ---- Components -----------------------------------------------------------------------------------------------------
 
     [Fact]

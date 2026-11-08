@@ -29,9 +29,30 @@ public sealed unsafe partial class World : EngineObject, IDisposable
     private Entity _quaternion;
     private readonly Entity _editorOnly;
 
+    private static readonly System.Threading.Lock s_osLock = new();
+    private static bool s_osInitialized;
+
+    /// <summary>
+    /// Flecs sets up its operating system layer (the clock, on macOS the timebase) the first time a world is made, and it marks that done before it has finished. A second thread that makes a world
+    /// at that moment reads a zero timebase and divides by it: a SIGFPE on Intel Macs. The layer is set up once, under a lock, before any world.
+    /// </summary>
+    private static NativeWorld* CreateNativeWorld()
+    {
+        lock (s_osLock)
+        {
+            if (!s_osInitialized)
+            {
+                Flecs.OsInit();
+                s_osInitialized = true;
+            }
+        }
+
+        return Flecs.Init();
+    }
+
     public World()
     {
-        _world = Flecs.Init();
+        _world = CreateNativeWorld();
         if (_world is null)
         {
             throw new InvalidOperationException("Flecs could not create a world.");
