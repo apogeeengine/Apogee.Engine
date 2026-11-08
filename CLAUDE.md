@@ -2,7 +2,7 @@
 
 A C# 3D game engine and framework: CoreCLR (JIT) in the editor and dev builds, NativeAOT in shipped games. Libraries are
 small: one `Apogee.*` project each, own interop, unsafe/unmanaged where it counts. Luau is the only
-scripting language (mods are Luau and data, never C#). Apache-2.0.
+scripting language (the engine is C#; games and mods are Luau and data). Apache-2.0.
 
 ## Stack
 

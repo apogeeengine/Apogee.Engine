@@ -16,7 +16,7 @@ Apogee is an engine for games that crunch numbers: big worlds, many entities, si
 **Pull requests that drift from this purpose will be rejected**, however well made. Out of scope:
 
 - consoles, mobile and the web (the engine targets Windows, Linux and macOS);
-- C# modding (mods are Luau and data) and other scripting languages;
+- C# game code or modding (games and mods are Luau and data) and other scripting languages;
 - feature toggles (everything is always compiled; options are build modes and dev tools only);
 - abstraction layers, wrappers or tooling that nothing in the repository needs;
 - libraries we may not redistribute (proprietary SDKs), and anything that makes a clone need a download to build.

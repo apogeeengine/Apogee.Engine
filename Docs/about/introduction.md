@@ -10,7 +10,7 @@ Apogee is an engine for games that crunch numbers: simulations with big worlds, 
 - **Small libraries.** One `Apogee.*` project per concern, each with its own interop. Take what you need; nothing forces the rest on you.
 - **Our own bindings.** The raw bindings (`Apogee.Native.*`) come from our own generator, checked by tests that every entry point resolves and every struct has clang's size. They are committed; nothing is hand-edited.
 - **AOT by default.** Shipped games are NativeAOT. No runtime reflection, no `Reflection.Emit`, no loading managed code: a source generator writes the registry that gives scripts, serialization and the editor's inspectors their view of the engine's classes.
-- **Luau for scripts and mods.** The game's own code is C#; scripts and mods are Luau and data, never C#, so a mod can be sandboxed, limited and hot-reloaded.
+- **Luau for games and mods.** The engine core is C#. Game developers and modders both write Luau and data, so scripts can be sandboxed, limited per owner and hot-reloaded.
 - **Everything redistributable.** The repository ships only libraries whose headers and binaries we may redistribute, so a clone builds and runs with nothing to download.
 - **You own your stack.** Apache-2.0, no royalties, no logo screen. If the project goes somewhere you do not want to follow, fork it.
 
@@ -18,7 +18,7 @@ Apogee is an engine for games that crunch numbers: simulations with big worlds, 
 
 - It is not a general-purpose engine for every kind of game, and it is not a drop-in replacement for Unity, Unreal or Godot. Pull requests that drift from the purpose above are declined, because adding everything is how engines end up doing nothing well.
 - It targets desktop platforms: Windows, Linux and macOS. No consoles, no mobile, no web.
-- It has no C# modding and no visual scripting.
+- Games and mods are written in Luau, not C#. There is no visual scripting.
 - It has no feature toggles: everything is always compiled. Options are build modes and dev tools only.
 
 ## Status

@@ -7,7 +7,7 @@ There you want to own the stack and have a foundation instead of a framework.
 
 **Why C#?** Modern C# (unsafe code, spans, function pointers, SIMD, NativeAOT) is fast enough for the hot paths and much faster to work in than C++. Shipped games are NativeAOT, so there is no JIT and no runtime reflection.
 
-**Why Luau and not C# for mods?** A mod must be sandboxed, limited in time and memory, and reloadable while the game runs. Luau was built for that. Mods are Luau and data, never native or managed code.
+**Why Luau and not C# for games and mods?** Scripts must be sandboxed, limited in time and memory, and reloadable while the game runs, and a mod must not be able to run native code. Luau was built for that. The engine is C#; the games made with it and their mods are Luau and data.
 
 **Which platforms?** Windows, Linux and macOS, on x64 and Arm64 where the libraries allow. Vulkan 1.3 is the graphics API on Windows and Linux; macOS uses Metal 3, which is written but untested ([help wanted](../contributing/help-wanted.md)).
 There is no console, mobile or web target.

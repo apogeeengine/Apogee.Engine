@@ -6,7 +6,7 @@
 **A free, open-source C# 3D engine made for crunching numbers.**
 
 Apogee is a set of small `Apogee.*` libraries on top of the best native libraries that exist: SDL3, Vulkan, Flecs, Luau, Jolt, OpenAL Soft, GameNetworkingSockets, Dear ImGui and RmlUi. It is built for games that spend their
-frame on arithmetic: simulations with big worlds, many entities and a lot of physics. The editor and dev builds run on CoreCLR; shipped games are NativeAOT. Scripts and mods are Luau.
+frame on arithmetic: simulations with big worlds, many entities and a lot of physics. The editor and dev builds run on CoreCLR; shipped games are NativeAOT. The engine is C#; games and mods are written in Luau and data.
 
 > **Pre-alpha.** APIs change without notice. Developed on Linux with Vulkan; Windows is built and tested by CI; the Metal (macOS) backend is written but has never run on a GPU. [Help wanted](#help-wanted).
 
@@ -16,12 +16,12 @@ frame on arithmetic: simulations with big worlds, many entities and a lot of phy
 - **The best library for each job.** We do the thin, fast layer between them and your game: our own interop and our own bindings generator, so every binding is generated, tested against clang's struct layouts, and committed.
 - **Small libraries.** One `Apogee.*` project per concern. Take what you need.
 - **AOT by default.** No runtime reflection, no `Reflection.Emit`, no loading managed code: a source generator writes the registry behind scripting, serialization and the editor's inspectors.
-- **Luau for scripts and mods**, never C#, so a mod can be sandboxed, limited and hot-reloaded.
+- **Luau for games and mods.** The engine core is C#; game developers and modders both write Luau and data, so scripts can be sandboxed, limited per owner and hot-reloaded.
 - **You own your stack.** Apache-2.0, no royalties, no logo. Every dependency is redistributable, so a clone builds and runs with nothing to download. If the project goes somewhere you do not want to follow, fork it.
 
 ### What Apogee is not
 
-It is not a general-purpose engine, and not a drop-in replacement for Unity, Unreal or Godot. It targets Windows, Linux and macOS: no consoles, mobile or web. It has no C# modding, no visual scripting and no feature toggles.
+It is not a general-purpose engine, and not a drop-in replacement for Unity, Unreal or Godot. It targets Windows, Linux and macOS: no consoles, mobile or web. Games and mods are written in Luau, not C#, and there is no visual scripting and no feature toggles.
 Pull requests that drift from this purpose are declined; adding everything is how engines end up doing nothing well.
 
 ## What's in the box

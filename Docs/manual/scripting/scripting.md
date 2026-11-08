@@ -1,6 +1,6 @@
 # Scripting
 
-`Apogee.Scripting` runs Luau, the only scripting language: the game's scripts and mods are Luau and data, never C#. It sits on the
+`Apogee.Scripting` runs Luau, the only scripting language: the engine is C#, and games and mods are written in Luau and data. It sits on the
 Luau library and the layer over its C API described in [Native libraries](../native/native-libraries.md#luau-apogeenativeluau).
 
 ## The VM and its owners
