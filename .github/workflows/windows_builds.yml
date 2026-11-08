@@ -17,6 +17,7 @@ jobs:
   tests:
     name: Tests (win-x64)
     runs-on: windows-latest
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
@@ -31,6 +32,7 @@ jobs:
   aot:
     name: NativeAOT (win-x64)
     runs-on: windows-latest
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash

@@ -16,6 +16,7 @@ jobs:
   docs:
     name: Build and publish
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       NO_MKDOCS_2_WARNING: "1"
     steps:

@@ -14,6 +14,7 @@ env:
 jobs:
   linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     container:
       image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
     steps:
@@ -52,6 +53,7 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    timeout-minutes: 120
     steps:
       - name: Source
         shell: bash
@@ -79,6 +81,7 @@ jobs:
 
   macos:
     runs-on: macos-latest
+    timeout-minutes: 120
     steps:
       - name: Source
         run: |
