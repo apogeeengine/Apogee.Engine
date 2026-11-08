@@ -9,6 +9,8 @@ Apogee is a set of small `Apogee.*` libraries on top of the best native librarie
 frame on arithmetic: simulations with big worlds, many entities and a lot of physics. The editor and dev builds run on CoreCLR; shipped games are NativeAOT. The engine is C#; games and mods are written in Luau and data.
 
 > **Pre-alpha.** APIs change without notice. Developed on Linux with Vulkan; Windows is built and tested by CI; the Metal (macOS) backend is written but has never run on a GPU. [Help wanted](#help-wanted).
+>
+> The editor is very bare-bones for now: it cannot import 3D models or other assets (it only places and re-imports files already in the game folder), and it has no materials, no animations and no game export.
 
 ## Why
 
@@ -68,7 +70,7 @@ cd Apogee.Engine
 dotnet run --project Samples/Viewer     # a lit colonnade, glTF models and the dev overlay
 ```
 
-More: the editor (`dotnet run --project Source/Apogee.Editor -- Samples/Mods/game`), the NativeAOT runtime (`./build.sh aot`), and a game made of packages and mods
+More: the editor, which is very bare-bones for now (`dotnet run --project Source/Apogee.Editor -- Samples/Mods/game`), the NativeAOT runtime (`./build.sh aot`), and a game made of packages and mods
 (`Bin/publish/runtime/Apogee.Runtime --game Samples/Mods/game`). `build.ps1` is the same on Windows. Read [Building](Docs/getting-started/building.md) next.
 
 ## Documentation

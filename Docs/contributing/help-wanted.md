@@ -41,7 +41,7 @@ the shaders, and the Manual (a page that does not match the code is a bug). Open
 ## Expanding the engine
 
 Features that fit the scope in [CONTRIBUTING.md](https://github.com/apogeeengine/Apogee.Engine/blob/main/CONTRIBUTING.md) are welcome: rendering features (shadows, post-processing, terrain), editor panels, tools, samples,
-more Luau API, performance work with a benchmark in `Samples/Benchmarks`. Every feature comes with tests and a Manual page. Ask first if it is big.
+the editor (importing models and assets, materials, animations, exporting a game: it is very bare-bones), more Luau API, performance work with a benchmark in `Samples/Benchmarks`. Every feature comes with tests and a Manual page. Ask first if it is big.
 
 ## Tell us if you hit this
 

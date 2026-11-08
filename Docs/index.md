@@ -8,6 +8,8 @@ shipped games are NativeAOT, so engine code never uses runtime reflection. The e
 !!! warning "Pre-alpha"
     APIs change without notice. The engine is developed on Linux with Vulkan; Windows is built and tested by CI, and the Metal backend for macOS has never run on a GPU. See [Help wanted](contributing/help-wanted.md).
 
+    The editor is very bare-bones for now: it cannot import 3D models or other assets (it only places and re-imports files already in the game folder), and it has no materials, no animations and no game export.
+
 ## Where to go
 
 - **New here?** Read the [Introduction](about/introduction.md), then [Building](getting-started/building.md) and run a [sample](getting-started/samples/viewer.md).

@@ -24,7 +24,7 @@ Apogee is an engine for games that crunch numbers: simulations with big worlds, 
 ## Status
 
 Pre-alpha. The libraries below are all there and tested, but APIs will change and some corners are thin. The maintainers develop on Linux with Vulkan. Windows is built and tested by CI; Metal (macOS) is written, its shaders pass Apple's
-compiler, but it has never run on a GPU. Direct3D 12 is not planned. [Help wanted](../contributing/help-wanted.md) lists what we need.
+compiler, but it has never run on a GPU. Direct3D 12 is not planned. The editor is very bare-bones for now: it cannot import 3D models or other assets (it only places and re-imports files already in the game folder), and it has no materials, no animations and no game export. [Help wanted](../contributing/help-wanted.md) lists what we need.
 
 ## What is in the box
 
