@@ -5,7 +5,7 @@
 Apogee is an engine for games that crunch numbers: simulations with big worlds, many entities and a lot of arithmetic per frame. Its choices follow from that.
 
 - **Numbers first.** Positions are `double` so a world can be thousands of kilometers wide without jitter; everything the GPU sees is `float`. The ECS is [Flecs](https://github.com/SanderMertens/flecs). Hot paths use unmanaged memory, `unsafe` code and SIMD, and do not allocate.
-- **The best library for each job, not a rewrite of it.** SDL3 for windows and input, Vulkan 1.3 with VMA and the Slang shader compiler for graphics, Jolt for physics, Luau for scripting, OpenAL Soft for audio, GameNetworkingSockets for networking, Dear ImGui for tools, RmlUi for game UI.
+- **The best library for each job.** SDL3 for windows and input, Vulkan 1.3 with VMA and the Slang shader compiler for graphics, Jolt for physics, Luau for scripting, OpenAL Soft for audio, GameNetworkingSockets for networking, Dear ImGui for tools, RmlUi for game UI.
   Our work is the thin, fast layer between them and the game.
 - **Small libraries.** One `Apogee.*` project per concern, each with its own interop. Take what you need; nothing forces the rest on you.
 - **Our own bindings.** The raw bindings (`Apogee.Native.*`) come from our own generator, checked by tests that every entry point resolves and every struct has clang's size. They are committed; nothing is hand-edited.
