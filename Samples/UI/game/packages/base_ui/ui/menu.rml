@@ -1,0 +1,19 @@
+<rml>
+<head>
+  <title>Crate Runner</title>
+  <link type="text/rcss" href="theme.rcss"/>
+  <style>
+    body { display: flex; align-items: center; justify-content: center; background-color: var(--scrim); }
+  </style>
+  <script src="menu.luau"/>
+</head>
+<body>
+  <div class="card">
+    <h1>Crate Runner</h1>
+    <p class="muted center">Knock down the pyramid.</p>
+    <button id="start" class="primary" onclick="on_start()">Start</button>
+    <button id="options" onclick="on_options()">Options</button>
+    <button id="quit" onclick="on_quit()">Quit</button>
+  </div>
+</body>
+</rml>

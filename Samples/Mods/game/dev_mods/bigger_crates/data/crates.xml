@@ -1,0 +1,10 @@
+<Changes>
+  <!-- a patch: the wooden crate of the base game is bigger, and has one more tag (append: added, not matched with the first Tag) -->
+  <Crate id="wooden" patch="true" weight="20" size="large">
+    <Tag append="true">reinforced</Tag>
+  </Crate>
+  <!-- a new definition -->
+  <Crate id="gold" name="Gold crate" weight="150" size="small">
+    <Tag>valuable</Tag>
+  </Crate>
+</Changes>

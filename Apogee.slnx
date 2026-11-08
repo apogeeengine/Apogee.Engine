@@ -44,6 +44,10 @@
     <Project Path="Source/Apogee.Runtime/Apogee.Runtime.csproj" />
     <Project Path="Source/Apogee.Scripting/Apogee.Scripting.csproj" />
   </Folder>
+  <Folder Name="/Samples/">
+    <Project Path="Samples/Benchmarks/Apogee.Benchmarks.csproj" />
+    <Project Path="Samples/Viewer/Apogee.Samples.Viewer.csproj" />
+  </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/Apogee.Audio.Tests/Apogee.Audio.Tests.csproj" />
     <Project Path="Tests/Apogee.Network.Tests/Apogee.Network.Tests.csproj" />

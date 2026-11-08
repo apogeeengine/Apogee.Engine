@@ -1,0 +1,5 @@
+<div class="crate-panel">
+  <span class="crate-title">Crate panel (mod)</span>
+  <div>Best: <span id="crate_best">0 km/h</span></div>
+  <button id="crate_boost">Boost</button>
+</div>

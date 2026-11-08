@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Source/Apogee.Core/Apogee.Core.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Interop/Apogee.Interop.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Platform/Apogee.Platform.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Content/Apogee.Content.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Graphics/Apogee.Graphics.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Rendering/Apogee.Rendering.csproj" />
+    <ProjectReference Include="../../Source/Apogee.DevTools/Apogee.DevTools.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Flecs/Apogee.Native.Flecs.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.Luau/Apogee.Native.Luau.csproj" />
+    <ProjectReference Include="../../Source/Apogee.Native.CImGui/Apogee.Native.CImGui.csproj" />
+  </ItemGroup>
+  <Import Project="../../ThirdParty/NativeLibraries.props" />
+</Project>

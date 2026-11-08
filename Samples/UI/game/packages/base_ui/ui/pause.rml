@@ -1,0 +1,18 @@
+<rml>
+<head>
+  <title>Paused</title>
+  <link type="text/rcss" href="theme.rcss"/>
+  <style>
+    body { display: flex; align-items: center; justify-content: center; background-color: var(--scrim); }
+  </style>
+  <script src="pause.luau"/>
+</head>
+<body>
+  <div class="card">
+    <h1>Paused</h1>
+    <button id="resume" class="primary" onclick="on_resume()">Resume</button>
+    <button onclick="on_options()">Options</button>
+    <button onclick="on_menu()">Main menu</button>
+  </div>
+</body>
+</rml>

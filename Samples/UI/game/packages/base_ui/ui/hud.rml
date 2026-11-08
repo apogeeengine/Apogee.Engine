@@ -1,0 +1,34 @@
+<rml>
+<head>
+  <title>HUD</title>
+  <link type="text/rcss" href="theme.rcss"/>
+  <style>
+    .hud { position: absolute; left: 0; top: 0; right: 0; bottom: 0; pointer-events: none; }
+    .panel { background-color: var(--surface); border-radius: 8px; padding: 12px; }
+    .stats { position: absolute; left: 16px; top: 16px; }
+    .stat { margin-bottom: 8px; }
+    .stat .label { font-size: 12px; text-transform: uppercase; color: var(--fg-muted); }
+    .stat .value { font-size: 24px; font-weight: bold; }
+    .fps { position: absolute; right: 16px; top: 16px; padding: 4px 12px; font-size: 14px; color: var(--fg-muted); background-color: var(--surface); border-radius: 8px; }
+    .minimap { position: absolute; left: 16px; bottom: 16px; width: 112px; height: 112px; background-color: var(--surface); border-radius: 8px; overflow: hidden; }
+    .minimap .pyramid { position: absolute; left: 44px; top: 22px; width: 24px; height: 10px; background-color: var(--warning); border-radius: 2px; }
+    .minimap .ball { position: absolute; width: 8px; height: 8px; background-color: var(--primary); border-radius: 4px; }
+    .slot { position: absolute; right: 16px; top: 64px; width: 200px; pointer-events: auto; }
+  </style>
+</head>
+<body data-model="hud">
+  <div class="hud">
+    <div class="stats panel">
+      <div class="stat"><div class="label">Speed</div><div class="value">{{speed}}</div></div>
+      <div class="stat"><div class="label">Top speed</div><div class="value">{{top_speed}}</div></div>
+    </div>
+    <div class="fps">{{fps}} fps</div>
+    <div class="minimap">
+      <div class="pyramid"></div>
+      <div class="ball" data-style-left="ball_left" data-style-top="ball_top"></div>
+    </div>
+    <!-- Other packages put their panels here (lib/hud.luau, hud.add_panel). -->
+    <div id="slot_hud_right" class="slot"></div>
+  </div>
+</body>
+</rml>

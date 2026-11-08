@@ -1,0 +1,13 @@
+<Crates>
+  <Crate id="wooden" name="Wooden crate" weight="12.5" size="medium">
+    <Tag>fragile</Tag>
+    <Tag>stackable</Tag>
+    <Prices>
+      <entry key="wheat" value="2.5"/>
+      <entry key="corn" value="3"/>
+    </Prices>
+  </Crate>
+  <Crate id="steel" name="Steel crate" weight="80" size="large">
+    <Tag>heavy</Tag>
+  </Crate>
+</Crates>

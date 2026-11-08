@@ -1,0 +1,4 @@
+<Mod id="crate_panel" name="Crate Panel" version="1.0.0" author="Ada" description="Adds a panel to the HUD: the top speed so far, and a boost button." apiVersion="1">
+  <Dependency id="base_ui" version="^1.0"/>
+  <Script path="main.luau"/>
+</Mod>

@@ -1,0 +1,3 @@
+<Mod id="base_ui" name="Crate Runner" version="1.0.0" author="Apogee" description="The UI sample's game: a main menu, options, a pause menu and a HUD over a small physics scene, as RML documents with Luau. Mods add panels to the HUD through lib/hud." apiVersion="1">
+  <Script path="main.luau"/>
+</Mod>

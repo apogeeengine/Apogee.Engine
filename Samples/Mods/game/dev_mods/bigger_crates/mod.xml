@@ -1,0 +1,5 @@
+<Mod id="bigger_crates" name="Bigger Crates" version="1.1.0" author="Ada" description="Wooden crates hold more, and there is a gold one." apiVersion="1" gameVersion="&gt;=1.0">
+  <Dependency id="base_game" version="^1.0"/>
+  <Content path="data"/>
+  <Script path="main.luau"/>
+</Mod>

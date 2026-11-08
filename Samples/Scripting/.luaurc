@@ -1,0 +1,8 @@
+{
+	// For luau-lsp: Apogee.Runtime --luau-defs Bin/defs writes the definitions and the engine's modules.
+	//   luau-lsp analyze --definitions=Bin/defs/apogee.d.luau --base-luaurc=Samples/Scripting/.luaurc Samples/Scripting
+	"languageMode": "strict",
+	"aliases": {
+		"engine": "../../Bin/defs/engine"
+	}
+}

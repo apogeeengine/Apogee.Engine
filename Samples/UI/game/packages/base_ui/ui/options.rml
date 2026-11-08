@@ -1,0 +1,29 @@
+<rml>
+<head>
+  <title>Options</title>
+  <link type="text/rcss" href="theme.rcss"/>
+  <style>
+    body { display: flex; align-items: center; justify-content: center; background-color: var(--scrim); }
+  </style>
+  <script src="options.luau"/>
+</head>
+<body data-model="options">
+  <div class="card">
+    <h1>Options</h1>
+    <div class="row">
+      <span>Theme</span>
+      <button id="theme" onclick="on_theme()">{{theme}}</button>
+    </div>
+    <div class="row">
+      <span>Volume</span>
+      <span class="muted">{{volume_text}}</span>
+    </div>
+    <div class="row">
+      <button onclick="on_volume(-0.1)">-</button>
+      <div class="bar"><div class="fill" data-style-width="volume_width"></div></div>
+      <button onclick="on_volume(0.1)">+</button>
+    </div>
+    <button id="back" onclick="on_back()">Back</button>
+  </div>
+</body>
+</rml>

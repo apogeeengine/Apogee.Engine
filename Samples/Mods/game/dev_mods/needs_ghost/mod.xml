@@ -1,0 +1,4 @@
+<Mod id="needs_ghost" name="Needs Ghost" version="2.0.0" author="Someone else" description="Needs a mod that is not installed." apiVersion="1">
+  <Dependency id="ghost_mod" version="&gt;=1.0"/>
+  <Script path="main.luau"/>
+</Mod>

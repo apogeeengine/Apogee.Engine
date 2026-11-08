@@ -1,0 +1,4 @@
+<Mod id="broken_mod" name="Broken Mod" version="0.3.0" author="Someone" description="Its script has a bug: the game logs it and goes on without it." apiVersion="1">
+  <Dependency id="base_game"/>
+  <Script path="main.luau"/>
+</Mod>

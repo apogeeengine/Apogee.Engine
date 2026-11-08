@@ -1,0 +1,5 @@
+<Mod id="base_game" name="Base Game" version="1.0.0" author="Apogee" description="The sample's own content: crates, and a panel that lists them and the packages." apiVersion="1">
+  <Content path="data"/>
+  <Schema path="schemas"/>
+  <Script path="main.luau"/>
+</Mod>

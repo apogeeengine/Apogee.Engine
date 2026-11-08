@@ -1,0 +1,66 @@
+/*
+ * The game's look, shared by every document. The colors are custom properties on the body, so a theme is the set of values: `body.light` redefines them, and the screens switch by putting
+ * the class "light" on their body (lib/screens.luau). Everything below reads them with var(...).
+ */
+body {
+	--bg: #12141a;
+	--surface: #1e222d;
+	--surface-2: #2a3040;
+	--line: #3a4256;
+	--fg: #e6e9f0;
+	--fg-muted: #9aa3b5;
+	--primary: #3b82f6;
+	--primary-hover: #5b9bf8;
+	--primary-fg: #ffffff;
+	--accent: #a78bfa;
+	--warning: #f59e0b;
+	--scrim: #00000099;
+	color: var(--fg);
+}
+
+body.light {
+	--bg: #f8fafc;
+	--surface: #ffffff;
+	--surface-2: #e8edf4;
+	--line: #cbd5e1;
+	--fg: #0f172a;
+	--fg-muted: #64748b;
+	--primary: #2563eb;
+	--primary-hover: #3b82f6;
+	--accent: #7c3aed;
+	--warning: #d97706;
+	--scrim: #ffffff99;
+}
+
+.card {
+	width: 340px;
+	padding: 24px;
+	background-color: var(--surface);
+	border-radius: 12px;
+}
+
+.card h1 { margin: 0 0 8px 0; font-size: 30px; text-align: center; }
+.muted { color: var(--fg-muted); }
+.center { text-align: center; }
+
+button {
+	display: block;
+	width: 100%;
+	margin-top: 12px;
+	padding: 8px 16px;
+	background-color: var(--surface-2);
+	color: var(--fg);
+	border-radius: 8px;
+	text-align: center;
+	cursor: pointer;
+}
+
+button:hover { background-color: var(--line); }
+button:active { background-color: var(--surface); }
+button.primary { background-color: var(--primary); color: var(--primary-fg); }
+button.primary:hover { background-color: var(--primary-hover); }
+
+.row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; margin-top: 12px; }
+.row button { width: auto; margin-top: 0; }
+.bar { flex: 1; height: 8px; margin: 0 12px; background-color: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.bar .fill { height: 100%; background-color: var(--primary); border-radius: 4px; }

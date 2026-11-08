@@ -1,0 +1,11 @@
+.crate-panel {
+	margin-bottom: 12px;
+	padding: 12px;
+	background-color: var(--surface);
+	border-radius: 8px;
+	border-width: 1px;
+	border-color: var(--accent);
+}
+
+.crate-title { display: block; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; color: var(--accent); }
+.crate-panel button { background-color: var(--accent); color: var(--primary-fg); }

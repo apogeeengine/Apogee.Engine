@@ -1,0 +1,8 @@
+{
+	// For luau-lsp (see Docs/manual/scripting/scripting.md): Apogee.Runtime --luau-defs Bin/defs writes the definitions and the engine's modules.
+	"languageMode": "strict",
+	"aliases": {
+		"engine": "../../Bin/defs/engine",
+		"base_game": "game/packages/base_game"
+	}
+}
