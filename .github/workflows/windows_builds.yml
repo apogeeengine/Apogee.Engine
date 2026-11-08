@@ -1,0 +1,56 @@
+name: Windows builds
+
+# Two jobs. Tests: the solution in Release and every test project (the GPU tests skip without a Vulkan device). NativeAOT: the runtime built the way a developer does
+# (./build.sh aot), the engine's Luau tests and a fixture game (Tests/Fixtures/ShippedGame) run from the published binary, with no GPU. Samples (Samples/) are demos that people run by hand: nothing here runs one.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The native libraries that must load (the tests fail instead of skipping).
+  APOGEE_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,apogee_net,zstd,freetype,ktx,slang_c,jolt
+
+jobs:
+  tests:
+    name: Tests (win-x64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          lfs: ThirdParty/*/lib/win-x64/*
+      - run: dotnet build Apogee.slnx -c Release
+      - run: dotnet test --solution Apogee.slnx -c Release --no-build
+
+  aot:
+    name: NativeAOT (win-x64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          lfs: ThirdParty/*/lib/win-x64/*
+      # Publishes the runtime with NativeAOT and compiles its shaders ahead of time (Shaders/imported), the same command as on a developer's machine.
+      - name: NativeAOT publish and shader import
+        run: ./build.sh aot
+      # The engine's own Luau tests, in the native binary: the scripting layer and the ECS from scripts, with no GPU.
+      - name: Luau tests in the NativeAOT runtime
+        run: Bin/publish/runtime/Apogee.Runtime --luau-test Tests/Luau
+      - name: Fixture game
+        run: |
+          Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
+          test -s "$RUNNER_TEMP/game-user/ran.txt"
+          test -s "$RUNNER_TEMP/game-user/moddata/patcher/ran.txt"
+      - name: Luau definitions
+        run: |
+          Bin/publish/runtime/Apogee.Runtime --luau-defs Bin/defs
+          test -s Bin/defs/apogee.d.luau

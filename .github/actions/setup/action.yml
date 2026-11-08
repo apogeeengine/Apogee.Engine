@@ -1,0 +1,29 @@
+name: Set up
+description: The Git LFS objects of one platform (cached by object id), the .NET SDK and the native libraries (Flecs, Luau, ...) in Bin/native-build.
+inputs:
+  lfs:
+    description: Comma separated paths of the Git LFS objects to pull (this platform's binaries, sample assets).
+    required: true
+runs:
+  using: composite
+  steps:
+    # Git LFS objects are pulled for this platform only, and cached by object id so that a push does not spend the quota.
+    - name: Git LFS object list
+      shell: bash
+      run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+    - uses: actions/cache@v4
+      with:
+        path: .git/lfs
+        key: lfs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.lfs-assets-id') }}
+        restore-keys: lfs-${{ runner.os }}-${{ runner.arch }}-
+    - name: Git LFS pull
+      shell: bash
+      run: git lfs pull --include="${{ inputs.lfs }}"
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+    - name: Native libraries (Flecs, Luau, ...)
+      shell: bash
+      run: |
+        cmake -S Native -B Bin/native-build -DCMAKE_BUILD_TYPE=Release
+        cmake --build Bin/native-build --config Release

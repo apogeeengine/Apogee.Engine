@@ -1,0 +1,99 @@
+name: macOS builds
+
+# Apple silicon and Intel. Each job builds the solution in Release and runs every test project, then publishes the runtime with NativeAOT (./build.sh aot), runs the Luau tests and a fixture game from it,
+# and uploads the binaries for whoever has a Mac to try. The hosted runners have a paravirtual GPU that is not Metal 3 (see Docs/manual/graphics/metal.md), so the Metal GPU tests skip unless the probe finds
+# one that qualifies: the Metal backend is a help-wanted task (Docs/contributing/help-wanted.md). The Intel job is experimental until the SIGFPE described there is explained: its failure does not fail the run.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            rid: osx-arm64
+            lfs: ThirdParty/*/lib/osx-universal/*,ThirdParty/*/lib/osx-arm64/*
+            experimental: false
+          - os: macos-15-intel
+            rid: osx-x64
+            lfs: ThirdParty/*/lib/osx-universal/*,ThirdParty/*/lib/osx-x64/*
+            experimental: true
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The native libraries that must load (the tests fail instead of skipping).
+      APOGEE_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,apogee_net,zstd,freetype,ktx,slang_c,jolt,metal_c
+      APOGEE_REQUIRE_METAL_COMPILER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          lfs: ${{ matrix.lfs }}
+      - run: dotnet build Apogee.slnx -c Release
+      # Whether the runner's (paravirtualized) GPU meets the Metal baseline. If it does the GPU tests and renders must run on it (APOGEE_REQUIRE_METAL), else they skip with this reason in the log.
+      - name: GPUs (Metal probe)
+        run: |
+          dotnet run --no-build -c Release --project Source/Apogee.Runtime -- --gpu-info | tee gpu-info.txt
+          if grep -Eq '^metal: .* ok$' gpu-info.txt; then
+            echo "APOGEE_REQUIRE_METAL=1" >> "$GITHUB_ENV"
+            echo "A Metal GPU that meets the baseline is here: the Metal tests are required."
+          else
+            echo "No Metal GPU that meets the baseline on this runner: the Metal GPU tests skip."
+          fi
+      - run: dotnet test --solution Apogee.slnx -c Release --no-build
+      # The system's crash reports (the faulting thread's frames), when a test program dies: it leaves only an exit code otherwise.
+      - name: Crash diagnostics
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import glob, json, os
+          for path in glob.glob(os.path.expanduser('~/Library/Logs/DiagnosticReports/*.ips')):
+              report = json.loads(open(path).read().split('\n', 1)[1])
+              images = report['usedImages']
+              thread = report['threads'][report['faultingThread']]
+              print('==', path, report.get('exception'), thread.get('queue'), thread.get('name'))
+              for frame in thread['frames'][:40]:
+                  print(hex(frame['imageOffset']), images[frame['imageIndex']].get('name'), frame.get('symbol'), frame.get('symbolLocation'))
+          PY
+      # Publishes the runtime with NativeAOT and compiles its shaders ahead of time (Shaders/imported), the same command as on a developer's machine.
+      - name: NativeAOT publish and shader import
+        run: ./build.sh aot
+      - name: Luau tests in the NativeAOT runtime
+        run: Bin/publish/runtime/Apogee.Runtime --luau-test Tests/Luau
+      - name: Fixture game
+        run: |
+          Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
+          test -s "$RUNNER_TEMP/game-user/ran.txt"
+      # Only when the probe found a Metal GPU that meets the baseline: the fixture game rendered on it.
+      - name: Rendered on Metal
+        if: env.APOGEE_REQUIRE_METAL == '1'
+        run: |
+          Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user-metal" --headless --size 640x360 --frames 10 --screenshot Bin/game-metal.png
+          test -s Bin/game-metal.png
+      - name: Luau definitions
+        run: |
+          Bin/publish/runtime/Apogee.Runtime --luau-defs Bin/defs
+          test -s Bin/defs/apogee.d.luau
+      # What a Mac without CI runs, for the people who test on real hardware.
+      - name: Build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apogee-${{ matrix.rid }}
+          path: Bin/publish/runtime
+          retention-days: 14
+      - name: Screenshots from Metal
+        if: env.APOGEE_REQUIRE_METAL == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: metal-screenshots-${{ matrix.rid }}
+          path: Bin/*-metal.png

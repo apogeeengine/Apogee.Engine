@@ -1,0 +1,48 @@
+name: Static checks
+
+# Fast checks that need no build: every commit of a pull request is signed off (the DCO), text files have no CRLF or trailing whitespace, LFS files are pointers where they should be, and the workflows are valid.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # CONTRIBUTING.md: git commit -s adds "Signed-off-by: Name <email>", the Developer Certificate of Origin.
+      - name: DCO sign-off
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          status=0
+          for sha in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            if ! git show -s --format=%B "$sha" | grep -qE '^Signed-off-by: .+ <.+>$'; then
+              echo "::error::commit $sha has no Signed-off-by line (use git commit -s; git rebase --signoff to add it)"
+              status=1
+            fi
+          done
+          exit $status
+      - name: Line endings and trailing whitespace
+        run: |
+          status=0
+          crlf=$(git ls-files --eol -- . ':!ThirdParty' ':!Samples/*/Assets' | awk '$1 ~ /crlf/ || $1 == "i/mixed" {print $NF}')
+          if [ -n "$crlf" ]; then echo "::error::CRLF line ends (use LF):"; echo "$crlf"; status=1; fi
+          trailing=$(git grep -n -I -E '[ 	]+$' -- '*.cs' '*.md' '*.yml' '*.luau' '*.slang' '*.csproj' '*.props' ':!ThirdParty' ':!*Generated*' || true)
+          if [ -n "$trailing" ]; then echo "::error::trailing whitespace:"; echo "$trailing"; status=1; fi
+          exit $status
+      # Binaries under ThirdParty/*/lib and the sample assets are Git LFS objects: a file that should be a pointer but is a blob would bloat the history.
+      - name: Git LFS pointers
+        run: git lfs fsck --pointers
+      - name: Workflows (actionlint)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color

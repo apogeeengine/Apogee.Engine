@@ -1,0 +1,42 @@
+name: Docs
+
+# Builds the site (./build.sh docs: the C# API with DocFX, the Luau API from the runtime, then MkDocs --strict, so a broken link fails). On a push to main (or a manual run on main) it publishes the site to the apogeeengine/docs repository's
+# GitHub Pages (https://apogeeengine.github.io/docs/): that repository holds nothing but the built site, and DOCS_DEPLOY_KEY is the private half of a deploy key with write access to it.
+on:
+  workflow_call:
+    secrets:
+      DOCS_DEPLOY_KEY:
+        required: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    env:
+      NO_MKDOCS_2_WARNING: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          lfs: ThirdParty/*/lib/linux-x64/*
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install mkdocs==1.6.1 mkdocs-material==9.8.0
+      - run: ./build.sh docs
+      - name: Publish to apogeeengine/docs
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.DOCS_DEPLOY_KEY }}
+          external_repository: apogeeengine/docs
+          publish_branch: gh-pages
+          publish_dir: Bin/site
+          force_orphan: true
+          user_name: github-actions[bot]
+          user_email: 41898282+github-actions[bot]@users.noreply.github.com
+          commit_message: "docs: ${{ github.sha }}"

@@ -1,0 +1,42 @@
+name: CI
+
+# The entry point: what runs on a push to main, on a pull request and when started by hand. Static checks run first (cheap, Linux); then one workflow per operating system builds, tests and publishes with NativeAOT,
+# and the docs build. Each is also callable by hand from the Actions tab. Samples (Samples/) are demos people run by hand: nothing here runs one.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  static-checks:
+    name: Static checks
+    uses: ./.github/workflows/static_checks.yml
+
+  linux:
+    name: Linux
+    needs: static-checks
+    uses: ./.github/workflows/linux_builds.yml
+
+  windows:
+    name: Windows
+    needs: static-checks
+    uses: ./.github/workflows/windows_builds.yml
+
+  macos:
+    name: macOS
+    needs: static-checks
+    uses: ./.github/workflows/macos_builds.yml
+
+  docs:
+    name: Docs
+    needs: static-checks
+    uses: ./.github/workflows/docs.yml
+    secrets: inherit

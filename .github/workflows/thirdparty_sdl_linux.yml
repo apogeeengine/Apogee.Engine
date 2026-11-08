@@ -1,0 +1,44 @@
+name: SDL for Linux
+
+# Builds libSDL3.so.0 in Valve's Steam Runtime "sniper" SDK (glibc 2.31), so it loads on Steam's Linux runtime and on any distribution
+# that is not older than that. Run it by hand (Actions > SDL for Linux), download the artifact and commit the file to
+# ThirdParty/sdl/lib/linux-x64/ (an LFS object) with its checksum in lib/SHA256SUMS. The recipe is in ThirdParty/README.md.
+on:
+  workflow_dispatch:
+
+env:
+  SDL_VERSION: 3.4.18
+  # sha256 of the official source tarball of release-3.4.18
+  SDL_SHA256: 9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
+    steps:
+      - name: Source
+        run: |
+          curl -fsSL -o SDL3.tar.gz "https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL3-${SDL_VERSION}.tar.gz"
+          echo "${SDL_SHA256}  SDL3.tar.gz" | sha256sum -c -
+          tar xzf SDL3.tar.gz
+      - name: Build
+        run: |
+          cmake -S "SDL3-${SDL_VERSION}" -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DSDL_INSTALL=OFF
+          cmake --build build
+          cp build/libSDL3.so.0.* libSDL3.so.0 2>/dev/null || cp -L build/libSDL3.so.0 libSDL3.so.0
+          strip --strip-unneeded libSDL3.so.0
+      - name: Report and check the glibc requirement
+        run: |
+          ldd --version | head -1
+          needed=$(objdump -T libSDL3.so.0 | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          echo "libSDL3.so.0 needs ${needed}"
+          test "$(printf '%s\n%s\n' "${needed#GLIBC_}" 2.31 | sort -V | tail -1)" = "2.31"
+          # The video and audio backends are loaded at run time, not linked.
+          objdump -p libSDL3.so.0 | grep NEEDED
+          sha256sum libSDL3.so.0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libSDL3-linux-x64
+          path: libSDL3.so.0

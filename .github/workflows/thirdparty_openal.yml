@@ -1,0 +1,82 @@
+name: OpenAL Soft
+
+# Builds OpenAL Soft for Linux (libopenal.so.1, in Valve's Steam Runtime "sniper" SDK: glibc 2.31, so it loads on Steam's Linux runtime and on any distribution that is not older than
+# that) and for macOS (libopenal.1.dylib, arm64 + x86_64). Windows uses the official binary release (see ThirdParty/README.md). Run it by hand (Actions > OpenAL Soft), download the
+# artifacts and commit the files to ThirdParty/openal-soft/lib/linux-x64/ and lib/osx-universal/ (LFS objects) with their checksums in lib/SHA256SUMS.
+on:
+  workflow_dispatch:
+
+env:
+  OPENAL_VERSION: 1.25.2
+  # the flags of both builds: a shared library, nothing but the library, the HRTF data inside it
+  OPENAL_FLAGS: -DCMAKE_BUILD_TYPE=Release -DLIBTYPE=SHARED -DALSOFT_UTILS=OFF -DALSOFT_EXAMPLES=OFF -DALSOFT_TESTS=OFF -DALSOFT_INSTALL=OFF -DALSOFT_INSTALL_CONFIG=OFF -DALSOFT_INSTALL_HRTF_DATA=OFF -DALSOFT_INSTALL_AMBDEC_PRESETS=OFF -DALSOFT_EMBED_HRTF_DATA=ON
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container:
+      image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
+    steps:
+      - name: Source
+        run: |
+          git clone --depth 1 --branch "${OPENAL_VERSION}" https://github.com/kcat/openal-soft.git
+          git -C openal-soft rev-parse HEAD
+      - name: Backends' headers
+        # The backends are loaded at run time (ALSOFT_DLOPEN), so only their headers are needed.
+        run: apt-get update && apt-get install -y libasound2-dev libpulse-dev libpipewire-0.3-dev || true
+      - name: Build
+        shell: bash
+        run: |
+          # OpenAL Soft is C++20 (std::bit_cast): the SDK's default g++ is too old, so use the newest one it has
+          ls /usr/bin | grep -E '^(g\+\+|gcc|clang)' | tr '\n' ' '
+          CXX_NEW=$(ls /usr/bin/g++-* 2>/dev/null | sort -V | tail -1)
+          CC_NEW=${CXX_NEW/g++/gcc}
+          echo "using ${CXX_NEW}"; ${CXX_NEW} --version | head -1
+          cmake -S openal-soft -B build -G Ninja ${OPENAL_FLAGS} -DALSOFT_DLOPEN=ON -DCMAKE_C_COMPILER=${CC_NEW} -DCMAKE_CXX_COMPILER=${CXX_NEW} \
+            -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+          cmake --build build
+          cp -L build/libopenal.so.1 libopenal.so.1
+          strip --strip-unneeded libopenal.so.1
+      - name: Report and check the requirements
+        run: |
+          ldd --version | head -1
+          needed=$(objdump -T libopenal.so.1 | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          echo "libopenal.so.1 needs ${needed}"
+          test "$(printf '%s\n%s\n' "${needed#GLIBC_}" 2.31 | sort -V | tail -1)" = "2.31"
+          # no C++ runtime, and only libc, libm, libdl and libpthread linked
+          ! objdump -T libopenal.so.1 | grep -q GLIBCXX
+          objdump -p libopenal.so.1 | grep NEEDED
+          # the backends that got compiled in
+          strings libopenal.so.1 | grep -E 'libpulse.so|libasound.so|libpipewire-0.3.so' | sort -u
+          sha256sum libopenal.so.1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libopenal-linux-x64
+          path: libopenal.so.1
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - name: Source
+        run: |
+          git clone --depth 1 --branch "${OPENAL_VERSION}" https://github.com/kcat/openal-soft.git
+          git -C openal-soft rev-parse HEAD
+      - name: Build (arm64 and x86_64)
+        run: |
+          brew install ninja
+          cmake -S openal-soft -B build -G Ninja ${OPENAL_FLAGS} -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DHAVE_WFUNCTION_EFFECTS=0   # the newest Xcode rejects a lambda that CoreAudio calls: leave that warning (and its -Werror) out
+          cmake --build build
+          cp -L build/libopenal.1.dylib libopenal.1.dylib
+          # loaded by path, so the install name only has to be local
+          install_name_tool -id @rpath/libopenal.1.dylib libopenal.1.dylib
+          strip -x libopenal.1.dylib
+      - name: Report
+        run: |
+          lipo -info libopenal.1.dylib
+          otool -L libopenal.1.dylib
+          shasum -a 256 libopenal.1.dylib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libopenal-osx-universal
+          path: libopenal.1.dylib

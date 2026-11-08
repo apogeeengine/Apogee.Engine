@@ -1,0 +1,117 @@
+name: Linux builds
+
+# Two jobs. Tests: the solution in Release and every test project, GPU tests on Mesa's software rasterizer (lavapipe) with the Khronos validation layer. NativeAOT: the runtime built the way a developer does
+# (./build.sh aot), the engine's Luau tests and a fixture game (Tests/Fixtures/ShippedGame) run from the published binary. Samples (Samples/) are demos that people run by hand: nothing here runs one.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The native libraries that must load (the tests fail instead of skipping).
+  APOGEE_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,apogee_net,zstd,freetype,ktx,slang_c,jolt,vulkan
+  APOGEE_REQUIRE_VULKAN: "1"
+
+jobs:
+  tests:
+    name: Tests (linux-x64)
+    runs-on: ubuntu-latest
+    env:
+      APOGEE_REQUIRE_CLANG: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          lfs: ThirdParty/*/lib/linux-x64/*
+      - name: Vulkan (lavapipe, validation layer)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers vulkan-validationlayers
+          ls /usr/share/vulkan/icd.d /usr/share/vulkan/explicit_layer.d
+      # The bindings generator tests need clang and libclang; this job makes them mandatory.
+      - name: libclang
+        run: |
+          sudo apt-get install -y clang libclang-dev
+          lib=$(ldconfig -p | awk '/libclang(-[0-9.]+)?\.so/ {print $NF; exit}')
+          echo "libclang: $lib"
+          # ClangSharp.Interop loads "libclang" (libclang.so); Ubuntu only ships libclang-<major>.so.<major>.
+          sudo ln -sf "$lib" /usr/local/lib/libclang.so
+          sudo ln -sf "$lib" /usr/local/lib/libclang.so.1
+          sudo ldconfig
+          clang -print-resource-dir
+          echo "LIBCLANG_PATH=$lib" >> "$GITHUB_ENV"
+          # ldconfig ignores a symlink whose name is not the library's soname: use the loader's own search path.
+          export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+          ldd "$lib" | grep -i 'not found' || echo "libclang: dependencies resolve"
+          python3 -c "import ctypes; ctypes.CDLL('libclang.so'); print('libclang.so loads outside .NET')"
+      - run: dotnet build Apogee.slnx -c Release
+      # Next to the test binary is the first place .NET looks for the library.
+      - name: libclang next to the generator tests
+        run: cp "$LIBCLANG_PATH" Bin/Apogee.Build.Tests/Release/net10.0/libclang.so
+      - run: dotnet test --solution Apogee.slnx -c Release --no-build
+
+  aot:
+    name: NativeAOT (linux-x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          lfs: ThirdParty/*/lib/linux-x64/*
+      # The rendered steps run on Mesa's software rasterizer (lavapipe) with the Khronos validation layer.
+      - name: Vulkan (lavapipe, validation layer)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers vulkan-validationlayers
+          ls /usr/share/vulkan/icd.d /usr/share/vulkan/explicit_layer.d
+      # Publishes the runtime with NativeAOT and compiles its shaders ahead of time (Shaders/imported), the same command as on a developer's machine.
+      - name: NativeAOT publish and shader import
+        run: ./build.sh aot
+      # The published runtime runs the reflected ECS (the generated registry, a system called back from Flecs) under NativeAOT.
+      - name: Runtime smoke test
+        run: Bin/publish/runtime/Apogee.Runtime
+      # The engine's own Luau tests, in the native binary: the scripting layer and the ECS from scripts, with no GPU.
+      - name: Luau tests in the NativeAOT runtime
+        run: Bin/publish/runtime/Apogee.Runtime --luau-test Tests/Luau
+      # The fixture game, from its folder: Luau, a RmlUi document, an ImGui panel and a mod, for 60 frames with no GPU. Each leaves a mark in the user folder.
+      - name: Fixture game
+        run: |
+          Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
+          test -s "$RUNNER_TEMP/game-user/ran.txt"
+          test -s "$RUNNER_TEMP/game-user/document.txt"
+          test -s "$RUNNER_TEMP/game-user/moddata/patcher/ran.txt"
+      # The same game shipped as a pack, rendered offscreen on lavapipe with the validation layer on.
+      - name: Fixture game, from a pack and rendered
+        run: |
+          Bin/publish/runtime/Apogee.Runtime --pack Tests/Fixtures/ShippedGame Bin/game-shipped/data/game.pack
+          Bin/publish/runtime/Apogee.Runtime --game Bin/game-shipped --user "$RUNNER_TEMP/game-user-packed" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot Bin/game.png
+          test -s Bin/game.png
+          test -s "$RUNNER_TEMP/game-user-packed/ran.txt"
+          test -s "$RUNNER_TEMP/game-user-packed/document.txt"
+      - name: Luau definitions
+        run: |
+          Bin/publish/runtime/Apogee.Runtime --luau-defs Bin/defs
+          test -s Bin/defs/apogee.d.luau
+      # luau-lsp type-checks the engine's own Luau modules against the generated definitions; any error fails the step. Pinned to the
+      # release the editor extension was checked with, and to its checksum.
+      - name: Luau definitions, checked with luau-lsp
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/luau-lsp.zip" https://github.com/JohnnyMorganz/luau-lsp/releases/download/1.70.1/luau-lsp-linux-x86_64.zip
+          echo "1a2ea1ae4f98f8946cefd970a4b54853e11ab4775e6932faa7f60cf920346567  $RUNNER_TEMP/luau-lsp.zip" | sha256sum -c -
+          unzip -q -o "$RUNNER_TEMP/luau-lsp.zip" -d "$RUNNER_TEMP/luau-lsp"
+          chmod +x "$RUNNER_TEMP/luau-lsp/luau-lsp"
+          "$RUNNER_TEMP/luau-lsp/luau-lsp" analyze --platform=standard --definitions=@apogee=Bin/defs/apogee.d.luau Bin/defs/engine
+      # A shipped game never loads the Slang compiler: the published runtime, with the compiler libraries and the shader sources deleted, still runs the fixture game and renders it
+      # (the engine's shaders come from their compiled artifacts).
+      - name: Shipped without the shader compiler
+        run: |
+          rm -rf Bin/shipped-runtime
+          cp -r Bin/publish/runtime Bin/shipped-runtime
+          find Bin/shipped-runtime -maxdepth 1 \( -name 'libslang*' -o -name 'slang_c*' -o -name 'libslang_c*' \) -delete
+          find Bin/shipped-runtime/Shaders -maxdepth 1 -name '*.slang' -delete
+          test -z "$(find Bin/shipped-runtime -maxdepth 1 -iname '*slang*' ! -name '*.pdb')"
+          Bin/shipped-runtime/Apogee.Runtime --game Bin/game-shipped --user "$RUNNER_TEMP/game-user-shipped" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot Bin/shipped-game.png
+          test -s Bin/shipped-game.png

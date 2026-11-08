@@ -1,0 +1,4 @@
+# Labels of GitHub-hosted runners that the pinned actionlint does not know yet.
+self-hosted-runner:
+  labels:
+    - macos-15-intel

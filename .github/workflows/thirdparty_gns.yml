@@ -1,0 +1,109 @@
+name: GameNetworkingSockets
+
+# Builds Valve's GameNetworkingSockets as one self-contained shared library per platform: protobuf, Abseil and the crypto library are linked statically (from vcpkg), so a game ships the one file
+# and nothing else of them. Linux is built in Valve's Steam Runtime "sniper" SDK (glibc 2.31), so it loads on Steam's Linux runtime and on any distribution that is not older than that. Run it by hand
+# (Actions > GameNetworkingSockets), download the artifacts and commit the files to ThirdParty/gns/lib/<rid>/ (LFS objects) with their checksums in lib/SHA256SUMS. The recipe is in ThirdParty/README.md.
+on:
+  workflow_dispatch:
+
+env:
+  GNS_VERSION: v1.6.1
+  # the flags of every build: the shared library only, IP sockets (no P2P/WebRTC), the headers' symbols exported
+  GNS_FLAGS: -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIB=ON -DBUILD_STATIC_LIB=OFF -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=OFF -DUSE_STEAMWEBRTC=OFF
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container:
+      image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest
+    steps:
+      - name: Source
+        run: |
+          git clone --depth 1 --branch "${GNS_VERSION}" https://github.com/ValveSoftware/GameNetworkingSockets.git
+          git -C GameNetworkingSockets rev-parse HEAD
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+      - name: Dependencies (static, position independent)
+        run: ./vcpkg/vcpkg install protobuf openssl --triplet x64-linux-release
+      - name: Build
+        run: |
+          cmake -S GameNetworkingSockets -B build -G Ninja ${GNS_FLAGS} \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-linux-release -DVCPKG_MANIFEST_MODE=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++ -static-libgcc -Wl,--exclude-libs,ALL"
+          cmake --build build
+          cp -L build/bin/libGameNetworkingSockets.so libGameNetworkingSockets.so
+          strip --strip-unneeded libGameNetworkingSockets.so
+      - name: Report and check the requirements
+        run: |
+          ldd --version | head -1
+          needed=$(objdump -T libGameNetworkingSockets.so | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          echo "libGameNetworkingSockets.so needs ${needed}"
+          test "$(printf '%s\n%s\n' "${needed#GLIBC_}" 2.31 | sort -V | tail -1)" = "2.31"
+          # nothing of the C++ runtime, protobuf, Abseil or OpenSSL is left to find on the user's machine
+          ! objdump -T libGameNetworkingSockets.so | grep -q GLIBCXX
+          objdump -p libGameNetworkingSockets.so | grep NEEDED
+          ! objdump -p libGameNetworkingSockets.so | grep NEEDED | grep -E 'protobuf|absl|crypto|ssl'
+          sha256sum libGameNetworkingSockets.so
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libGameNetworkingSockets-linux-x64
+          path: libGameNetworkingSockets.so
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Source
+        shell: bash
+        run: |
+          git clone --depth 1 --branch "${GNS_VERSION}" https://github.com/ValveSoftware/GameNetworkingSockets.git
+          git -C GameNetworkingSockets rev-parse HEAD
+      - name: Dependencies (static, dynamic C runtime)
+        run: vcpkg install protobuf --triplet x64-windows-static-md
+      - name: Build (BCrypt for the crypto)
+        shell: bash
+        run: |
+          cmake -S GameNetworkingSockets -B build ${GNS_FLAGS} -A x64 \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DVCPKG_MANIFEST_MODE=OFF \
+            -DUSE_CRYPTO=BCrypt -DUSE_CRYPTO25519=Reference -DProtobuf_USE_STATIC_LIBS=ON
+          cmake --build build --config Release
+          cp build/bin/Release/GameNetworkingSockets.dll .
+          cp build/src/Release/GameNetworkingSockets.lib .
+          sha256sum GameNetworkingSockets.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GameNetworkingSockets-win-x64
+          path: |
+            GameNetworkingSockets.dll
+            GameNetworkingSockets.lib
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - name: Source
+        run: |
+          git clone --depth 1 --branch "${GNS_VERSION}" https://github.com/ValveSoftware/GameNetworkingSockets.git
+          git -C GameNetworkingSockets rev-parse HEAD
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git
+          ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          brew install ninja
+      - name: Build each architecture, then join them
+        run: |
+          for arch in arm64 x64; do
+            osx_arch=$([ "$arch" = x64 ] && echo x86_64 || echo arm64)
+            ./vcpkg/vcpkg install protobuf openssl --triplet ${arch}-osx-release
+            cmake -S GameNetworkingSockets -B build-$arch -G Ninja ${GNS_FLAGS} \
+              -DCMAKE_TOOLCHAIN_FILE="$PWD/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${arch}-osx-release -DVCPKG_MANIFEST_MODE=OFF \
+              -DCMAKE_OSX_ARCHITECTURES=$osx_arch -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+            cmake --build build-$arch
+          done
+          lipo -create build-arm64/bin/libGameNetworkingSockets.dylib build-x64/bin/libGameNetworkingSockets.dylib -output libGameNetworkingSockets.dylib
+          install_name_tool -id @rpath/libGameNetworkingSockets.dylib libGameNetworkingSockets.dylib
+          strip -x libGameNetworkingSockets.dylib
+          lipo -info libGameNetworkingSockets.dylib
+          otool -L libGameNetworkingSockets.dylib
+          shasum -a 256 libGameNetworkingSockets.dylib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libGameNetworkingSockets-osx-universal
+          path: libGameNetworkingSockets.dylib
