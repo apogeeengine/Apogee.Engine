@@ -4,10 +4,50 @@ using System.Linq;
 using System.Numerics;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
+using Apogee.Native.Tests;
 using Apogee.Reflection;
 using Xunit;
 
 namespace Apogee.Physics.Tests;
+
+public class PhysicsStartupTests
+{
+    [Fact]
+    public void PhysicsWorldsCanBeMadeOnManyThreadsAtOnce()
+    {
+        // Jolt registers its allocator and types once; a thread that arrived while another was registering used to build a world without them (a crash on macOS).
+        NativeRequirements.Require(typeof(Apogee.Native.Flecs.Ecs).Assembly, "flecs");
+        NativeRequirements.Require(typeof(Apogee.Native.Jolt.Jolt).Assembly, "jolt");
+        var failures = new System.Collections.Concurrent.ConcurrentBag<Exception>();
+        var threads = new System.Threading.Thread[8];
+        using var start = new System.Threading.Barrier(threads.Length);
+        for (int i = 0; i < threads.Length; i++)
+        {
+            threads[i] = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    start.SignalAndWait();
+                    using var ecs = new World();
+                    using var physics = new PhysicsWorld(ecs, new PhysicsOptions { ThreadCount = 1, TempBufferBytes = 1024 * 1024, MaxBodies = 64 });
+                    Assert.Equal(0, physics.BodyCount);
+                }
+                catch (Exception e)
+                {
+                    failures.Add(e);
+                }
+            });
+            threads[i].Start();
+        }
+
+        foreach (System.Threading.Thread thread in threads)
+        {
+            thread.Join();
+        }
+
+        Assert.Empty(failures);
+    }
+}
 
 public class BodyTests : PhysicsFixture
 {
