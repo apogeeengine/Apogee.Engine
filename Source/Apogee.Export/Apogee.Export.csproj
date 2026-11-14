@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Exports a game: the runtime and its native libraries for a target platform, the game's packs, and its manifest, as a folder the player can run. -->
+  <ItemGroup>
+    <ProjectReference Include="../Apogee.Core/Apogee.Core.csproj" />
+    <ProjectReference Include="../Apogee.Content/Apogee.Content.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Apogee.Export.Tests" />
+    <InternalsVisibleTo Include="Apogee.Runtime.Tests" />
+  </ItemGroup>
+</Project>

@@ -157,6 +157,21 @@ public class GameManifestTests
     }
 
     [Fact]
+    public void AnotherIconMakesACopyAndLeavesTheManifestAlone()
+    {
+        GameManifest game = Parse(Full);
+
+        GameManifest without = game.WithIcon(null);
+        GameManifest other = game.WithIcon("icons/game.png");
+
+        Assert.NotNull(game.Icon);
+        Assert.Null(without.Icon);
+        Assert.Equal("icons/game.png", other.Icon);
+        Assert.DoesNotContain("<Icon", without.ToXml(), StringComparison.Ordinal);
+        Assert.Equal((game.Name, game.Version, game.Window, game.SteamAppId), (other.Name, other.Version, other.Window, other.SteamAppId));
+    }
+
+    [Fact]
     public void TheUserDirectoryIsUnderTheOrganization()
     {
         GameManifest game = Parse("""<Game name="Fixture Game" organization="The: Studio?" version="1.0.0" userFolder="saves/../x."/>""");

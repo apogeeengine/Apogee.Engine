@@ -9,6 +9,7 @@ using Apogee.Content.Import;
 using Apogee.Content.Packages;
 using Apogee.Content.Packs;
 using Apogee.Core.Logging;
+using Apogee.Export;
 using Apogee.DevTools;
 using Apogee.Graphics;
 using Apogee.Graphics.Shaders;
@@ -60,7 +61,8 @@ internal static class Commands
     /// Runs the game that is next to the program: <paramref name="root"/> holds its <c>game.xml</c> and its <c>data/*.pack</c>, and nothing else of the folder is the game's (<see cref="GameStart.PacksOnly"/>).
     /// The window is the manifest's.
     /// </summary>
-    public static int Launch(RuntimeOptions options, string root)
+    /// <param name="key">The key of the packs; null: the one an export wrote into the executable, else the environment's.</param>
+    public static int Launch(RuntimeOptions options, string root, PackKey? key = null)
     {
         if (!TryLoadManifest(root, out GameManifest? manifest))
         {
@@ -73,9 +75,20 @@ internal static class Commands
             return 1;
         }
 
-        // The key is the environment's (APOGEE_PACK_KEY) until an export embeds one in the executable.
+        // The key an export wrote into the executable (PackKeySlot); without one the session asks the environment (APOGEE_PACK_KEY).
+        PackKey? packKey;
+        try
+        {
+            packKey = key ?? PackKeySlot.TryRead();
+        }
+        catch (System.IO.InvalidDataException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 2;
+        }
+
         return Execute(options, root, manifest, manifest.Name,
-            () => ScriptSession.StartGame(new GameStart { Folder = root, UserFolder = options.UserFolder, RealAudio = !options.Headless, RealSteam = !options.Headless, PacksOnly = true }));
+            () => ScriptSession.StartGame(new GameStart { Folder = root, UserFolder = options.UserFolder, RealAudio = !options.Headless, RealSteam = !options.Headless, PacksOnly = true, Key = packKey }));
     }
 
     /// <summary>The manifest of a game folder (null when there is none); false, with the problems on stderr, when it is wrong.</summary>

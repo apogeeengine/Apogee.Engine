@@ -8,6 +8,7 @@
 #   ./build.sh bench [filter]  run the BenchmarkDotNet measurements in Samples/Benchmarks (Release; e.g. `bench '*Culling*'`): a sample, run by hand
 #   ./build.sh docs [serve]   build the API reference (DocFX for C#, the runtime for Luau), then Docs/ with mkdocs --strict into Bin/site
 #   ./build.sh pack <folder> <out.pack> [...]   pack a folder with Apogee.Runtime --pack (this wrapper loads .env, so APOGEE_PACK_KEY applies)
+#   ./build.sh export <game folder> <out folder> --target <rid> [--cooked] [...]   export a game with Apogee.Runtime --export (.env is loaded, so APOGEE_PACK_KEY applies; needs ./build.sh aot first)
 #   ./build.sh sdk steam <zip>   unpack the Steamworks SDK headers the bindings generator needs (see ThirdParty/README.md)
 #   ./build.sh <command>  anything else goes to Tools/Apogee.Build (bindings, ...)
 set -euo pipefail
@@ -28,5 +29,6 @@ case "${1:-build}" in
   bench) shift; filter="*"; if [ $# -gt 0 ]; then filter="$1"; shift; fi
          dotnet run --project Samples/Benchmarks -c Release -- --filter "$filter" --artifacts Bin/benchmarks "$@" ;;
   pack)  shift; dotnet run --project Source/Apogee.Runtime -c Release -- --pack "$@" ;;
+  export) shift; dotnet run --project Source/Apogee.Runtime -c Release -- --export "$@" ;;
   *)     dotnet run --project Tools/Apogee.Build -- "$@" ;;
 esac

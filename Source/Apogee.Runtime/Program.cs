@@ -25,6 +25,8 @@ switch (options.Command)
         return Commands.Run(options);
     case RuntimeCommand.Pack:
         return Commands.Pack(options);
+    case RuntimeCommand.Export:
+        return ExportCommand.Run(options);
     case RuntimeCommand.Import:
         return Commands.Import(options);
     case RuntimeCommand.LuauDefs:

@@ -209,6 +209,15 @@ public sealed class GameManifest
         return manifest;
     }
 
+    /// <summary>A copy of the manifest with another icon (or none): an export keeps its icon in the executable or the bundle, not at the path the game folder has it.</summary>
+    /// <param name="path">The game-relative path of the icon file, or null for none.</param>
+    public GameManifest WithIcon(string? path)
+    {
+        var copy = (GameManifest)MemberwiseClone();
+        copy.Icon = path;
+        return copy;
+    }
+
     /// <summary>The manifest as XML, with every value written out (the defaults too), so that reading it again gives the same manifest.</summary>
     public string ToXml()
     {

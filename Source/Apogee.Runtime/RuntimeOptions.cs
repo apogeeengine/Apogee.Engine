@@ -40,6 +40,9 @@ internal enum RuntimeCommand
 
     /// <summary>Publish a mod folder as a Steam Workshop item (or update one).</summary>
     WorkshopUpload,
+
+    /// <summary>Export a game folder: the runtime for a platform, the game's packs and its manifest, in a folder that runs on its own.</summary>
+    Export,
 }
 
 /// <summary>The command line of the runtime, parsed by hand so that it stays trim- and AOT-safe.</summary>
@@ -65,6 +68,10 @@ internal sealed class RuntimeOptions
           --pack <folder> <out.pack> [--split-mb <n>] [--level <1-22>] [--base <pack>]...
                                                pack the files of a folder (encrypted when APOGEE_PACK_KEY is set); with --base a patch pack: only what is new or changed, and removals
                                                --cooked: pack the imported artifacts instead of the sources they replace (run --import first)
+          --export <game folder> <out folder> --target <rid> [--cooked] [--runtime <dir>] [--console]
+                                               export the game (it has a game.xml) as a folder that runs on its own: the runtime published for the target (linux-x64, win-x64, osx-arm64, osx-x64),
+                                               its native libraries, and the game's files in data/game.pack (encrypted when APOGEE_PACK_KEY is set, which is then also written into the executable)
+                                               --cooked: pack the imported artifacts and cooked documents instead of the sources; --runtime: the folder the runtime was published to (default: Bin/publish/runtime); --console: Windows, keep the console window
           --import <folder> [--force]          import the models and images of a game folder into imported/ (only what changed, unless --force)
           --luau-defs <folder>                 write apogee.d.luau (and the engine's Luau modules) for luau-lsp
           --luau-docs <folder>                 write the Luau API as Markdown pages (the Manual's API reference)
@@ -121,7 +128,16 @@ internal sealed class RuntimeOptions
     /// <summary>With --game: reload files that change while the game runs.</summary>
     public bool Watch { get; private set; }
 
-    /// <summary>With --pack: pack imported artifacts instead of their sources.</summary>
+    /// <summary>With --export: the runtime identifier to export for.</summary>
+    public string? Target { get; private set; }
+
+    /// <summary>With --export: the folder of the runtime published for the target (null looks for one).</summary>
+    public string? RuntimeDirectory { get; private set; }
+
+    /// <summary>With --export: Windows keeps the console subsystem.</summary>
+    public bool Console { get; private set; }
+
+    /// <summary>With --pack or --export: pack imported artifacts instead of their sources.</summary>
     public bool Cooked { get; private set; }
 
     /// <summary>With --import: import everything again.</summary>
@@ -230,6 +246,36 @@ internal sealed class RuntimeOptions
 
                     options.Path = args[++i];
                     options.Output = args[++i];
+                    break;
+                case "--export":
+                    options.Command = RuntimeCommand.Export;
+                    if (i + 2 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal) || args[i + 2].StartsWith("--", StringComparison.Ordinal))
+                    {
+                        problem = "--export needs the game folder and the folder to export into.";
+                        return false;
+                    }
+
+                    options.Path = args[++i];
+                    options.Output = args[++i];
+                    break;
+                case "--target":
+                    if (!TryValue(args, ref i, out string exportTarget, out problem))
+                    {
+                        return false;
+                    }
+
+                    options.Target = exportTarget;
+                    break;
+                case "--runtime":
+                    if (!TryValue(args, ref i, out string runtimeFolder, out problem))
+                    {
+                        return false;
+                    }
+
+                    options.RuntimeDirectory = runtimeFolder;
+                    break;
+                case "--console":
+                    options.Console = true;
                     break;
                 case "--import":
                     options.Command = RuntimeCommand.Import;
@@ -474,9 +520,21 @@ internal sealed class RuntimeOptions
             return false;
         }
 
-        if (options.Cooked && options.Command != RuntimeCommand.Pack)
+        if (options.Cooked && options.Command is not (RuntimeCommand.Pack or RuntimeCommand.Export))
         {
-            problem = "--cooked goes with --pack.";
+            problem = "--cooked goes with --pack or --export.";
+            return false;
+        }
+
+        if (options.Command == RuntimeCommand.Export && options.Target is null)
+        {
+            problem = $"--export needs --target <rid>: {Apogee.Export.ExportTarget.SupportedList}.";
+            return false;
+        }
+
+        if (options.Command != RuntimeCommand.Export && (options.Target is not null || options.RuntimeDirectory is not null || options.Console))
+        {
+            problem = "--target, --runtime and --console go with --export.";
             return false;
         }
 

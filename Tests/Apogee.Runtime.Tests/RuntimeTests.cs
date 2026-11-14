@@ -106,8 +106,31 @@ public class OptionsTests
         RuntimeOptions import = Parse("--import", "game", "--force");
         Assert.Equal((RuntimeCommand.Import, "game", true), (import.Command, import.Path, import.Force));
         Assert.True(Parse("--pack", "a", "b", "--cooked").Cooked);
-        Assert.Equal("--cooked goes with --pack.", Fail("--run", "a.luau", "--cooked"));
+        Assert.Equal("--cooked goes with --pack or --export.", Fail("--run", "a.luau", "--cooked"));
         Assert.Equal("--force goes with --import.", Fail("--pack", "a", "b", "--force"));
+    }
+
+    [Fact]
+    public void ExportTakesItsOptions()
+    {
+        RuntimeOptions export = Parse("--export", "Game", "Bin/export", "--target", "win-x64", "--cooked", "--runtime", "Bin/publish/win", "--console");
+        Assert.Equal((RuntimeCommand.Export, "Game", "Bin/export", "win-x64", true, "Bin/publish/win", true), (export.Command, export.Path, export.Output, export.Target, export.Cooked, export.RuntimeDirectory, export.Console));
+
+        RuntimeOptions plain = Parse("--target", "linux-x64", "--export", "Game", "out");
+        Assert.Equal((false, null, false), (plain.Cooked, plain.RuntimeDirectory, plain.Console));
+    }
+
+    [Fact]
+    public void ExportMistakesAreReported()
+    {
+        Assert.Equal("--export needs the game folder and the folder to export into.", Fail("--export", "Game"));
+        Assert.Equal("--export needs the game folder and the folder to export into.", Fail("--export", "Game", "--target", "win-x64"));
+        Assert.StartsWith("--export needs --target <rid>: linux-x64, win-x64, osx-arm64, osx-x64.", Fail("--export", "Game", "out"), StringComparison.Ordinal);
+        Assert.Equal("--target needs a value.", Fail("--export", "Game", "out", "--target"));
+        Assert.Equal("--target, --runtime and --console go with --export.", Fail("--pack", "a", "b", "--console"));
+        Assert.Equal("--target, --runtime and --console go with --export.", Fail("--game", "g", "--target", "win-x64"));
+        Assert.Equal("--target, --runtime and --console go with --export.", Fail("--runtime", "x"));
+        Assert.Equal("--user goes with --game, or with no command.", Fail("--export", "g", "o", "--target", "linux-x64", "--user", "u"));
     }
 
     [Fact]
@@ -703,6 +726,58 @@ public class CommandTests
         Assert.Equal(0, Commands.Run(Options("--game", root, "--user", user, "--headless", "--frames", "1")));
         Assert.Equal("secret=true greeting=hello from the pack", File.ReadAllText(System.IO.Path.Combine(user, "report.txt")));
         Assert.True(File.Exists(System.IO.Path.Combine(user, "loose.txt")));
+    }
+
+    /// <summary>A runtime folder for the machine running the test: a native program of its platform (the .NET host) with the pack key slot appended, and a library.</summary>
+    private static string FakeRuntimeFolder(Scratch scratch)
+    {
+        bool windows = OperatingSystem.IsWindows();
+        string folder = System.IO.Path.Combine(scratch.Root, "runtime");
+        Directory.CreateDirectory(folder);
+        byte[] host = File.ReadAllBytes(Environment.ProcessPath!);
+        File.WriteAllBytes(System.IO.Path.Combine(folder, windows ? "Apogee.Runtime.exe" : "Apogee.Runtime"), [.. host, .. Apogee.Export.PackKeySlot.Template.ToArray()]);
+        File.WriteAllText(System.IO.Path.Combine(folder, windows ? "flecs.dll" : "libflecs.so"), "a native library");
+        return folder;
+    }
+
+    [Fact]
+    public void AnExportedGameRunsFromItsFolderOnItsEncryptedPacks()
+    {
+        Assert.True(Apogee.Export.ExportTarget.TryParse(Apogee.Export.ExportTarget.Host.Rid, out _, out _), "the machine running the tests is not a platform the engine exports for");
+        using var scratch = new Scratch();
+        scratch.Write("game/game.xml", "<Game name=\"Exported\" organization=\"Test\" version=\"1.0.0\" executable=\"ExportedGame\"/>");
+        scratch.Write("game/secret.txt", "it is in the pack");
+        scratch.Write("game/dev_mods/dev/mod.xml", "<Mod id=\"dev\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        scratch.Write("game/dev_mods/dev/main.luau", "fs.write_text('user://dev.txt', 'a dev mod ran')");
+        scratch.Write("game/packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        scratch.Write("game/packages/core/main.luau", "fs.write_text('user://report.txt', 'secret=' .. fs.read_text('res://secret.txt'))");
+        string runtime = FakeRuntimeFolder(scratch);
+        string output = System.IO.Path.Combine(scratch.Root, "export");
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+        Apogee.Content.Packs.PackKey key = Apogee.Content.Packs.PackKey.Parse("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+
+        RuntimeOptions export = Options("--export", System.IO.Path.Combine(scratch.Root, "game"), output, "--target", Apogee.Export.ExportTarget.Host.Rid, "--runtime", runtime, "--cooked");
+        Assert.Equal(0, ExportCommand.Export(export, key));
+
+        string root = Apogee.Export.ExportTarget.Host.Os == "osx" ? System.IO.Path.Combine(output, "Exported.app", "Contents", "Resources") : output;
+        Assert.True(File.Exists(System.IO.Path.Combine(root, "game.xml")));
+        string pack = System.IO.Path.Combine(root, "data", "game.pack");
+        Assert.NotEqual("APGK", System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(pack), 0, 4));
+        Assert.Equal(0, Commands.Launch(Options("--user", user, "--headless", "--frames", "2"), root.Replace('\\', '/'), key));
+        Assert.Equal("secret=it is in the pack", File.ReadAllText(System.IO.Path.Combine(user, "report.txt")));
+        Assert.False(File.Exists(System.IO.Path.Combine(user, "dev.txt")));
+    }
+
+    [Fact]
+    public void ABadExportIsAnExitCodeAndNothingIsWritten()
+    {
+        using var scratch = new Scratch();
+        string output = System.IO.Path.Combine(scratch.Root, "export");
+        Directory.CreateDirectory(System.IO.Path.Combine(scratch.Root, "game"));
+
+        Assert.Equal(1, ExportCommand.Export(Options("--export", System.IO.Path.Combine(scratch.Root, "game"), output, "--target", "win-arm64"), null));
+        Assert.Equal(2, ExportCommand.Export(Options("--export", System.IO.Path.Combine(scratch.Root, "game"), output, "--target", "linux-x64", "--runtime", FakeRuntimeFolder(scratch)), null));
+        Assert.False(Directory.Exists(output));
     }
 
     [Fact]

@@ -14,6 +14,7 @@
     <ProjectReference Include="../Apogee.Steam/Apogee.Steam.csproj" />
     <ProjectReference Include="../Apogee.Network/Apogee.Network.csproj" />
     <ProjectReference Include="../Apogee.Content/Apogee.Content.csproj" />
+    <ProjectReference Include="../Apogee.Export/Apogee.Export.csproj" />
     <ProjectReference Include="../Apogee.Graphics/Apogee.Graphics.csproj" />
     <ProjectReference Include="../Apogee.Rendering/Apogee.Rendering.csproj" />
     <ProjectReference Include="../Apogee.DevTools/Apogee.DevTools.csproj" />

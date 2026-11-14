@@ -18,5 +18,8 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Apogee.Content.Tests" />
+    <!-- The export writes a pack key into the executable (PackKey.Bytes). -->
+    <InternalsVisibleTo Include="Apogee.Export" />
+    <InternalsVisibleTo Include="Apogee.Export.Tests" />
   </ItemGroup>
 </Project>
