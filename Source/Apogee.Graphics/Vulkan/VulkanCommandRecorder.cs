@@ -132,6 +132,36 @@ public sealed unsafe class VulkanCommandRecorder : CommandRecorder
         return copies;
     }
 
+    public override void FillBuffer(GpuBuffer buffer, uint value = 0, ulong offset = 0, ulong size = WholeSize)
+    {
+        if ((offset & 3) != 0 || (size != WholeSize && (size & 3) != 0))
+        {
+            throw new ArgumentException("The offset and size of a buffer fill are multiples of four.");
+        }
+
+        Commands.CmdFillBuffer(Handle, ((VulkanBuffer)buffer).Handle, offset, size, value);
+    }
+
+    public override void ClearImage(GpuImage image, System.Numerics.Vector4 color, uint baseMip = 0, uint mipCount = uint.MaxValue, uint baseLayer = 0, uint layerCount = uint.MaxValue)
+    {
+        var vulkan = (VulkanImage)image;
+        var value = new VkClearColorValue();
+        value.Float32[0] = color.X;
+        value.Float32[1] = color.Y;
+        value.Float32[2] = color.Z;
+        value.Float32[3] = color.W;
+        var range = new VkImageSubresourceRange { AspectMask = VkImageAspectFlagBits.Color, BaseMipLevel = baseMip, LevelCount = mipCount, BaseArrayLayer = baseLayer, LayerCount = layerCount };
+        Commands.CmdClearColorImage(Handle, vulkan.Handle, VkImageLayout.TransferDstOptimal, &value, 1, &range);
+    }
+
+    public override void ClearDepthImage(GpuImage image, float depth = 0f, uint baseMip = 0, uint mipCount = uint.MaxValue, uint baseLayer = 0, uint layerCount = uint.MaxValue)
+    {
+        var vulkan = (VulkanImage)image;
+        var value = new VkClearDepthStencilValue { Depth = depth, Stencil = 0 };
+        var range = new VkImageSubresourceRange { AspectMask = vulkan.Aspect, BaseMipLevel = baseMip, LevelCount = mipCount, BaseArrayLayer = baseLayer, LayerCount = layerCount };
+        Commands.CmdClearDepthStencilImage(Handle, vulkan.Handle, VkImageLayout.TransferDstOptimal, &value, 1, &range);
+    }
+
     public override void BindPipeline(Pipeline pipeline)
     {
         var vulkan = (VulkanPipeline)pipeline;
@@ -149,6 +179,8 @@ public sealed unsafe class VulkanCommandRecorder : CommandRecorder
     }
 
     public override void Dispatch(uint groupsX, uint groupsY = 1, uint groupsZ = 1) => Commands.CmdDispatch(Handle, groupsX, groupsY, groupsZ);
+
+    public override void DispatchIndirect(GpuBuffer arguments, ulong offset = 0) => Commands.CmdDispatchIndirect(Handle, ((VulkanBuffer)arguments).Handle, offset);
 
     public override void BeginRendering(uint width, uint height, ReadOnlySpan<ColorTarget> colors, DepthTarget? depth = null)
     {
@@ -215,6 +247,32 @@ public sealed unsafe class VulkanCommandRecorder : CommandRecorder
 
     public override void DrawIndexed(uint indexCount, uint instanceCount = 1, uint firstIndex = 0, int vertexOffset = 0, uint firstInstance = 0) =>
         Commands.CmdDrawIndexed(Handle, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+
+    public override void DrawIndexedIndirect(GpuBuffer commands, ulong offset, uint drawCount, uint stride = DrawIndexedIndirectCommand.Size)
+    {
+        VkBuffer buffer = ((VulkanBuffer)commands).Handle;
+        if (drawCount <= 1 || _device.SupportsMultiDrawIndirect)
+        {
+            Commands.CmdDrawIndexedIndirect(Handle, buffer, offset, drawCount, stride);
+            return;
+        }
+
+        // Without multiDrawIndirect a call may make one draw at most: one call each.
+        for (uint i = 0; i < drawCount; i++)
+        {
+            Commands.CmdDrawIndexedIndirect(Handle, buffer, offset + (i * stride), 1, stride);
+        }
+    }
+
+    public override void DrawIndexedIndirectCount(GpuBuffer commands, ulong offset, GpuBuffer count, ulong countOffset, uint maxDrawCount, uint stride = DrawIndexedIndirectCommand.Size)
+    {
+        if (!_device.SupportsDrawIndirectCount)
+        {
+            throw new NotSupportedException("This GPU has no drawIndirectCount: check GraphicsDevice.SupportsDrawIndirectCount, or use DrawIndexedIndirect with a maximum count.");
+        }
+
+        Commands.CmdDrawIndexedIndirectCount(Handle, ((VulkanBuffer)commands).Handle, offset, ((VulkanBuffer)count).Handle, countOffset, maxDrawCount, stride);
+    }
 
     public override void BindIndexBuffer(GpuBuffer buffer, IndexFormat format = IndexFormat.Index32, ulong offset = 0) =>
         Commands.CmdBindIndexBuffer(Handle, ((VulkanBuffer)buffer).Handle, offset, format.ToVulkan());

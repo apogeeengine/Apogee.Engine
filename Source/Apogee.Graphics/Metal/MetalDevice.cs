@@ -76,6 +76,10 @@ public sealed unsafe partial class MetalDevice : GraphicsDevice
 
     public override bool SupportsAnisotropy => true;
 
+    public override bool SupportsDrawIndirectCount => false;
+
+    public override bool SupportsSamplerFilterMinMax => false;
+
     // Metal's validation layer writes to the process's error output; there is no API to read it.
     public override int ValidationErrorCount => 0;
 

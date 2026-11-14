@@ -258,6 +258,10 @@ APOGEE_METAL_API void apogee_mtl_compute_encoder_set_bytes(ApogeeMtlComputeEncod
 
 APOGEE_METAL_API void apogee_mtl_compute_encoder_set_buffer(ApogeeMtlComputeEncoder* encoder, ApogeeMtlBuffer* buffer, uint64_t offset, uint32_t index);
 
+/** Runs the groups the buffer says (three uint32 at `offset`: the group counts, the layout of Vulkan's VkDispatchIndirectCommand too). */
+APOGEE_METAL_API void apogee_mtl_compute_encoder_dispatch_indirect(
+    ApogeeMtlComputeEncoder* encoder, ApogeeMtlBuffer* arguments, uint64_t offset, uint32_t threads_x, uint32_t threads_y, uint32_t threads_z);
+
 APOGEE_METAL_API void apogee_mtl_compute_encoder_wait_fence(ApogeeMtlComputeEncoder* encoder, ApogeeMtlFence* fence);
 
 APOGEE_METAL_API void apogee_mtl_compute_encoder_update_fence(ApogeeMtlComputeEncoder* encoder, ApogeeMtlFence* fence);
@@ -285,6 +289,9 @@ APOGEE_METAL_API void apogee_mtl_blit_encoder_copy_buffer_to_texture(
 APOGEE_METAL_API void apogee_mtl_blit_encoder_copy_texture_to_buffer(
     ApogeeMtlBlitEncoder* encoder, ApogeeMtlTexture* texture, uint32_t level, uint32_t slice, uint32_t width, uint32_t height, uint32_t depth,
     ApogeeMtlBuffer* destination, uint64_t destination_offset, uint32_t bytes_per_row, uint32_t bytes_per_image);
+
+/** Sets `size` bytes from `offset` to the byte `value` (Metal fills bytes, not words). */
+APOGEE_METAL_API void apogee_mtl_blit_encoder_fill_buffer(ApogeeMtlBlitEncoder* encoder, ApogeeMtlBuffer* buffer, uint64_t offset, uint64_t size, int32_t value);
 
 /** Ends encoding and gives back the encoder's handle. */
 APOGEE_METAL_API void apogee_mtl_blit_encoder_end(ApogeeMtlBlitEncoder* encoder);
@@ -339,6 +346,13 @@ APOGEE_METAL_API void apogee_mtl_render_encoder_draw(
 APOGEE_METAL_API void apogee_mtl_render_encoder_draw_indexed(
     ApogeeMtlRenderEncoder* encoder, int32_t primitive, uint32_t index_count, int32_t index_type, ApogeeMtlBuffer* index_buffer, uint64_t index_offset,
     uint32_t instance_count, int32_t base_vertex, uint32_t base_instance);
+
+/**
+ * One draw whose arguments are in a buffer, five 32-bit words at `indirect_offset`: index count, instance count, first index, base vertex, base instance (the layout of Vulkan's
+ * VkDrawIndexedIndirectCommand too).
+ */
+APOGEE_METAL_API void apogee_mtl_render_encoder_draw_indexed_indirect(
+    ApogeeMtlRenderEncoder* encoder, int32_t primitive, int32_t index_type, ApogeeMtlBuffer* index_buffer, uint64_t index_offset, ApogeeMtlBuffer* indirect_buffer, uint64_t indirect_offset);
 
 /** Ends encoding and gives back the encoder's handle. */
 APOGEE_METAL_API void apogee_mtl_render_encoder_end(ApogeeMtlRenderEncoder* encoder);

@@ -10,6 +10,11 @@ public sealed unsafe class MetalSampler : GpuSampler
 
     internal MetalSampler(MetalDevice device, in SamplerDescription description)
     {
+        if (description.Reduction != SamplerReduction.WeightedAverage)
+        {
+            throw new MetalException($"Metal has no min/max samplers: a {description.Reduction} sampler cannot be made. Check GraphicsDevice.SupportsSamplerFilterMinMax.");
+        }
+
         var desc = new SamplerDesc
         {
             Filter = (int)description.Filter,

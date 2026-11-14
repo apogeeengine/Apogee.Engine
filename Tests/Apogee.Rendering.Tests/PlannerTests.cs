@@ -144,6 +144,21 @@ public class PlannerTests
     }
 
     [Fact]
+    public void AnIndirectReadFollowsAShaderWriteWithABarrier()
+    {
+        var graph = new RenderGraph();
+        BufferHandle commands = graph.CreateBuffer("commands", 1024, BufferUsage.Storage | BufferUsage.Indirect);
+        graph.AddPass("Cull", PassType.Compute, p => { p.Write(commands); p.NoCull(); });
+        graph.AddPass("Draw", PassType.Compute, p => { p.ReadIndirect(commands); p.NoCull(); });
+        graph.AddPass("Draw again", PassType.Compute, p => { p.ReadIndirect(commands); p.NoCull(); });
+
+        GraphPlan plan = graph.Compile();
+
+        Assert.Equal(1, Pass(plan, "Draw").Barriers);        // ShaderWrite -> IndirectRead
+        Assert.Equal(0, Pass(plan, "Draw again").Barriers);
+    }
+
+    [Fact]
     public void TransientsWithDisjointLifetimesAndEqualDescriptionsShareAnImage()
     {
         var graph = new RenderGraph();

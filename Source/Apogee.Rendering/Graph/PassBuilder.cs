@@ -62,6 +62,9 @@ public sealed class PassBuilder
     /// <summary>Reads and writes the buffer in shaders: the pass needs what was in it before (a counter it adds to, a list it appends to).</summary>
     public BufferHandle ReadWrite(BufferHandle buffer) => UseBuffer(buffer, BufferState.ShaderWrite, reads: true, writes: true);
 
+    /// <summary>Reads the buffer as the arguments of an indirect dispatch or draw (<see cref="CommandRecorder.DispatchIndirect"/>, <see cref="CommandRecorder.DrawIndexedIndirect"/>); the buffer needs <see cref="BufferUsage.Indirect"/>.</summary>
+    public BufferHandle ReadIndirect(BufferHandle buffer) => UseBuffer(buffer, BufferState.IndirectRead, reads: true, writes: false);
+
     public BufferHandle CopyFrom(BufferHandle buffer) => UseBuffer(buffer, BufferState.TransferSource, reads: true, writes: false);
 
     public BufferHandle CopyTo(BufferHandle buffer) => UseBuffer(buffer, BufferState.TransferDestination, reads: false, writes: true);

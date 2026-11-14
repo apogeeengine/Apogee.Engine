@@ -26,6 +26,10 @@ public static unsafe partial class Mtl
     [DllImport(LibraryName, EntryPoint = "apogee_mtl_blit_encoder_end", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void BlitEncoderEnd(BlitEncoder* encoder);
 
+    /// <summary>Sets `size` bytes from `offset` to the byte `value` (Metal fills bytes, not words).</summary>
+    [DllImport(LibraryName, EntryPoint = "apogee_mtl_blit_encoder_fill_buffer", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void BlitEncoderFillBuffer(BlitEncoder* encoder, Buffer* buffer, ulong offset, ulong size, int value);
+
     [DllImport(LibraryName, EntryPoint = "apogee_mtl_blit_encoder_update_fence", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void BlitEncoderUpdateFence(BlitEncoder* encoder, Fence* fence);
 
@@ -85,6 +89,10 @@ public static unsafe partial class Mtl
 
     [DllImport(LibraryName, EntryPoint = "apogee_mtl_compute_encoder_dispatch", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void ComputeEncoderDispatch(ComputeEncoder* encoder, uint groups_x, uint groups_y, uint groups_z, uint threads_x, uint threads_y, uint threads_z);
+
+    /// <summary>Runs the groups the buffer says (three uint32 at `offset`: the group counts, the layout of Vulkan's VkDispatchIndirectCommand too).</summary>
+    [DllImport(LibraryName, EntryPoint = "apogee_mtl_compute_encoder_dispatch_indirect", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void ComputeEncoderDispatchIndirect(ComputeEncoder* encoder, Buffer* arguments, ulong offset, uint threads_x, uint threads_y, uint threads_z);
 
     /// <summary>Ends encoding and gives back the encoder's handle (it must not be used or released afterwards).</summary>
     [DllImport(LibraryName, EntryPoint = "apogee_mtl_compute_encoder_end", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -183,6 +191,10 @@ public static unsafe partial class Mtl
     /// <summary>`index_type`: 0 uint16, 1 uint32 (MTLIndexType).</summary>
     [DllImport(LibraryName, EntryPoint = "apogee_mtl_render_encoder_draw_indexed", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void RenderEncoderDrawIndexed(RenderEncoder* encoder, int primitive, uint index_count, int index_type, Buffer* index_buffer, ulong index_offset, uint instance_count, int base_vertex, uint base_instance);
+
+    /// <summary>One draw whose arguments are in a buffer, five 32-bit words at `indirect_offset`: index count, instance count, first index, base vertex, base instance (the layout of Vulkan's VkDrawIndexedIndirectCommand too).</summary>
+    [DllImport(LibraryName, EntryPoint = "apogee_mtl_render_encoder_draw_indexed_indirect", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    public static extern void RenderEncoderDrawIndexedIndirect(RenderEncoder* encoder, int primitive, int index_type, Buffer* index_buffer, ulong index_offset, Buffer* indirect_buffer, ulong indirect_offset);
 
     /// <summary>Ends encoding and gives back the encoder's handle.</summary>
     [DllImport(LibraryName, EntryPoint = "apogee_mtl_render_encoder_end", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]

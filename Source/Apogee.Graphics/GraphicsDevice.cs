@@ -87,6 +87,15 @@ public abstract unsafe class GraphicsDevice : IDisposable
 
     public abstract bool SupportsAnisotropy { get; }
 
+    /// <summary>
+    /// <see cref="CommandRecorder.DrawIndexedIndirectCount"/> works: the GPU decides how many draws to make (Vulkan's optional <c>drawIndirectCount</c>). Metal has no such draw; use
+    /// <see cref="CommandRecorder.DrawIndexedIndirect"/> with a maximum count instead.
+    /// </summary>
+    public abstract bool SupportsDrawIndirectCount { get; }
+
+    /// <summary>Samplers can return the minimum or maximum of their footprint (<see cref="SamplerReduction"/>): a Hi-Z pyramid can be built with a single sample per texel. Metal has none; a shader takes the four texels itself.</summary>
+    public abstract bool SupportsSamplerFilterMinMax { get; }
+
     /// <summary>How many warnings and errors the API's validation layer has reported; tests fail on any.</summary>
     public abstract int ValidationErrorCount { get; }
 

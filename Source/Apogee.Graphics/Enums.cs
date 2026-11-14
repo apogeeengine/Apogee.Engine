@@ -86,6 +86,15 @@ public enum MipmapMode
     Linear = 1,
 }
 
+/// <summary>How a sampler combines the texels of its filter footprint. Minimum and maximum (Hi-Z depth pyramids, clamping) need <see cref="GraphicsDevice.SupportsSamplerFilterMinMax"/>.</summary>
+public enum SamplerReduction
+{
+    /// <summary>The usual weighted average.</summary>
+    WeightedAverage = 0,
+    Min = 1,
+    Max = 2,
+}
+
 public enum AddressMode
 {
     Repeat = 0,

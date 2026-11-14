@@ -694,6 +694,14 @@ void apogee_mtl_compute_encoder_set_buffer(ApogeeMtlComputeEncoder* encoder, Apo
     [GET(id<MTLComputeCommandEncoder>, encoder) setBuffer:GET(id<MTLBuffer>, buffer) offset:(NSUInteger)offset atIndex:index];
 }
 
+void apogee_mtl_compute_encoder_dispatch_indirect(
+    ApogeeMtlComputeEncoder* encoder, ApogeeMtlBuffer* arguments, uint64_t offset, uint32_t threads_x, uint32_t threads_y, uint32_t threads_z)
+{
+    [GET(id<MTLComputeCommandEncoder>, encoder) dispatchThreadgroupsWithIndirectBuffer:GET(id<MTLBuffer>, arguments)
+                                                                  indirectBufferOffset:(NSUInteger)offset
+                                                                 threadsPerThreadgroup:MTLSizeMake(threads_x, threads_y, threads_z)];
+}
+
 void apogee_mtl_compute_encoder_wait_fence(ApogeeMtlComputeEncoder* encoder, ApogeeMtlFence* fence)
 {
     [GET(id<MTLComputeCommandEncoder>, encoder) waitForFence:GET(id<MTLFence>, fence)];
@@ -773,6 +781,11 @@ void apogee_mtl_blit_encoder_copy_texture_to_buffer(
                                            destinationOffset:(NSUInteger)destination_offset
                                       destinationBytesPerRow:bytes_per_row
                                     destinationBytesPerImage:bytes_per_image];
+}
+
+void apogee_mtl_blit_encoder_fill_buffer(ApogeeMtlBlitEncoder* encoder, ApogeeMtlBuffer* buffer, uint64_t offset, uint64_t size, int32_t value)
+{
+    [GET(id<MTLBlitCommandEncoder>, encoder) fillBuffer:GET(id<MTLBuffer>, buffer) range:NSMakeRange((NSUInteger)offset, (NSUInteger)size) value:(uint8_t)value];
 }
 
 void apogee_mtl_blit_encoder_end(ApogeeMtlBlitEncoder* encoder)
@@ -881,6 +894,17 @@ void apogee_mtl_render_encoder_draw_indexed(
                                                        instanceCount:instance_count
                                                           baseVertex:base_vertex
                                                         baseInstance:base_instance];
+}
+
+void apogee_mtl_render_encoder_draw_indexed_indirect(
+    ApogeeMtlRenderEncoder* encoder, int32_t primitive, int32_t index_type, ApogeeMtlBuffer* index_buffer, uint64_t index_offset, ApogeeMtlBuffer* indirect_buffer, uint64_t indirect_offset)
+{
+    [GET(id<MTLRenderCommandEncoder>, encoder) drawIndexedPrimitives:(MTLPrimitiveType)primitive
+                                                           indexType:(MTLIndexType)index_type
+                                                         indexBuffer:GET(id<MTLBuffer>, index_buffer)
+                                                   indexBufferOffset:(NSUInteger)index_offset
+                                                      indirectBuffer:GET(id<MTLBuffer>, indirect_buffer)
+                                                indirectBufferOffset:(NSUInteger)indirect_offset];
 }
 
 void apogee_mtl_render_encoder_end(ApogeeMtlRenderEncoder* encoder)

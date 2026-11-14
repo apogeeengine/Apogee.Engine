@@ -195,6 +195,105 @@ public sealed unsafe class MetalCommandRecorder : CommandRecorder
         }
     }
 
+    public override void FillBuffer(GpuBuffer buffer, uint value = 0, ulong offset = 0, ulong size = WholeSize)
+    {
+        if ((offset & 3) != 0 || (size != WholeSize && (size & 3) != 0))
+        {
+            throw new ArgumentException("The offset and size of a buffer fill are multiples of four.");
+        }
+
+        // Metal's blit fill writes one byte over and over, so only a pattern of four equal bytes can be made.
+        uint low = value & 0xFF;
+        if (value != low * 0x01010101u)
+        {
+            throw new NotSupportedException($"Metal fills buffers with one byte: 0x{value:X8} has different bytes. Use 0, 0xFFFFFFFF or another pattern of four equal bytes.");
+        }
+
+        ulong length = size == WholeSize ? buffer.Size - offset : size;
+        Mtl.BlitEncoderFillBuffer(Blit(), ((MetalBuffer)buffer).Handle, offset, length, (int)low);
+    }
+
+    public override void ClearImage(GpuImage image, System.Numerics.Vector4 color, uint baseMip = 0, uint mipCount = uint.MaxValue, uint baseLayer = 0, uint layerCount = uint.MaxValue)
+    {
+        var metal = (MetalImage)image;
+        if ((metal.Description.Usage & ImageUsage.ColorAttachment) == 0)
+        {
+            throw new InvalidOperationException("Metal clears an image with a render pass: create it with ImageUsage.ColorAttachment to clear it.");
+        }
+
+        ClearSubresources(metal, baseMip, mipCount, baseLayer, layerCount, color, 0f, depth: false);
+    }
+
+    public override void ClearDepthImage(GpuImage image, float depth = 0f, uint baseMip = 0, uint mipCount = uint.MaxValue, uint baseLayer = 0, uint layerCount = uint.MaxValue)
+    {
+        var metal = (MetalImage)image;
+        if ((metal.Description.Usage & ImageUsage.DepthStencilAttachment) == 0)
+        {
+            throw new InvalidOperationException("Metal clears an image with a render pass: create it with ImageUsage.DepthStencilAttachment to clear it.");
+        }
+
+        ClearSubresources(metal, baseMip, mipCount, baseLayer, layerCount, default, depth, depth: true);
+    }
+
+    /// <summary>Clears a one-level, one-slice view of each subresource asked for with a render pass of its own, and gives the view back.</summary>
+    private void ClearSubresources(MetalImage image, uint baseMip, uint mipCount, uint baseLayer, uint layerCount, System.Numerics.Vector4 color, float clearDepth, bool depth)
+    {
+        if (image.Description.Depth > 1)
+        {
+            throw new NotSupportedException("The Metal backend does not clear 3D textures.");
+        }
+
+        uint mips = mipCount == uint.MaxValue ? image.MipLevels - baseMip : mipCount;
+        uint layers = layerCount == uint.MaxValue ? image.Layers - baseLayer : layerCount;
+        for (uint mip = baseMip; mip < baseMip + mips; mip++)
+        {
+            for (uint layer = baseLayer; layer < baseLayer + layers; layer++)
+            {
+                Apogee.Native.Metal.Texture* view = Mtl.TextureView(image.Handle, 0, Mtl.Texture2d, mip, 1, layer, 1);
+                if (view is null)
+                {
+                    throw new MetalException("The Metal texture could not make a view to clear.");
+                }
+
+                try
+                {
+                    if (depth)
+                    {
+                        DepthAttachment attachment = new() { Texture = view, Clear = 1, Store = 1, ClearDepth = clearDepth };
+                        BeginClearPass(null, 0, &attachment);
+                    }
+                    else
+                    {
+                        ColorAttachment attachment = new() { Texture = view, Clear = 1, Store = 1 };
+                        attachment.ClearColor[0] = color.X;
+                        attachment.ClearColor[1] = color.Y;
+                        attachment.ClearColor[2] = color.Z;
+                        attachment.ClearColor[3] = color.W;
+                        BeginClearPass(&attachment, 1, null);
+                    }
+                }
+                finally
+                {
+                    Mtl.Release(view);
+                }
+            }
+        }
+    }
+
+    /// <summary>A render pass that only clears its attachment, and ends at once.</summary>
+    private void BeginClearPass(ColorAttachment* color, int colorCount, DepthAttachment* depth)
+    {
+        End();
+        _render = Mtl.RenderEncoderBegin(_commandBuffer, color, colorCount, depth);
+        if (_chained)
+        {
+            Mtl.RenderEncoderWaitFence(_render, _fence);
+        }
+
+        _open = Open.Render;
+        End();
+    }
+
     /// <summary>The bytes of a row of blocks and of the whole image, for tightly packed texels.</summary>
     private static (uint BytesPerRow, uint BytesPerImage) Layout(PixelFormat format, uint width, uint height)
     {
@@ -245,6 +344,12 @@ public sealed unsafe class MetalCommandRecorder : CommandRecorder
     {
         ThreadGroupSize group = _computePipeline?.Group ?? throw new InvalidOperationException("Bind a compute pipeline before dispatching.");
         Mtl.ComputeEncoderDispatch(Compute(), groupsX, groupsY, groupsZ, group.X, group.Y, group.Z);
+    }
+
+    public override void DispatchIndirect(GpuBuffer arguments, ulong offset = 0)
+    {
+        ThreadGroupSize group = _computePipeline?.Group ?? throw new InvalidOperationException("Bind a compute pipeline before dispatching.");
+        Mtl.ComputeEncoderDispatchIndirect(Compute(), ((MetalBuffer)arguments).Handle, offset, group.X, group.Y, group.Z);
     }
 
     // ---- Rendering ---------------------------------------------------------------------------------------------------------------
@@ -306,6 +411,22 @@ public sealed unsafe class MetalCommandRecorder : CommandRecorder
         ulong offset = _indexOffset + (firstIndex * (_indexFormat == IndexFormat.Index16 ? 2UL : 4UL));
         Mtl.RenderEncoderDrawIndexed(Render(), _primitive, indexCount, _indexFormat == IndexFormat.Index16 ? 0 : 1, indices.Handle, offset, instanceCount, vertexOffset, firstInstance);
     }
+
+    public override void DrawIndexedIndirect(GpuBuffer commands, ulong offset, uint drawCount, uint stride = DrawIndexedIndirectCommand.Size)
+    {
+        MetalBuffer indices = _indexBuffer ?? throw new InvalidOperationException("Bind an index buffer before DrawIndexedIndirect.");
+        RenderEncoder* render = Render();
+        MtlBuffer* arguments = ((MetalBuffer)commands).Handle;
+
+        // Metal's indirect draw makes one draw per call (the commands have the layout Vulkan's do); a multi-draw is a loop.
+        for (uint i = 0; i < drawCount; i++)
+        {
+            Mtl.RenderEncoderDrawIndexedIndirect(render, _primitive, _indexFormat == IndexFormat.Index16 ? 0 : 1, indices.Handle, _indexOffset, arguments, offset + (i * stride));
+        }
+    }
+
+    public override void DrawIndexedIndirectCount(GpuBuffer commands, ulong offset, GpuBuffer count, ulong countOffset, uint maxDrawCount, uint stride = DrawIndexedIndirectCommand.Size) =>
+        throw new NotSupportedException("Metal cannot take the number of draws from a buffer (GraphicsDevice.SupportsDrawIndirectCount is false): call DrawIndexedIndirect with the maximum count, with the instance count of unused commands set to 0.");
 
     // ---- Debug labels ------------------------------------------------------------------------------------------------------------
 

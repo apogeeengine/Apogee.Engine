@@ -10,9 +10,16 @@ public sealed unsafe class VulkanSampler : GpuSampler
     internal VulkanSampler(VulkanDevice device, in SamplerDescription description, string? name)
     {
         _device = device;
+        if (description.Reduction != SamplerReduction.WeightedAverage && !device.SupportsSamplerFilterMinMax)
+        {
+            throw new VulkanException($"This GPU has no min/max samplers (samplerFilterMinmax): a {description.Reduction} sampler cannot be made. Check GraphicsDevice.SupportsSamplerFilterMinMax.");
+        }
+
+        var reduction = new VkSamplerReductionModeCreateInfo { ReductionMode = (VkSamplerReductionMode)(int)description.Reduction };
         bool anisotropy = device.SupportsAnisotropy && description.MaxAnisotropy > 1f;
         var info = new VkSamplerCreateInfo
         {
+            PNext = description.Reduction == SamplerReduction.WeightedAverage ? null : &reduction,
             MagFilter = description.Filter.ToVulkan(),
             MinFilter = description.Filter.ToVulkan(),
             MipmapMode = description.MipmapMode.ToVulkan(),

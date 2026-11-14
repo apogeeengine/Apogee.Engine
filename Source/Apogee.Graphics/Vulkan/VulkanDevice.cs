@@ -35,6 +35,9 @@ public sealed unsafe partial class VulkanDevice : GraphicsDevice
     private bool _supportsBc;
     private bool _supportsAstc;
     private bool _supportsAnisotropy;
+    private bool _supportsMultiDrawIndirect;
+    private bool _supportsDrawIndirectCount;
+    private bool _supportsSamplerFilterMinMax;
 
     private VulkanDevice(VulkanInstance instance, bool ownsInstance, PhysicalDeviceInfo physical, VkDevice handle, VkDeviceCommands commands, VkQueue queue, VkSurfaceKHR surface, Window? window)
     {
@@ -103,6 +106,13 @@ public sealed unsafe partial class VulkanDevice : GraphicsDevice
     public override bool SupportsAstc => _supportsAstc;
 
     public override bool SupportsAnisotropy => _supportsAnisotropy;
+
+    public override bool SupportsDrawIndirectCount => _supportsDrawIndirectCount;
+
+    public override bool SupportsSamplerFilterMinMax => _supportsSamplerFilterMinMax;
+
+    /// <summary>One indirect draw command can make several draws (<c>multiDrawIndirect</c>); without it the recorder issues one command at a time.</summary>
+    public bool SupportsMultiDrawIndirect => _supportsMultiDrawIndirect;
 
     public override int ValidationErrorCount => Instance.ErrorCount;
 
@@ -369,7 +379,8 @@ public sealed unsafe partial class VulkanDevice : GraphicsDevice
         VkInstanceCommands commands = instance.Commands;
 
         // Everything optional that the renderer can use, switched on when the GPU has it.
-        var supported = new VkPhysicalDeviceFeatures2();
+        var supported12 = new VkPhysicalDeviceVulkan12Features();
+        var supported = new VkPhysicalDeviceFeatures2 { PNext = &supported12 };
         commands.GetPhysicalDeviceFeatures2(physical.Handle, &supported);
 
         // shaderDrawParameters: Slang's SV_VertexID is zero-based, which SPIR-V expresses with the DrawParameters capability.
@@ -388,6 +399,8 @@ public sealed unsafe partial class VulkanDevice : GraphicsDevice
             ShaderSampledImageArrayNonUniformIndexing = 1,
             ScalarBlockLayout = 1,
             HostQueryReset = 1,
+            DrawIndirectCount = supported12.DrawIndirectCount,         // the GPU decides how many draws: optional
+            SamplerFilterMinmax = supported12.SamplerFilterMinmax,     // min/max samplers for Hi-Z pyramids: optional
         };
         var vulkan13 = new VkPhysicalDeviceVulkan13Features
         {
@@ -408,6 +421,7 @@ public sealed unsafe partial class VulkanDevice : GraphicsDevice
                 DepthClamp = supported.Features.DepthClamp,
                 FillModeNonSolid = supported.Features.FillModeNonSolid,
                 MultiDrawIndirect = supported.Features.MultiDrawIndirect,
+                DrawIndirectFirstInstance = supported.Features.DrawIndirectFirstInstance,
                 ShaderInt64 = supported.Features.ShaderInt64,
                 ShaderStorageImageReadWithoutFormat = supported.Features.ShaderStorageImageReadWithoutFormat,
                 ShaderStorageImageWriteWithoutFormat = supported.Features.ShaderStorageImageWriteWithoutFormat,
@@ -447,7 +461,7 @@ public sealed unsafe partial class VulkanDevice : GraphicsDevice
         var result = new VulkanDevice(instance, ownsInstance, physical, device, deviceCommands, vkQueue, surface, window);
         try
         {
-            result.Initialize(supported.Features, features.Features);
+            result.Initialize(supported.Features, features.Features, vulkan12);
         }
         catch
         {
@@ -476,7 +490,7 @@ public sealed unsafe partial class VulkanDevice : GraphicsDevice
         }
     }
 
-    private void Initialize(VkPhysicalDeviceFeatures supported, VkPhysicalDeviceFeatures enabled)
+    private void Initialize(VkPhysicalDeviceFeatures supported, VkPhysicalDeviceFeatures enabled, VkPhysicalDeviceVulkan12Features enabled12)
     {
         VkPhysicalDeviceProperties properties;
         Instance.Commands.GetPhysicalDeviceProperties(Physical.Handle, &properties);
@@ -488,6 +502,9 @@ public sealed unsafe partial class VulkanDevice : GraphicsDevice
         _supportsAnisotropy = enabled.SamplerAnisotropy != 0;
         _supportsBc = enabled.TextureCompressionBC != 0;
         _supportsAstc = enabled.TextureCompressionASTC_LDR != 0;
+        _supportsMultiDrawIndirect = enabled.MultiDrawIndirect != 0;
+        _supportsDrawIndirectCount = enabled12.DrawIndirectCount != 0;
+        _supportsSamplerFilterMinMax = enabled12.SamplerFilterMinmax != 0;
 
         CreateAllocator();
         Immediate = new VulkanImmediateContext(this);

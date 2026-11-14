@@ -191,6 +191,34 @@ recorder.Dispatch((n + 63) / 64);
 For drawing, `BeginRendering(width, height, colorTargets, depthTarget)` starts a pass and sets viewport and scissor, `Draw`/`DrawIndexed`
 draw, `EndRendering` ends it; images are moved to `ColorAttachment`/`DepthAttachment` with `Barriers` first.
 
+### Fill, clear and indirect calls
+
+The calls GPU-driven passes are made of, all on `CommandRecorder`:
+
+| Call | What it does | State the resource is in |
+| --- | --- | --- |
+| `FillBuffer(buffer, value, offset, size)` | sets a range (a multiple of four bytes; `WholeSize` is the rest) to a 32-bit pattern: zero a counter or a histogram | buffer: `TransferDestination` |
+| `ClearImage(image, color, baseMip, mipCount, baseLayer, layerCount)` | sets mips and layers of a colour image to one colour; a count of `uint.MaxValue` means all that remain | image: `TransferDestination`, outside a rendering pass |
+| `ClearDepthImage(image, depth, ...)` | the same for a depth image (the stencil to zero) | image: `TransferDestination` |
+| `DispatchIndirect(buffer, offset)` | a compute dispatch whose group counts are a `DispatchIndirectCommand` in a buffer | buffer: `IndirectRead` |
+| `DrawIndexedIndirect(buffer, offset, drawCount, stride)` | `drawCount` draws from `DrawIndexedIndirectCommand`s (20 bytes each); an instance count of 0 draws nothing, which is how culling removes a draw | buffer: `IndirectRead` |
+| `DrawIndexedIndirectCount(buffer, offset, countBuffer, countOffset, maxDrawCount, stride)` | the same, with the number of draws in a buffer too (capped at `maxDrawCount`): the output of a culling pass | both buffers: `IndirectRead` |
+
+A buffer a compute shader writes the commands into needs the `BufferUsage.Indirect` usage and a barrier from `ShaderWrite` to `IndirectRead` before the call (the render graph does this for a pass that calls
+`pass.ReadIndirect(buffer)`). The commands may use a first instance: the Vulkan device turns on `drawIndirectFirstInstance` and, when `multiDrawIndirect` is missing, issues the commands of a multi-draw one by one.
+
+Two optional features are switched on when the GPU has them, and are `GraphicsDevice` flags like `SupportsBc`:
+
+- **`SupportsDrawIndirectCount`** (Vulkan's `drawIndirectCount`): `DrawIndexedIndirectCount` works. Without it the call throws `NotSupportedException`; draw with `DrawIndexedIndirect` and the maximum count instead, and let
+  the pass that fills the commands zero the instance count of the unused ones.
+- **`SupportsSamplerFilterMinMax`** (`samplerFilterMinmax`): `SamplerDescription.Reduction` (`SamplerReduction.Min` or `Max`, or `SamplerDescription.MinMax(...)`) makes a sampler that returns the smallest or largest texel of its
+  filter footprint instead of the average, so a Hi-Z depth pyramid takes one linear sample per texel. Asking for one without the feature throws.
+
+On **Metal** (never run, see above) the recorder differs in four ways. There is no clear command, so `ClearImage` and `ClearDepthImage` clear with a render pass of their own per mip and layer and need the image to have
+`ImageUsage.ColorAttachment` (or `DepthStencilAttachment`); 3D textures are not cleared. `FillBuffer` is a blit fill of one byte, so the four bytes of the pattern must be equal (zero and `0xFFFFFFFF` are). An indirect
+draw makes one draw per call, so `DrawIndexedIndirect` loops over the commands, which have the layout Metal reads. And a draw cannot take its count from a buffer: `SupportsDrawIndirectCount` is false, as is
+`SupportsSamplerFilterMinMax` (Metal has no reduction samplers; a shader takes the minimum of four texels itself).
+
 ## Swapchain and the frame loop
 
 ```csharp

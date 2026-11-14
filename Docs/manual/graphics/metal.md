@@ -34,5 +34,9 @@ To run the engine's tests from a checkout instead: `APOGEE_REQUIRE_METAL=1 ./bui
 
 GPU timings (`Timings` is empty on Metal: Metal samples counters only at encoder boundaries, and not on every GPU) and a binary archive cache for shader libraries.
 
+The recorder's fill, clear and indirect calls (`FillBuffer`, `ClearImage`, `DispatchIndirect`, `DrawIndexedIndirect`; see [Graphics](graphics.md#fill-clear-and-indirect-calls)) and the extra bindless arrays (cube, array, 3D and storage textures) are written and
+tested by the shared GPU tests (`RecorderTests`, `BindlessTests`), but only the Metal-specific restrictions they have are known from reading Metal's documentation: a render-pass clear needs the attachment usage, a buffer fill
+is bytewise, and there is no draw count in a buffer. Confirm them with `APOGEE_REQUIRE_METAL=1 ./build.sh test` on a Mac.
+
 The images are compared with the references that Mesa's software rasterizer made, so the Metal tests allow a mean difference of 2 (worst channel 64) instead of Vulkan's 0.5 (24); `APOGEE_IMAGE_TOLERANCE=<mean>` sets it.
 These numbers are a guess until a real Mac has measured the difference: report the "mean difference" lines, and the bound can be tightened (or the Metal reference images split off).
