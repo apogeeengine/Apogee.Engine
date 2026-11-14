@@ -258,13 +258,6 @@ internal static class Commands
     /// </summary>
     public static int Pack(RuntimeOptions options)
     {
-        string folder = System.IO.Path.GetFullPath(options.Path);
-        if (!Directory.Exists(folder))
-        {
-            Console.Error.WriteLine($"{folder} is not a folder.");
-            return 1;
-        }
-
         PackKey? key;
         try
         {
@@ -276,105 +269,32 @@ internal static class Commands
             return 1;
         }
 
-        List<string> paths = [.. Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
-            .Select(f => System.IO.Path.GetRelativePath(folder, f).Replace('\\', '/'))
-            .Where(p => !p.Split('/').Any(segment => segment.StartsWith('.')))
-            .Order(StringComparer.Ordinal)];
-        if (options.Cooked)
-        {
-            var project = new VirtualFileSystem();
-            project.Mount("res://", new DirectorySource(folder));
-            IReadOnlyList<ImportEntry> entries = AssetImporter.LoadIndex(project);
-            if (entries.Count == 0)
-            {
-                Console.Error.WriteLine($"{folder} has nothing imported (no imported/index.xml): run --import first.");
-                return 1;
-            }
-
-            // What an artifact replaces (the asset, the files it was made from, its settings) is left out.
-            var replaced = new HashSet<string>(StringComparer.Ordinal);
-            foreach (ImportEntry entry in entries)
-            {
-                replaced.Add(entry.Source);
-                replaced.Add(entry.Source + ".import.xml");
-                replaced.UnionWith(entry.Dependencies);
-            }
-
-            paths = [.. paths.Where(p => !replaced.Contains(p))];
-        }
-
-        bool invalid = false;
-        foreach (string path in paths)
-        {
-            if (!VfsPath.TryParse("pack://" + path, out _, out string? problem))
-            {
-                Console.Error.WriteLine($"{path}: {problem}");
-                invalid = true;
-            }
-        }
-
-        if (invalid)
-        {
-            return 1;
-        }
-
-        var existing = new VirtualFileSystem();
-        var opened = new List<PackSource>();
         try
         {
-            foreach (string basePack in options.Bases)
+            PackReport report = GamePacker.Pack(new PackRequest
             {
-                PackSource source = PackSource.Open(basePack, key);
-                opened.Add(source);
-                existing.Mount("res://", source);
-            }
-
-            using var writer = new PackWriter(options.Output, new PackWriterOptions { Key = key, SplitBytes = options.SplitMegabytes * 1024 * 1024, CompressionLevel = options.Level });
-            long raw = 0;
-            int added = 0;
-            int unchanged = 0;
-            foreach (string path in paths)
-            {
-                byte[] data = File.ReadAllBytes(System.IO.Path.Combine(folder, path));
-                if (options.Bases.Count > 0 && existing.FileExists("res://" + path) && existing.ReadAllBytes("res://" + path).AsSpan().SequenceEqual(data))
-                {
-                    unchanged++;
-                    continue;
-                }
-
-                writer.Add(path, data);
-                raw += data.Length;
-                added++;
-            }
-
-            int removed = 0;
-            if (options.Bases.Count > 0)
-            {
-                var present = new HashSet<string>(paths, StringComparer.Ordinal);
-                foreach (string gone in existing.EnumerateFiles("res://", recursive: true).Select(p => p["res://".Length..]).Where(p => !present.Contains(p)))
-                {
-                    writer.Remove(gone);
-                    removed++;
-                }
-            }
-
-            IReadOnlyList<string> parts = writer.Finish();
-            long packed = parts.Sum(p => new FileInfo(p).Length);
-            Console.WriteLine($"{System.IO.Path.GetFileName(options.Output)}: {added} files ({raw / 1024.0 / 1024.0:F1} MiB) in {parts.Count} part(s), {packed / 1024.0 / 1024.0:F1} MiB{(key is null ? "" : ", encrypted")}"
-                + (options.Bases.Count > 0 ? $"; {unchanged} unchanged, {removed} removed" : ""));
+                Folder = options.Path,
+                Output = options.Output,
+                Cooked = options.Cooked,
+                Key = key,
+                Bases = options.Bases,
+                SplitBytes = options.SplitMegabytes * 1024 * 1024,
+                CompressionLevel = options.Level,
+            });
+            Console.WriteLine($"{System.IO.Path.GetFileName(options.Output)}: {report.Added} files ({report.RawBytes / 1024.0 / 1024.0:F1} MiB) in {report.Parts.Count} part(s), {report.PackedBytes / 1024.0 / 1024.0:F1} MiB{(key is null ? "" : ", encrypted")}"
+                + (report.CookedDocuments > 0 ? $", {report.CookedDocuments} cooked" : "")
+                + (options.Bases.Count > 0 ? $"; {report.Unchanged} unchanged, {report.Removed} removed" : ""));
             return 0;
+        }
+        catch (ContentException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 1;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
             Console.Error.WriteLine(e.Message);
             return 2;
-        }
-        finally
-        {
-            foreach (PackSource source in opened)
-            {
-                source.Dispose();
-            }
         }
     }
 

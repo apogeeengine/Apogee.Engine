@@ -29,7 +29,8 @@ writes the new path).
 
 `AuthoredAssets.Extensions` lists the authored kinds. The sidecar and the document are the truth; `assets.xml` is a copy that makes lookups fast. It is rewritten by every import (only when its text changes),
 sorted by path, and a pack carries it, so a shipped game finds a UID without scanning. The paths in it are written as the folder looked when it was imported (`res://…`); a package that was imported on its
-own and is mounted at `mod://id/` is read with its paths under `mod://id/`.
+own and is mounted at `mod://id/` is read with its paths under `mod://id/`. In a `--pack --cooked` pack the list is [cooked XML](import.md#cooked-xml) and is the only record of the imported assets' UIDs
+(their sidecars and sources are left out), so `AssetDatabase` believes a cooked list without looking for the files.
 
 ## When a UID is made
 

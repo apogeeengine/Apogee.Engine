@@ -13,7 +13,7 @@ folder. A shipped game's `res://` is its packs; during development it is a folde
 
 `./build.sh pack` runs `Apogee.Runtime --pack` (the engine's host program has the content library and the native libraries, and the editor and the export step use the same `PackWriter`);
 the wrapper loads `.env`, so `APOGEE_PACK_KEY` applies. Run `Apogee.Runtime --pack <folder> <out.pack>` yourself to pack without the wrapper. Paths in the pack are relative to the folder (`packages/core/mod.xml`); files and folders whose name starts with a dot are left out; every name must be valid in a virtual path (no `..`,
-no `nul`…), and the tool says which are not. From code: `PackWriter` (`Add`, `AddFile`, `Remove`, `Finish`).
+no `nul`…), and the tool says which are not. From code: `GamePacker` (below), or `PackWriter` (`Add`, `AddFile`, `Remove`, `Finish`) to write the files yourself.
 
 - **Compression.** Each file is compressed with zstd when it has 64 bytes or more and that saves at least 10%; the rest (PNG, KTX2, OGG…) is stored as it is. `--level` is zstd's 1 to 22
   (default 12). Large files are compressed on several threads.
@@ -21,6 +21,35 @@ no `nul`…), and the tool says which are not. From code: `PackWriter` (`Add`, `
   bigger than the limit gets a part to itself. Opening the first part finds the others; a part that is missing is an error that says which.
 - **Patch packs.** With `--base` the packs you name (in order, with the same key) are what the game has already: the new pack holds only the files that are new or different, and a *removal*
   for each file that is gone. Mounted over the base, it replaces, adds and removes.
+
+With `--cooked` the pack is what a shipped game needs: the imported artifacts instead of the sources they replace and their `.import.xml` files ([Asset import](import.md#packing)), the authored
+documents (scenes) and the UID list `imported/assets.xml` as [cooked XML](import.md#cooked-xml) at the same paths, everything else as it is. It needs the folder to be imported first. The summary line
+says how many documents were cooked (`game.pack: 14 files (5.5 MiB) in 1 part(s), 4.9 MiB, 2 cooked`). Files under `dev_mods/` are never cooked, and a scene that is not well-formed XML is an error
+(exit code 1) that names its path.
+
+### From code: `GamePacker`
+
+`Apogee.Runtime --pack` is a thin command over `GamePacker` in `Apogee.Content.Packs`, which an export or a tool calls directly:
+
+```csharp
+PackReport report = GamePacker.Pack(new PackRequest
+{
+    Folder = "Content",                   // the game folder: it is res://
+    Output = "build/data/game.pack",      // the first part; more are game_001.pack…
+    Cooked = true,                        // artifacts instead of sources, cooked documents (needs an import first)
+    AllowNothingImported = true,          // a game with nothing to import is packed as it is, not an error
+    Key = PackKey.FromEnvironment(),      // the caller asks; the packer never reads the environment
+    Exclude = ["dev_mods/", "data/"],     // folder-relative prefixes left out
+    // Bases, SplitBytes (1536 MiB) and CompressionLevel (12) as for the options above
+});
+Console.WriteLine($"{report.Added} files, {report.CookedDocuments} cooked, {report.PackedBytes} bytes in {report.Parts.Count} part(s)");
+
+IReadOnlyList<string> paths = GamePacker.PathsOf(request);   // what Pack would pack, without writing: for an export that lists or checks them
+```
+
+`Pack` throws a `ContentException` when the folder is not a folder, when a cooked pack has nothing imported (unless `AllowNothingImported`), when a path cannot be in a pack, or when an authored
+document does not parse; and an `IOException` when writing fails. `PackReport` says how many files were added, left unchanged and removed (the last two for a patch pack), how many of the added files
+were cooked documents, the bytes before and after compression, and the part files. Packing the same folder twice gives the same files, so a patch pack over a cooked base holds only what changed.
 
 ## Using one
 
@@ -61,4 +90,4 @@ casually and makes a changed pack fail to load. It is not copy protection.
 `Tests/Apogee.Content.Tests`: the key, a round trip of every kind of file (empty, text, noise, nested), compression only where it pays, mounting, streaming, encryption (the content and the
 magic are not in the file, a salt per pack, no key and a wrong key), tampering (a flipped byte in a file or the index of a sealed pack, in a stored and in a compressed file of a plain one,
 a truncated file, a part missing), split parts (also a file bigger than a part, and sealed), patch packs, path rules, and many threads reading at once. `Tests/Apogee.Runtime.Tests` runs
-a game from a pack with a patch pack over it, and an encrypted game with the key from the environment.
+a game from a pack with a patch pack over it, and an encrypted game with the key from the environment. `GamePackerTests` covers the library: plain and cooked packs, sources dropped and artifacts kept, authored documents cooked at their paths and reading back equal to their source, UIDs surviving the dropped sidecars, excluded prefixes, nothing imported (an error, and not one when asked), a document that does not parse, patch packs over a cooked base, and an encrypted split pack.

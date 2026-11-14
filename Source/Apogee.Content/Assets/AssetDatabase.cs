@@ -38,6 +38,7 @@ public sealed class AssetDatabase(VirtualFileSystem files)
     private readonly Dictionary<string, AssetUid> _uidOfPath = new(StringComparer.Ordinal);
     private readonly Dictionary<AssetUid, string> _pathOfUid = [];
     private readonly Dictionary<AssetUid, string> _listed = [];
+    private readonly HashSet<AssetUid> _shipped = []; // listed by a cooked list: the sources are not in the pack, so the files cannot vouch for them
     private List<(AssetUid Uid, IReadOnlyList<string> Paths)> _duplicates = [];
     private bool _seeded;
     private bool _scanned;
@@ -72,6 +73,7 @@ public sealed class AssetDatabase(VirtualFileSystem files)
             _uidOfPath.Clear();
             _pathOfUid.Clear();
             _listed.Clear();
+            _shipped.Clear();
             _duplicates = [];
             _seeded = false;
             _scanned = false;
@@ -109,7 +111,7 @@ public sealed class AssetDatabase(VirtualFileSystem files)
         lock (_lock)
         {
             Seed();
-            if (_pathOfUid.TryGetValue(uid, out string? listed) && Verified(listed, uid))
+            if (_pathOfUid.TryGetValue(uid, out string? listed) && (Verified(listed, uid) || _shipped.Contains(uid)))
             {
                 return Preferred(listed);
             }
@@ -136,7 +138,7 @@ public sealed class AssetDatabase(VirtualFileSystem files)
             return null;
         }
 
-        if (reference.HasPath)
+        if (reference.HasPath && !(TryCanonical(reference.Path, out string wrote) && wrote == moved))
         {
             Log.Info(LogCategory, $"{reference.Path} moved to {moved}: save to update the reference.");
         }
@@ -181,7 +183,7 @@ public sealed class AssetDatabase(VirtualFileSystem files)
 
         try
         {
-            XmlNode list = XmlNode.Parse(files.ReadAllText(path), path);
+            XmlNode list = XmlFile.Read(files, path); // text, or cooked in a shipped pack
             if (list.Name != "Assets" || (int.TryParse(list.Attribute("version"), NumberStyles.None, CultureInfo.InvariantCulture, out int version) && version > ListVersion))
             {
                 return rows;
@@ -195,9 +197,9 @@ public sealed class AssetDatabase(VirtualFileSystem files)
                 }
             }
         }
-        catch (XmlParseException)
+        catch (ContentException)
         {
-            // A damaged list is as good as none.
+            // A damaged list (or one cooked by a newer engine) is as good as none.
         }
 
         return rows;
@@ -236,12 +238,33 @@ public sealed class AssetDatabase(VirtualFileSystem files)
         _seeded = true;
         foreach (string root in RootList())
         {
+            // A shipped game's list is cooked (GamePacker), and its imported assets have lost their sources and sidecars: the list is the only record of their UIDs, so it is believed.
+            bool cooked = IsCooked(root);
             foreach ((string path, AssetUid uid) in Load(files, root))
             {
-                _listed.TryAdd(uid, path); // the first root in the list wins
-                _pathOfUid.TryAdd(uid, path);
+                if (_listed.TryAdd(uid, path)) // the first root in the list wins
+                {
+                    _pathOfUid.TryAdd(uid, path);
+                    if (cooked)
+                    {
+                        _shipped.Add(uid);
+                    }
+                }
             }
         }
+    }
+
+    private bool IsCooked(string root)
+    {
+        string path = root + Import.AssetImporter.CacheFolder + "/" + ListFileName;
+        if (!files.FileExists(path))
+        {
+            return false;
+        }
+
+        using System.IO.Stream stream = files.OpenRead(path);
+        Span<byte> head = stackalloc byte[4];
+        return XmlBinary.IsBinary(head[..stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false)]);
     }
 
     /// <summary>Whether the file the list names is still there and still has that UID.</summary>

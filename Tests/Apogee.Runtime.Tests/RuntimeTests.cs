@@ -353,6 +353,28 @@ public class CommandTests
     }
 
     [Fact]
+    public void ACookedPackHoldsItsScenesAsBinaryXmlAtTheSamePath()
+    {
+        using var scratch = new Scratch();
+        byte[] rgba = new byte[16 * 16 * 4];
+        Directory.CreateDirectory(System.IO.Path.Combine(scratch.Root, "src", "textures"));
+        File.WriteAllBytes(System.IO.Path.Combine(scratch.Root, "src", "textures", "ground.png"), Apogee.Content.Png.Encode(16, 16, rgba));
+        scratch.Write("src/scenes/start.ascene", "<Scene version=\"1\"><Entity id=\"1\" name=\"ground\"/></Scene>");
+        string src = System.IO.Path.Combine(scratch.Root, "src");
+        string pack = System.IO.Path.Combine(scratch.Root, "out", "game.pack");
+
+        Assert.Equal(0, Commands.Import(Options("--import", src)));
+        Assert.Equal(0, Commands.Pack(Options("--pack", src, pack, "--cooked")));
+
+        using var packed = Apogee.Content.Packs.PackSource.Open(pack);
+        var files = new Apogee.Content.FileSystem.VirtualFileSystem();
+        files.Mount("res://", packed);
+        Assert.True(Apogee.Content.Xml.XmlBinary.IsBinary(files.ReadAllBytes("res://scenes/start.ascene")));
+        Assert.Equal("ground", Apogee.Content.Xml.XmlFile.Read(files, "res://scenes/start.ascene").Children[0].Attribute("name"));
+        Assert.NotEqual(Apogee.Core.Assets.AssetUid.None, Apogee.Content.Assets.AuthoredAssets.ReadUid(files.ReadAllBytes("res://scenes/start.ascene")));
+    }
+
+    [Fact]
     public void ShadersAreCompiledByImportAndPackedWithoutTheirSourcesOrTheCompiler()
     {
         Apogee.Native.Tests.NativeRequirements.Require(typeof(Apogee.Native.Slang.Slang).Assembly, "slang_c");

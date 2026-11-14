@@ -108,6 +108,10 @@ It does not check that an artifact is current: importing is the step that does (
 therefore holds `models/car.gltf.amodel` and `textures/ground.png.ktx2`, not the glTF, the `.bin` and the PNGs, and `ContentLoader.LoadModel("res://models/car.gltf")` finds the artifact by the
 path of the source it replaced.
 
+A cooked pack also holds the authored documents (`.ascene`, see `AuthoredAssets.Extensions`) and the UID list `imported/assets.xml` as [cooked XML](#cooked-xml), each at the path of its source, so a
+shipped game parses no text for them and a UID still names its asset after the sidecar has been left out. Everything else stays as it is: other `.xml` files, `mod.xml`, the scripts, and everything under
+`dev_mods/`. The packing is `GamePacker` ([Packs](packs.md#from-code-gamepacker)); `--pack` is a thin command on top of it. A scene that is not well-formed XML stops the pack, with its path and line.
+
 ## Shaders
 
 Shipped games never load the Slang compiler. `./build.sh aot` publishes the runtime and then runs `Apogee.Runtime --import` on its `Shaders` folder, which writes `Shaders/imported/*.ashader`; the
@@ -136,7 +140,7 @@ XmlNode either = XmlFile.Read(files, "res://scenes/start.ascene");     // text o
 
 `XmlFile.Read(files, path)` is the one way to read an authored or definition file: it takes a file that starts with the magic as cooked (no text XML file can: those begin with `<`, a byte order mark or white
 space) and anything else as UTF-8 text, so the same code runs on the sources in development and on the cooked files of a shipped pack. A cooked file keeps the path of its source, which is why a script that
-reads it as text (`fs.read_text`) gets bytes, and reading it with `XmlFile` is the way that works for both. `--pack --cooked` does not write cooked XML yet; the encoding and the reader come first.
+reads it as text (`fs.read_text`) gets bytes, and reading it with `XmlFile` is the way that works for both. `--pack --cooked` writes it for authored documents and the UID list (see [Packing](#packing)).
 
 The origin of an element is not stored: the reader gives every element the path it was asked to read, so an error in a cooked file still names the file and the source line. The reader accepts the versions up to the
 one it knows; a file from a newer engine, or with a flag it does not know, is refused with "cook again". A file cut short or damaged is a `ContentException`, never anything else, and a count in it (strings,
@@ -159,7 +163,7 @@ data that is transcoded at load). That leaves `.amodel` as the one engine-specif
 | Textures | PNG, JPEG | **yes, done**: Basis UASTC in KTX 2, transcoded to BC7/ASTC/RGBA8 at load | `.ktx2` |
 | Shaders | Slang | **yes, done**: SPIR-V and Metal shading language and reflection ahead of time, in one bundle (DXIL has a slot), so a shipped game does not carry the compiler | `.ashader` |
 | Materials | XML definition (a `Material` type with a schema: textures by path, factors, alpha mode) | **not for now.** They are small data, which mods must be able to author and patch like any definition; a model's built-in materials are already in `.amodel` | none (an `.amat` only if profiling asks) |
-| Scenes, prefabs | XML: entities and their components, written and read through the reflection registry | **the encoding is done** ([Cooked XML](#cooked-xml)): the tree of any XML file as a binary file, in place of the source under the same path, so that scenes, prefabs and definitions share one format and one reader. Writing it into a pack is the next step | binary XML (`APXB`), same path |
+| Scenes, prefabs | XML: entities and their components, written and read through the reflection registry | **done for authored documents** ([Cooked XML](#cooked-xml)): `--pack --cooked` writes the tree of the document as a binary file in place of the source, under the same path, so that scenes, prefabs and definitions share one format and one reader (definitions in a pack are cooked in a later step) | binary XML (`APXB`), same path |
 | Audio | WAV, FLAC, MP3 and Ogg Vorbis, decoded when loaded (streamed if asked) | already compressed by the formats; a cook would only trade load time for size | none |
 | Scripts | Luau | no (a bytecode cache could come later; it is not needed to ship) | none |
 
