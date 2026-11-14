@@ -19,6 +19,9 @@ public static unsafe class FieldAccess
             FieldKind.UInt16 => Value.Int(Unsafe.ReadUnaligned<ushort>(p)),
             FieldKind.Int32 => Value.Int(Unsafe.ReadUnaligned<int>(p)),
             FieldKind.UInt32 => Value.Int(Unsafe.ReadUnaligned<uint>(p)),
+
+            // A handle is a plain number to scripts. Explicit, because the last arm below is the 8-byte Entity.
+            FieldKind.AssetRef => Value.Int(Unsafe.ReadUnaligned<uint>(p)),
             FieldKind.Int64 => Value.Int(Unsafe.ReadUnaligned<long>(p)),
             FieldKind.UInt64 => Value.Int(unchecked((long)Unsafe.ReadUnaligned<ulong>(p))),
             FieldKind.Float32 => Value.Float(Unsafe.ReadUnaligned<float>(p)),
@@ -43,6 +46,7 @@ public static unsafe class FieldAccess
             case FieldKind.UInt16: Unsafe.WriteUnaligned(p, value.ToUInt16()); break;
             case FieldKind.Int32: Unsafe.WriteUnaligned(p, value.ToInt32()); break;
             case FieldKind.UInt32: Unsafe.WriteUnaligned(p, value.ToUInt32()); break;
+            case FieldKind.AssetRef: Unsafe.WriteUnaligned(p, value.ToUInt32()); break; // explicit: the default below is the 8-byte Entity
             case FieldKind.Int64: Unsafe.WriteUnaligned(p, value.ToInt64()); break;
             case FieldKind.UInt64: Unsafe.WriteUnaligned(p, value.ToUInt64()); break;
             case FieldKind.Float32: Unsafe.WriteUnaligned(p, value.ToSingle()); break;

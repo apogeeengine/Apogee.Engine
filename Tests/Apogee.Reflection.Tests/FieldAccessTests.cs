@@ -41,6 +41,29 @@ public unsafe class FieldAccessTests
     }
 
     [Fact]
+    public void AnAssetRefFieldIsFourBytesAndANumber()
+    {
+        Assert.Equal(4, FieldKind.AssetRef.SizeOf());
+        Assert.Equal(4, FieldKind.AssetRef.AlignmentOf());
+
+        // The kinds before it keep their byte values: a cooked or saved file may hold them.
+        Assert.Equal(14, (byte)FieldKind.Entity);
+        Assert.Equal(15, (byte)FieldKind.AssetRef);
+
+        RoundTrip(FieldKind.AssetRef, Value.Int(4_000_000_000), Value.Int(4_000_000_000));
+
+        // Four bytes only: the neighbours are not touched (an Entity would write eight).
+        byte* data = stackalloc byte[16];
+        new Span<byte>(data, 16).Fill(0xAB);
+        FieldAccess.Write(data, new FieldDef("model", FieldKind.AssetRef, 4, AssetType: "model"), Value.Int(0x01020304));
+        Assert.Equal(new byte[] { 0xAB, 0xAB, 0xAB, 0xAB, 4, 3, 2, 1, 0xAB, 0xAB, 0xAB, 0xAB }, new Span<byte>(data, 12).ToArray());
+
+        var field = new FieldDef("model", FieldKind.AssetRef, 0);
+        Assert.Contains("out of range", Assert.Throws<ValueException>(() => FieldAccess.Write(data, field, Value.Int(-1))).Message);
+        Assert.Contains("expected number, got string", Assert.Throws<ValueException>(() => FieldAccess.Write(data, field, Value.String("res://a.glb"))).Message);
+    }
+
+    [Fact]
     public void AnEntityFieldTakesAPlainNumberToo()
     {
         byte* data = stackalloc byte[8];

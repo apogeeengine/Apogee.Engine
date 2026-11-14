@@ -167,6 +167,13 @@ internal static class Analyzer
             return;
         }
 
+        // Asset names the type behind a uint handle of a component field. A class property that names an asset is an AssetRef instead (a string to scripts).
+        if (AssetOf(member, out _))
+        {
+            Error(described, Diagnostics.BadAsset, member, $"{described.TypeName}.{member.Name}: Asset is only for uint fields of a [Component] struct. A property of a class that names an asset has the type Apogee.Core.Assets.AssetRef.");
+            return;
+        }
+
         TypeModel? model = TypeMapper.Map(type, described, member, member.Name);
         if (model is null)
         {
@@ -323,6 +330,27 @@ internal static class Analyzer
             }
 
             (string Kind, int Alignment)? kind = FieldKindOf(field.Type);
+
+            // [Property(Asset = "model")] on a uint turns the number into an asset handle. It is the only way to get the AssetRef kind, so a plain uint stays a number.
+            string? assetType = null;
+            if (AssetOf(field, out string? asset))
+            {
+                if (string.IsNullOrWhiteSpace(asset))
+                {
+                    Error(described, Diagnostics.BadAsset, field, $"{symbol.Name}.{field.Name}: Asset must name an asset type, such as \"model\".");
+                    continue;
+                }
+
+                if (field.Type.SpecialType != SpecialType.System_UInt32)
+                {
+                    Error(described, Diagnostics.BadAsset, field, $"{symbol.Name}.{field.Name} is a {field.Type.ToDisplayString()}: Asset is only for uint fields (the handle of a loaded asset).");
+                    continue;
+                }
+
+                kind = ("AssetRef", 4);
+                assetType = asset;
+            }
+
             if (kind is null)
             {
                 Error(described, Diagnostics.BadComponent, field, $"{symbol.Name}.{field.Name} is a {field.Type.ToDisplayString()}: component fields are bool, integers, float, double, Vector3, Double3, Quaternion or Entity.");
@@ -338,6 +366,7 @@ internal static class Analyzer
                 CsType = field.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 Doc = Summary(field),
                 Meta = MetaOf(field),
+                AssetType = assetType,
             });
         }
     }
@@ -424,6 +453,20 @@ internal static class Analyzer
         }
 
         return parts.Count == 0 ? null : $"new global::Apogee.Reflection.InspectorMeta({string.Join(", ", parts)})";
+    }
+
+    /// <summary>Whether <c>[Property]</c> on the member sets <c>Asset</c> (even to null or empty, which is an error to report), and its value.</summary>
+    private static bool AssetOf(ISymbol member, out string? asset)
+    {
+        asset = null;
+        AttributeData? attribute = member.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute" && a.AttributeClass.ContainingNamespace.ToDisplayString() == "Apogee.Reflection");
+        if (attribute is null || !attribute.NamedArguments.Any(a => a.Key == "Asset"))
+        {
+            return false;
+        }
+
+        asset = Named(attribute, "Asset") as string;
+        return true;
     }
 
     private static string ScriptNameOf(ISymbol member, string attributeName)

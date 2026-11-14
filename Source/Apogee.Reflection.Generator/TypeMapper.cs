@@ -71,6 +71,11 @@ internal static class TypeMapper
                 position.IsDouble3 = true;
                 return position;
             case "System.Numerics.Quaternion": return Make(Shape.Quaternion);
+            case "Apogee.Core.Assets.AssetRef":
+                // A struct of two parts, but scripts and files see its text form (a string): the generated code calls ToString and Value.ToAssetRef.
+                TypeModel asset = Make(Shape.String);
+                asset.IsAssetRef = true;
+                return asset;
             case Ns + "Entity": return Make(Shape.Entity);
             case Ns + "Value": return Make(Shape.Any);
             case Ns + "ScriptFunction": return Make(Shape.Function);
@@ -111,7 +116,7 @@ internal static class TypeMapper
             return model;
         }
 
-        reason = $"{display} is not a supported type (bool, integers, float, double, string, Vector3, Double3, Quaternion, enums, Entity, Value, ScriptFunction, ScriptTable, EngineObject classes, and lists of them).";
+        reason = $"{display} is not a supported type (bool, integers, float, double, string, Vector3, Double3, Quaternion, enums, Entity, AssetRef, Value, ScriptFunction, ScriptTable, EngineObject classes, and lists of them).";
         return null;
     }
 

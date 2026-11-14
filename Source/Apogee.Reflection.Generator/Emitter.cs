@@ -264,7 +264,7 @@ internal static class Emitter
         text.AppendLine("            {");
         foreach (FieldModel field in component.Fields)
         {
-            text.AppendLine($"                new({Literal(field.Name)}, {R}FieldKind.{field.Kind}, (int){unsafeType}.ByteOffset(ref start, ref {unsafeType}.As<{field.CsType}, byte>(ref instance.{field.Name})), {Literal(field.Doc)}{(field.Meta is null ? "" : $", {field.Meta}")}),");
+            text.AppendLine($"                new({Literal(field.Name)}, {R}FieldKind.{field.Kind}, (int){unsafeType}.ByteOffset(ref start, ref {unsafeType}.As<{field.CsType}, byte>(ref instance.{field.Name})), {Literal(field.Doc)}{(field.Meta is null ? "" : $", {field.Meta}")}{(field.AssetType is null ? "" : $", AssetType: {Literal(field.AssetType)}")}),");
         }
 
         text.AppendLine($"            }}, {Literal(component.Doc)});");
@@ -314,7 +314,7 @@ internal static class Emitter
             Shape.Bool => $"{V}.Bool({e})",
             Shape.Int => type.IsUnsigned64 ? $"{V}.Int(unchecked((long)({e})))" : $"{V}.Int({e})",
             Shape.Float => $"{V}.Float({e})",
-            Shape.String => $"{V}.String({e})",
+            Shape.String => type.IsAssetRef ? $"{V}.String(({e}).ToString())" : $"{V}.String({e})",
             Shape.Vector3 => type.IsDouble3 ? $"{V}.Vector((global::System.Numerics.Vector3)({e}))" : $"{V}.Vector({e})",
             Shape.Quaternion => $"{V}.Quat({e})",
             Shape.Enum => $"{V}.Enum({enums[type.EnumKey]}, unchecked((long)({e})))",
@@ -348,7 +348,7 @@ internal static class Emitter
             Shape.Bool => $"{v}.ToBool()",
             Shape.Int => $"{v}.To{type.IntegerName}()",
             Shape.Float => type.IsDouble ? $"{v}.ToDouble()" : $"{v}.ToSingle()",
-            Shape.String => $"{v}.ToStringValue()",
+            Shape.String => type.IsAssetRef ? $"{v}.ToAssetRef()" : $"{v}.ToStringValue()",
             Shape.Vector3 => type.IsDouble3 ? $"(global::Apogee.Core.Numerics.Double3){v}.ToVector3()" : $"{v}.ToVector3()",
             Shape.Quaternion => $"{v}.ToQuaternion()",
             Shape.Enum => $"({type.CsType}){v}.ToEnum()",

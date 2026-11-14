@@ -46,6 +46,12 @@ public sealed class PropertyAttribute : Attribute
 
     /// <summary>An inspector shows it but does not let it be edited.</summary>
     public bool ReadOnly { get; set; }
+
+    /// <summary>
+    /// The asset type that this <c>uint</c> component field names, such as <c>model</c>. A field with it is a <see cref="FieldKind.AssetRef"/> (a handle
+    /// that scenes save as an asset path and UID) and not a plain number. Only a <c>uint</c> field of a <see cref="ComponentAttribute"/> struct may have it.
+    /// </summary>
+    public string? Asset { get; set; }
 }
 
 /// <summary>A method that scripts can call. A <c>ValueTuple</c> return gives a script several results.</summary>

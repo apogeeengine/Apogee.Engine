@@ -105,6 +105,15 @@ public readonly struct Value : IEquatable<Value>
 
     public string ToStringValue() => _kind == ValueKind.String ? (string)_reference! : throw Mismatch("string");
 
+    /// <summary>
+    /// The text of a string value read as an asset reference (<c>path</c>, <c>path|uid://…</c> or <c>uid://…</c>); what the generated setters of
+    /// <see cref="Apogee.Core.Assets.AssetRef"/> properties call. A bad text is a <see cref="ValueException"/>, which a script can show, and not a <see cref="FormatException"/>.
+    /// </summary>
+    public Apogee.Core.Assets.AssetRef ToAssetRef() =>
+        Apogee.Core.Assets.AssetRef.TryParse(ToStringValue(), out Apogee.Core.Assets.AssetRef reference)
+            ? reference
+            : throw new ValueException($"'{ToStringValue()}' is not an asset reference: expected a path, a path|uid://… or a uid://…");
+
     public Vector3 ToVector3() => _kind == ValueKind.Vector3
         ? new Vector3(BitConverter.Int32BitsToSingle((int)_bits), BitConverter.Int32BitsToSingle((int)(_bits >> 32)), _extra)
         : throw Mismatch("vector");

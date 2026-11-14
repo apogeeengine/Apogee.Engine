@@ -27,6 +27,13 @@ public enum FieldKind : byte
     /// <summary>Four <c>float</c>s: a rotation, the <c>Quat</c> of scripts.</summary>
     Quaternion,
     Entity,
+
+    /// <summary>
+    /// A <c>uint</c> handle that names an asset (a model, a texture…): four bytes in memory, like <see cref="UInt32"/>, which is also what scripts see.
+    /// <see cref="FieldDef.AssetType"/> says what kind of asset. Scene files and the editor turn the handle into an <c>AssetRef</c> (path and UID).
+    /// Appended after <see cref="Entity"/> so that the byte values of the kinds above stay what they were.
+    /// </summary>
+    AssetRef,
 }
 
 public static class FieldKinds
@@ -35,7 +42,7 @@ public static class FieldKinds
     {
         FieldKind.Bool or FieldKind.Int8 or FieldKind.UInt8 => 1,
         FieldKind.Int16 or FieldKind.UInt16 => 2,
-        FieldKind.Int32 or FieldKind.UInt32 or FieldKind.Float32 => 4,
+        FieldKind.Int32 or FieldKind.UInt32 or FieldKind.Float32 or FieldKind.AssetRef => 4,
         FieldKind.Vector3 => 12,
         FieldKind.Double3 => 24,
         FieldKind.Quaternion => 16,
@@ -63,7 +70,14 @@ public sealed record InspectorMeta(double Min = double.NaN, double Max = double.
     private static string Format(double value) => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
 }
 
-public sealed record FieldDef(string Name, FieldKind Kind, int Offset, string? Doc = null, InspectorMeta? Meta = null);
+/// <summary>One field of a component: where it is, how it is stored, and what an inspector needs to show it.</summary>
+/// <param name="Name">The field name.</param>
+/// <param name="Kind">How the field is stored.</param>
+/// <param name="Offset">The byte offset from the start of the component.</param>
+/// <param name="Doc">The <c>///</c> summary of the field, or null.</param>
+/// <param name="Meta">Hints for an inspector, or null.</param>
+/// <param name="AssetType">For <see cref="FieldKind.AssetRef"/>: the kind of asset the handle names (<c>model</c>), as the host registered it; null for every other kind.</param>
+public sealed record FieldDef(string Name, FieldKind Kind, int Offset, string? Doc = null, InspectorMeta? Meta = null, string? AssetType = null);
 
 /// <summary>An ECS component: its memory layout, so that the ECS can register it and scripts can read and write it.</summary>
 public sealed class ComponentInfo

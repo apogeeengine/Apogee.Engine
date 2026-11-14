@@ -508,6 +508,128 @@ public class GeneratorTests
     }
 
     [Fact]
+    public void AnAssetPropertyOnAUIntIsAnAssetRefField()
+    {
+        GeneratedCode code = GeneratedCode.Run(Header + """
+            namespace Fx.Assets;
+
+            [Component]
+            public struct Prop
+            {
+                public byte Flag;
+
+                /// <summary>The model it shows.</summary>
+                [Property(Asset = "model", Category = "Model")]
+                public uint Model;
+
+                [Property(Asset = "texture")]
+                public uint Skin;
+
+                [Property(Category = "Handles")]
+                public uint Plain; // no Asset: still a number
+                public Entity Owner;
+            }
+            """, "FxAssets");
+        Assert.Empty(code.Diagnostics);
+        Assert.Contains("AssetType: \"model\"", code.GeneratedText);
+        code.Load();
+
+        ComponentInfo prop = TypeRegistry.FindComponent("Prop")!;
+        Assert.Equal(
+            [("Flag", FieldKind.UInt8, 0), ("Model", FieldKind.AssetRef, 4), ("Skin", FieldKind.AssetRef, 8), ("Plain", FieldKind.UInt32, 12), ("Owner", FieldKind.Entity, 16)],
+            prop.Fields.Select(f => (f.Name, f.Kind, f.Offset)));
+        Assert.Equal(24, prop.Size);
+
+        FieldDef model = prop.FindField("Model")!;
+        Assert.Equal("model", model.AssetType);
+        Assert.Equal("The model it shows.", model.Doc);
+        Assert.Equal("Model", model.Meta!.Category); // the other hints of [Property] stay with it
+        Assert.Equal("texture", prop.FindField("Skin")!.AssetType);
+        Assert.Null(prop.FindField("Plain")!.AssetType);
+        Assert.Null(prop.FindField("Flag")!.AssetType);
+    }
+
+    [Fact]
+    public void AnAssetPropertyOnAnythingElseIsADiagnostic()
+    {
+        // Not a uint.
+        Assert.Equal(["APG006"], DiagnosticIds("""[Component] public struct A { [Property(Asset = "model")] public int Model; }""", "FxAssetDiag1"));
+        Assert.Equal(["APG006"], DiagnosticIds("""[Component] public struct B { [Property(Asset = "model")] public ulong Model; }""", "FxAssetDiag2"));
+        Assert.Equal(["APG006"], DiagnosticIds("""[Component] public struct C { [Property(Asset = "model")] public Entity Model; }""", "FxAssetDiag3"));
+
+        // No type to name.
+        Assert.Equal(["APG006"], DiagnosticIds("""[Component] public struct D { [Property(Asset = "")] public uint Model; }""", "FxAssetDiag4"));
+        Assert.Equal(["APG006"], DiagnosticIds("""[Component] public struct E { [Property(Asset = null)] public uint Model; }""", "FxAssetDiag5"));
+
+        // On a class: a property that names an asset is an AssetRef, whatever its type.
+        Assert.Equal(["APG006"], DiagnosticIds("""[ApogeeClass] public partial class F : EngineObject { [Property(Asset = "model")] public uint Model { get; set; } }""", "FxAssetDiag6"));
+
+        GeneratedCode wrong = GeneratedCode.Run(Header + """[Component] public struct G { [Property(Asset = "model")] public float Model; }""", "FxAssetDiag7");
+        string message = Assert.Single(wrong.Diagnostics).GetMessage(System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Contains("G.Model", message);
+        Assert.Contains("float", message);
+        Assert.Empty(wrong.Generated); // nothing is written for a type with errors
+    }
+
+    [Fact]
+    public void AnAssetRefPropertyOfAClassIsAStringToScripts()
+    {
+        GeneratedCode code = GeneratedCode.Run(Header + """
+            using Apogee.Core.Assets;
+            namespace Fx.AssetProps;
+
+            [ApogeeClass(Creatable = true)]
+            public partial class Deed : EngineObject
+            {
+                /// <summary>The picture.</summary>
+                [Property] public AssetRef Icon { get; set; }
+                [Property] public AssetRef? Banner { get; set; }
+                [Method] public AssetRef Echo(AssetRef reference, AssetRef? other = null) => other ?? reference;
+            }
+            """, "FxAssetProps");
+        Assert.Empty(code.Diagnostics);
+        System.Reflection.Assembly assembly = code.Load();
+
+        ClassInfo deed = TypeRegistry.GetClass("Deed");
+        Assert.Equal(TypeRef.String, deed.FindProperty("icon")!.Type); // so the .d.luau says string
+        Assert.Equal(TypeRef.String.AsNullable(), deed.FindProperty("banner")!.Type);
+        Assert.Equal([TypeRef.String, TypeRef.String.AsNullable()], deed.FindMethod("echo")!.Parameters.Select(p => p.Type));
+        Assert.Equal(TypeRef.String, deed.FindMethod("echo")!.Results[0]);
+
+        var made = (EngineObject)Activator.CreateInstance(assembly.GetType("Fx.AssetProps.Deed")!)!;
+        PropertyDef icon = deed.FindProperty("icon")!;
+        PropertyDef banner = deed.FindProperty("banner")!;
+
+        // The three text forms go in and come out as they are; the empty reference is the empty string.
+        Assert.Equal("", icon.Getter(made).ToStringValue());
+        foreach (string text in new[] { "res://models/car.glb", "res://models/car.glb|uid://4k2m9x7q1w3ze", "uid://4k2m9x7q1w3ze" })
+        {
+            icon.Setter!(made, Value.String(text));
+            Assert.Equal(text, icon.Getter(made).ToStringValue());
+        }
+
+        // A nullable one is nil when it has no value, and takes nil back.
+        Assert.True(banner.Getter(made).IsNil);
+        banner.Setter!(made, Value.String("res://a.png"));
+        Assert.Equal("res://a.png", banner.Getter(made).ToStringValue());
+        banner.Setter!(made, default);
+        Assert.True(banner.Getter(made).IsNil);
+
+        // Bad text is a ValueException a script can show, and nothing is written.
+        icon.Setter!(made, Value.String("res://keep.glb"));
+        Assert.Contains("is not an asset reference", Assert.Throws<ValueException>(() => icon.Setter!(made, Value.String("|uid://4k2m9x7q1w3ze"))).Message);
+        Assert.Throws<ValueException>(() => icon.Setter!(made, Value.String("uid://nope")));
+        Assert.Contains("expected string, got number", Assert.Throws<ValueException>(() => icon.Setter!(made, Value.Int(3))).Message);
+        Assert.Equal("res://keep.glb", icon.Getter(made).ToStringValue());
+
+        var results = new Value[1];
+        deed.FindMethod("echo")!.Invoke(made, [Value.String("res://a.glb")], results);
+        Assert.Equal("res://a.glb", results[0].ToStringValue());
+        deed.FindMethod("echo")!.Invoke(made, [Value.String("res://a.glb"), Value.String("uid://4k2m9x7q1w3ze")], results);
+        Assert.Equal("uid://4k2m9x7q1w3ze", results[0].ToStringValue());
+    }
+
+    [Fact]
     public void ALibraryIsAGlobalTableOfStaticMethods()
     {
         GeneratedCode.Build(Header + """

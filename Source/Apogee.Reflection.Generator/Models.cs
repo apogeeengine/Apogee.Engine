@@ -45,6 +45,9 @@ internal sealed class TypeModel
 
     public bool IsUnsigned64 { get; set; }
 
+    /// <summary>For <see cref="Shape.String"/>: true for <c>Apogee.Core.Assets.AssetRef</c>, which scripts see as its text form.</summary>
+    public bool IsAssetRef { get; set; }
+
     /// <summary>For <see cref="Shape.Float"/>: true for <c>double</c>.</summary>
     public bool IsDouble { get; set; }
 
@@ -145,6 +148,9 @@ internal sealed class FieldModel
 
     /// <summary>The C# expression of its <c>InspectorMeta</c>, or null when the field carries no hints.</summary>
     public string? Meta { get; set; }
+
+    /// <summary>For the <c>AssetRef</c> kind: the asset type from <c>[Property(Asset = "…")]</c>; null for every other kind.</summary>
+    public string? AssetType { get; set; }
 }
 
 internal enum DescribedKind
