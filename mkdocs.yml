@@ -94,6 +94,7 @@ nav:
           - Game manifest: manual/content/game-manifest.md
           - Packs: manual/content/packs.md
           - Asset import: manual/content/import.md
+          - Asset identity: manual/content/assets.md
           - Hot reload: manual/content/hot-reload.md
       - User interface: manual/ui/index.md
       - Tools:

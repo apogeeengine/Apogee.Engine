@@ -63,6 +63,11 @@ again only when its key is different, so changing a texture of a model, or a mod
 gone is deleted. A failed import (a file that is not a PNG, a settings file that is wrong) is reported with its file, does not stop the others, exits with code 2, and leaves the artifact the
 game had (and its index entry) until the source is fixed.
 
+### UIDs and the key
+
+Importing also gives each asset a [UID](assets.md) in its `.import.xml` (`<Import uid="uid://…"/>`, made if there is no sidecar) and lists them in `imported/assets.xml`. The `uid` attribute is not part of the key
+(`ImportSettings.KeyText` leaves it out), so a UID that is added, or that changes, imports nothing again.
+
 ### Settings
 
 An `<asset>.import.xml` next to an asset (checked against the engine's schema) changes how it is imported; every attribute is optional:
