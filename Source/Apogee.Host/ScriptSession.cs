@@ -531,14 +531,19 @@ public sealed class ScriptSession : IDisposable
         }
     }
 
-    /// <summary>Runs the world's systems for <paramref name="deltaSeconds"/>.</summary>
+    /// <summary>The tasks scripts started with <c>task</c>, for tests and tools to look at.</summary>
+    public ScriptScheduler Tasks => _vm.Scheduler;
+
+    /// <summary>Runs the world's systems for <paramref name="deltaSeconds"/> of real time (the game's time scale applies to the systems, the physics and the tasks).</summary>
     public void Progress(float deltaSeconds)
     {
+        float scaled = deltaSeconds * (float)GameLibrary.TimeScale(); // game time: what game.set_time_scale changes. Audio, the UI and input go by real time
         Steam.Update();                 // Steam's callbacks become signals before the scripts run
         Net.Update();                   // so do the network's: connections made, messages arrived
         Input.Update(InputDevices.Now); // holds that came due and taps that timed out fire before the systems and scripts read the actions
-        Physics.Update(deltaSeconds);   // before the world, so that its systems see the poses it wrote and the transform system composes them
-        World.Progress(deltaSeconds);
+        Physics.Update(scaled);         // before the world, so that its systems see the poses it wrote and the transform system composes them
+        World.Progress(scaled);
+        _vm.AdvanceTime(scaled, deltaSeconds); // tasks after the world: they see this frame's physics and transforms, and what they change is heard and laid out below
         Audio.Update(deltaSeconds);     // after the world: it reads the entities' world transforms
         Ui.Update(deltaSeconds);        // after the world and the scripts: it lays out what they changed
     }
@@ -548,6 +553,7 @@ public sealed class ScriptSession : IDisposable
     {
         DebugDraw.Clear();
         Input.EndFrame(); // the mouse's motion of the frame has been read
+        _vm.RunDeferred(); // what GUI functions, UI handlers and signals deferred after the step
         _vm.ProcessPending();
     }
 
