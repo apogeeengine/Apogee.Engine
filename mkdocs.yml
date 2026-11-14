@@ -90,6 +90,7 @@ nav:
           - Content: manual/content/content.md
           - Definitions and schemas: manual/content/defs.md
           - Packages and mods: manual/content/packages.md
+          - Game manifest: manual/content/game-manifest.md
           - Packs: manual/content/packs.md
           - Asset import: manual/content/import.md
           - Hot reload: manual/content/hot-reload.md

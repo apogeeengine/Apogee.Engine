@@ -90,9 +90,11 @@ upload with `--visibility public` once it is ready. The first time, Steam wants 
 
 ## Starting a game under Steam
 
-A game that ships on Steam has the game folder's `steam_appid.txt` (the app id alone on one line) or Steam's own launch to tell the app id. `StartGame` reads the file and asks Steam to relaunch the game through itself when
-it was started some other way (`SteamAPI_RestartAppIfNecessary`): the process then ends at once (`RestartRequested`). A **`steam_appid.txt` next to the program** turns that off, which is how you run it during development
-(Steam reads the app id from the file; use 480, Valve's *Spacewar*, to try the API without an app of your own). A watched game (`--watch`) never asks for a relaunch.
+A game that ships on Steam names its app id as `steamAppId` in its [`game.xml`](../content/game-manifest.md). `StartGame` hands it to Steam and asks Steam to relaunch the game through itself when
+it was started some other way (`SteamAPI_RestartAppIfNecessary`): the process then ends at once (`RestartRequested`). A game folder that has no `steamAppId` but a `steam_appid.txt` (the app id alone on one line)
+still works, with a warning that the file is deprecated: move the number into `game.xml`. A **`steam_appid.txt` next to the program** (or in the current folder) is not the game's setting but the Steam
+library's development switch, and it turns the relaunch off: that is how you run a game during development (Steam reads the app id from the file; use 480, Valve's *Spacewar*, to try the API without an app of
+your own). A watched game (`--watch`) never asks for a relaunch. `--workshop-upload` still reads the `steam_appid.txt` of the current folder.
 
 Steam Input is not wrapped: SDL sees Steam's virtual gamepad, so a player's Steam controller configuration works with the [input actions](../platform/input.md) as it is. Steam's networking and matchmaking are bound
 ([Native libraries](../native/native-libraries.md#steamworks-apogeenativesteam)) but have no engine layer yet.

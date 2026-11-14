@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The game.xml at the root of a game folder: what the game is called, who made it, which version it is, and what a window and a player's folder look like. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:simpleType name="GameVersion">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ExecutableName">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ReverseDns">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[a-z0-9\-]+(\.[a-z0-9\-]+)+"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="WindowSize">
+    <xs:restriction base="xs:integer">
+      <xs:minInclusive value="16"/>
+      <xs:maxInclusive value="16384"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:element name="Game">
+    <xs:annotation>
+      <xs:documentation>A game: the folder that holds this file is the game's root.</xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:all>
+        <xs:element name="EntryScene" minOccurs="0">
+          <xs:annotation>
+            <xs:documentation>The scene that is loaded before the packages' scripts run: a path inside the game, for example scenes/main.ascene.</xs:documentation>
+          </xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="path" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Icon" minOccurs="0">
+          <xs:annotation>
+            <xs:documentation>A square PNG, 256 pixels or more (1024 for macOS), as a path inside the game folder. An export makes the icon of the platform from it.</xs:documentation>
+          </xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="path" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Window" minOccurs="0">
+          <xs:annotation>
+            <xs:documentation>The window the game opens with.</xs:documentation>
+          </xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="width" type="WindowSize" default="1280"/>
+            <xs:attribute name="height" type="WindowSize" default="720"/>
+            <xs:attribute name="fullscreen" type="xs:boolean" default="false"/>
+            <xs:attribute name="resizable" type="xs:boolean" default="true"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:all>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+      <xs:attribute name="organization" type="xs:string" use="required"/>
+      <xs:attribute name="version" type="GameVersion" use="required"/>
+      <xs:attribute name="executable" type="ExecutableName"/>
+      <xs:attribute name="identifier" type="ReverseDns"/>
+      <xs:attribute name="userFolder" type="xs:string"/>
+      <xs:attribute name="steamAppId" type="xs:unsignedInt" default="0"/>
+      <xs:attribute name="description" type="xs:string" default=""/>
+      <xs:attribute name="copyright" type="xs:string" default=""/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

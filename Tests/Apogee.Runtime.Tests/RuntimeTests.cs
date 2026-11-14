@@ -436,6 +436,127 @@ public class CommandTests
         Assert.Equal(2, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", System.IO.Path.Combine(scratch.Root, "user"), "--headless")));
     }
 
+    private sealed class CapturingSink : Apogee.Core.Logging.ILogSink
+    {
+        public System.Collections.Generic.List<Apogee.Core.Logging.LogEntry> Entries { get; } = [];
+
+        public void Write(in Apogee.Core.Logging.LogEntry entry)
+        {
+            lock (Entries)
+            {
+                Entries.Add(entry);
+            }
+        }
+    }
+
+    [Fact]
+    public void AGameXmlSetsTheGameVersionThatModsAreCheckedAgainst()
+    {
+        using var scratch = new Scratch();
+        scratch.Write("game/game.xml", "<Game name=\"Versioned\" organization=\"Test\" version=\"1.4.0\"/>");
+        Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "fs.write_text('user://core.txt', 'core')"));
+        foreach ((string id, string range) in new[] { ("future", "^2.0"), ("current", "^1.0") })
+        {
+            scratch.Write($"user/mods/{id}/mod.xml", $"<Mod id=\"{id}\" version=\"1.0.0\" gameVersion=\"{range}\"><Dependency id=\"core\"/><Script path=\"main.luau\"/></Mod>");
+            scratch.Write($"user/mods/{id}/main.luau", $"fs.write_text('user://moddata/{id}/ran.txt', 'ran')");
+        }
+
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+        var sink = new CapturingSink();
+        Apogee.Core.Logging.Log.AddSink(sink);
+        int exit;
+        try
+        {
+            exit = Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", user, "--headless", "--frames", "1"));
+        }
+        finally
+        {
+            Apogee.Core.Logging.Log.RemoveSink(sink);
+        }
+
+        Assert.Equal(0, exit);
+        Assert.True(File.Exists(System.IO.Path.Combine(user, "core.txt")));
+        Assert.True(File.Exists(System.IO.Path.Combine(user, "moddata", "current", "ran.txt")));
+        Assert.False(File.Exists(System.IO.Path.Combine(user, "moddata", "future", "ran.txt")));
+        lock (sink.Entries)
+        {
+            Assert.Contains(sink.Entries, e => e.Message.Contains("future", StringComparison.Ordinal) && e.Message.Contains("needs game version ^2.0, but this is 1.4.0", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void TheSteamAppIdComesFromGameXmlAndSteamAppidTxtIsAFallbackWithAWarning()
+    {
+        using var scratch = new Scratch();
+        string folder = System.IO.Path.Combine(scratch.Root, "game");
+        Directory.CreateDirectory(folder);
+        Apogee.Content.Packages.GameManifest WithId(string id) =>
+            Apogee.Content.Packages.GameManifest.TryParse($"<Game name=\"a\" organization=\"b\" version=\"1.0.0\"{id}/>", "game.xml", out Apogee.Content.Packages.GameManifest? m, out _) ? m! : throw new InvalidOperationException();
+
+        Assert.Equal(0u, ScriptSession.SteamAppIdFor(null, folder, out string? warning));
+        Assert.Null(warning);
+
+        scratch.Write("game/steam_appid.txt", "1234\n");
+        Assert.Equal(1234u, ScriptSession.SteamAppIdFor(null, folder, out warning));
+        Assert.Contains("steam_appid.txt", warning, StringComparison.Ordinal);
+        Assert.Contains("game.xml", warning, StringComparison.Ordinal);
+        Assert.Equal(1234u, ScriptSession.SteamAppIdFor(WithId(""), folder, out warning)); // a manifest that names no app id leaves the file as it was
+        Assert.NotNull(warning);
+
+        Assert.Equal(480u, ScriptSession.SteamAppIdFor(WithId(" steamAppId=\"480\""), folder, out warning));
+        Assert.Null(warning);
+
+        scratch.Write("game/steam_appid.txt", "not a number");
+        Assert.Equal(0u, ScriptSession.SteamAppIdFor(null, folder, out _));
+    }
+
+    [Fact]
+    public void TheEntrySceneIsLoadedBeforeTheScripts()
+    {
+        using var scratch = new Scratch();
+        using (var world = new Apogee.Ecs.World())
+        {
+            world.CreateEntity("hero");
+            scratch.Write("game/scenes/main.ascene", world.SaveScene());
+        }
+
+        scratch.Write("game/game.xml", "<Game name=\"Scened\" organization=\"Test\" version=\"1.0.0\"><EntryScene path=\"scenes/main.ascene\"/></Game>");
+        Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "fs.write_text('user://seen.txt', world:lookup('hero') ~= 0 and 'hero is here' or 'no hero')"));
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+
+        Assert.Equal(0, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", user, "--headless", "--frames", "1")));
+
+        Assert.Equal("hero is here", File.ReadAllText(System.IO.Path.Combine(user, "seen.txt")));
+    }
+
+    [Fact]
+    public void AnEntrySceneThatIsNotThereIsAnErrorOfTheGame()
+    {
+        using var scratch = new Scratch();
+        scratch.Write("game/game.xml", "<Game name=\"Scened\" organization=\"Test\" version=\"1.0.0\"><EntryScene path=\"scenes/missing.ascene\"/></Game>");
+        Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "fs.write_text('user://ran.txt', 'ran')"));
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+
+        Assert.Equal(2, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", user, "--headless", "--frames", "1")));
+        Assert.False(File.Exists(System.IO.Path.Combine(user, "ran.txt")));
+    }
+
+    [Fact]
+    public void ABrokenGameXmlIsAnErrorOfTheGame()
+    {
+        using var scratch = new Scratch();
+        scratch.Write("game/game.xml", "<Game name=\"No version\" organization=\"Test\"/>");
+        Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "fs.write_text('user://ran.txt', 'ran')"));
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+
+        Assert.Equal(2, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", user, "--headless", "--frames", "1")));
+        Assert.False(File.Exists(System.IO.Path.Combine(user, "ran.txt")));
+
+        var thrown = Assert.Throws<Apogee.Content.ContentException>(() => ScriptSession.StartGame(System.IO.Path.Combine(scratch.Root, "game"), user));
+        Assert.Contains("game.xml:1:", thrown.Message, StringComparison.Ordinal);
+        Assert.Contains("version", thrown.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AGameFolderThatIsNotThereIsOne()
     {

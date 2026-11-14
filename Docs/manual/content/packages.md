@@ -28,7 +28,7 @@ my_mod/
 | `id` | lowercase letters, digits and underscores, up to 64; **the name of the package's folder** (or of its `.zip` without the extension). Not `engine`, `self`, `res`, `user` or `mod`. |
 | `version` | `major.minor.patch`; missing parts are 0, a leading `v` and a `-suffix` are ignored |
 | `apiVersion` | the package API it was written for (default 1); a package that needs a newer one than the engine has does not load |
-| `gameVersion` | which versions of the game it works with (a version range, default any) |
+| `gameVersion` | which versions of the game it works with (a version range, default any), checked against the `version` of the game's [`game.xml`](game-manifest.md); a game without one has no version and the range is not checked |
 | `Dependency` | a package that must be there, and which versions of it (a range, default any) |
 | `Script` | a `.luau` file inside the package, run when it loads, in the order written |
 | `Content`, `Schema` | folders of definitions and of schemas inside the package |

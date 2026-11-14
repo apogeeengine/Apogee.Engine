@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Text;
+using Apogee.Content;
 using Apogee.Content.FileSystem;
 using Apogee.Core.Graphics;
 using Apogee.Content.Import;
@@ -249,16 +250,41 @@ public sealed class ScriptSession : IDisposable
     /// </summary>
     /// <param name="runScripts">False makes everything a game has (the world, the file system, the models, physics, audio, the UI) without running the packages' scripts: what an editor edits before Play.</param>
     /// <param name="scene">Scene text (<see cref="World.SaveScene()"/>) loaded into the world before the scripts run: what Play starts from.</param>
-    public static ScriptSession StartGame(string folder, string? userFolder, bool watch = false, bool realAudio = false, bool realSteam = false, bool runScripts = true, string? scene = null)
+    public static ScriptSession StartGame(string folder, string? userFolder, bool watch = false, bool realAudio = false, bool realSteam = false, bool runScripts = true, string? scene = null) =>
+        StartGame(new GameStart { Folder = folder, UserFolder = userFolder, Watch = watch, RealAudio = realAudio, RealSteam = realSteam, RunScripts = runScripts, Scene = scene });
+
+    /// <summary>
+    /// Starts a game as <see cref="StartGame(string, string?, bool, bool, bool, bool, string?)"/> does, and reads its <c>game.xml</c> if it has one: the user folder (unless one is given),
+    /// the Steam app id and the version that the packages' <c>gameVersion</c> are checked against come from it, and so does the entry scene.
+    /// </summary>
+    /// <exception cref="ContentException">The game's <c>game.xml</c> is wrong, or its entry scene is missing.</exception>
+    public static ScriptSession StartGame(GameStart start)
     {
+        string folder = start.Folder;
+        bool watch = start.Watch;
+        if (start.PacksOnly && watch)
+        {
+            throw new ArgumentException("A game that is only its packs cannot be watched: there are no loose files to watch.", nameof(start));
+        }
+
+        GameManifest? manifest = GameManifest.Load(folder, out IReadOnlyList<string> manifestProblems);
+        if (manifestProblems.Count > 0)
+        {
+            throw new ContentException($"{GameManifest.FileName} of {folder} is wrong:{Environment.NewLine}{string.Join(Environment.NewLine, manifestProblems)}");
+        }
+
         RegisterLibraries();
         ScriptGui.Clear();
         GameLibrary.Reset();
         var files = new VirtualFileSystem();
-        files.Mount("res://", new DirectorySource(folder, writable: watch)); // a watching run imports changed assets into res://imported
+        if (!start.PacksOnly)
+        {
+            files.Mount("res://", new DirectorySource(folder, writable: watch)); // a watching run imports changed assets into res://imported
+        }
+
         ShaderLibrary.MountEngineShaders(files, sources: watch); // the engine's shaders: compiled next to the program, or when watching the source files, so that editing them rebuilds the pipelines
         var packs = new List<PackSource>();
-        PackKey? key = PackKey.FromEnvironment();
+        PackKey? key = start.Key ?? PackKey.FromEnvironment();
         foreach (string pack in FindPacks(folder))
         {
             PackSource source = PackSource.Open(pack, key);
@@ -267,18 +293,38 @@ public sealed class ScriptSession : IDisposable
             Log.Info("Packs", $"{Path.GetFileName(pack)}: {source.FileCount} files in {source.PartCount} part(s){(source.IsEncrypted ? ", encrypted" : "")}");
         }
 
-        string user = userFolder ?? VirtualFileSystem.DefaultUserDirectory("Apogee", Path.GetFileName(Path.GetFullPath(folder).TrimEnd('/', '\\')));
+        string user;
+        if (start.UserFolder is not null)
+        {
+            user = start.UserFolder;
+        }
+        else if (manifest is not null)
+        {
+            user = manifest.UserDirectory();
+        }
+        else
+        {
+            user = VirtualFileSystem.DefaultUserDirectory("Apogee", Path.GetFileName(Path.GetFullPath(folder).TrimEnd('/', '\\')));
+            Log.Info("Runtime", $"No {GameManifest.FileName} in {folder}: the player's files go in {user}, named after the folder.");
+        }
+
         Directory.CreateDirectory(user);
         files.Mount("user://", new DirectorySource(user, writable: true));
 
         // Steam first: the cloud and the Workshop's mods are file sources, and the mods are found with the others. A game that Steam relaunches (SteamSystem.RestartRequested) stops here.
-        var steamOptions = new SteamOptions { Enabled = realSteam, AppId = ReadSteamAppId(folder), RestartIfNecessary = !watch };
+        uint appId = SteamAppIdFor(manifest, folder, out string? appIdWarning);
+        if (appIdWarning is not null)
+        {
+            Log.Warn("Steam", appIdWarning);
+        }
+
+        var steamOptions = new SteamOptions { Enabled = start.RealSteam, AppId = appId, RestartIfNecessary = !watch };
         var steamSystem = new SteamSystem(steamOptions);
         PackageSet packages;
         try
         {
             files.Mount("cloud://", steamSystem.CreateCloudSource(Path.Combine(user, "cloud")));
-            var packageOptions = new PackageOptions();
+            var packageOptions = new PackageOptions { GameVersion = manifest?.Version };
             if (steamSystem.IsActive)
             {
                 files.Mount("workshop://", new WorkshopSource(steamSystem.InstalledWorkshopItems()));
@@ -342,7 +388,7 @@ public sealed class ScriptSession : IDisposable
             vm.SetGlobal("world", world);
             InputActionRouter input = InstallInput(vm);
             physics = InstallPhysics(vm, world);
-            audio = InstallAudio(vm, world, physics, files, realAudio);
+            audio = InstallAudio(vm, world, physics, files, start.RealAudio);
             steamSystem.Adopt();
             vm.SetGlobal("steam", steamSystem);
             net = InstallNet(vm);
@@ -350,12 +396,22 @@ public sealed class ScriptSession : IDisposable
             models = InstallModels(vm, files, content);
             uiSystem = InstallUi(vm, files, content);
             RegisterSceneSupport(world, models);
-            if (scene is not null)
+            if (start.Scene is not null)
             {
-                world.LoadScene(scene);
+                world.LoadScene(start.Scene);
+            }
+            else if (start.RunScripts && manifest?.EntryScene is { } entryScene)
+            {
+                string entryPath = "res://" + entryScene;
+                if (!files.FileExists(entryPath))
+                {
+                    throw new ContentException($"The entry scene {entryPath} of {GameManifest.FileName} does not exist.");
+                }
+
+                world.LoadScene(files.ReadAllText(entryPath));
             }
 
-            if (runScripts)
+            if (start.RunScripts)
             {
                 foreach (PackageRunResult result in loader.Load(vm))
                 {
@@ -411,11 +467,29 @@ public sealed class ScriptSession : IDisposable
         }
     }
 
-    /// <summary>The game's Steam app id: the number in <c>steam_appid.txt</c> in the game's folder, or 0.</summary>
-    private static uint ReadSteamAppId(string folder)
+    /// <summary>
+    /// The game's Steam app id: the one in its <c>game.xml</c> (when it names one); else the number in <c>steam_appid.txt</c> in the game's folder, with a warning that the file is deprecated;
+    /// else 0.
+    /// </summary>
+    /// <param name="manifest">The game's <c>game.xml</c>, or null.</param>
+    /// <param name="folder">The game's folder.</param>
+    /// <param name="warning">What to tell the developer, or null.</param>
+    public static uint SteamAppIdFor(GameManifest? manifest, string folder, out string? warning)
     {
+        warning = null;
+        if (manifest is { SteamAppId: not 0 })
+        {
+            return manifest.SteamAppId;
+        }
+
         string file = Path.Combine(folder, "steam_appid.txt");
-        return File.Exists(file) && uint.TryParse(File.ReadAllText(file).Trim(), out uint id) ? id : 0;
+        if (!File.Exists(file))
+        {
+            return 0;
+        }
+
+        warning = "steam_appid.txt in the game folder is deprecated: put steamAppId in game.xml.";
+        return uint.TryParse(File.ReadAllText(file).Trim(), out uint id) ? id : 0;
     }
 
     /// <summary>

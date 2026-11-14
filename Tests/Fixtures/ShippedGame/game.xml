@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Game name="Fixture Game" organization="Apogee" version="1.0.0" executable="FixtureGame" identifier="org.apogee.fixturegame"
+      description="The shipped-game fixture of the CI." copyright="Copyright 2026 The Apogee Engine Authors">
+  <Icon path="icon.png"/>
+  <Window width="1280" height="720" fullscreen="false" resizable="true"/>
+</Game>

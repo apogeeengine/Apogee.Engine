@@ -11,6 +11,8 @@
   <ItemGroup>
     <!-- The schema of a package's mod.xml. -->
     <EmbeddedResource Include="Packages/mod.xsd" LogicalName="Packages/mod.xsd" />
+    <!-- The schema of a game folder's game.xml. -->
+    <EmbeddedResource Include="Packages/game.xsd" LogicalName="Packages/game.xsd" />
     <!-- The schema of the <asset>.import.xml settings files. -->
     <EmbeddedResource Include="Import/import.xsd" LogicalName="Import/import.xsd" />
   </ItemGroup>
