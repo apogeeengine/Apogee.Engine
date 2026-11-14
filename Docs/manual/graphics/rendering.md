@@ -120,13 +120,14 @@ var camera = new Camera { Position = new Vector3(0, 2, 8) };
 camera.LookAt(Vector3.Zero);
 
 Frame frame = loop.BeginFrame()!;
-renderer.Render(frame, scene, camera, RenderTarget.Window(frame.Backbuffer!.Value), new RenderSettings { Exposure = 1f });
+renderer.Render(frame, scene, camera, RenderTarget.Window(frame.Backbuffer!.Value), new RenderSettings { Tonemapper = Tonemapper.Gt7, ExposureMode = ExposureMode.Auto });
 loop.EndFrame(frame);
 ```
 
 **The frame.** *Depth prepass* (opaque and alpha-masked geometry into a reverse-Z D32 image) → *Build clusters* (only when the projection changed)
 → *Cull lights* → *Forward* (PBR into an RGBA16F image, opaque and masked, then blended surfaces far to near, depth-tested against the
-prepass) → *Tonemap* (exposure, the Khronos PBR Neutral tone mapper, and the sRGB transfer function, into the target). `renderer.LastPlan` is
+prepass; the camera's exposure is applied here) → *Luminance histogram* and *Resolve exposure* (auto-exposure only) → *Tonemap* (the GT7 or the Khronos PBR Neutral tone mapper, and the sRGB transfer function,
+into the target). The units of the lights, the exposure and the tone mappers are in [Exposure and tone mapping](tone-mapping.md). `renderer.LastPlan` is
 the graph and `LastStats` the draw, light and cluster counts.
 
 **Clusters.** The view is cut into 16 x 9 cells over the screen and 24 slices in depth, spaced exponentially between the camera's `Near` and
@@ -138,9 +139,9 @@ frame-in-flight and are rebuilt only when the projection changes. Spot lights ar
 
 **Lighting.** glTF metallic-roughness materials with Cook-Torrance GGX: Smith visibility, Schlick Fresnel, Lambert diffuse, base color,
 metallic-roughness, normal, occlusion and emissive textures with `KHR_texture_transform`, alpha mask and blend, double-sided, and unlit.
-Lights are point and spot (`RenderScene.Lights`, editable every frame; intensity is candela, falling off as the inverse square and reaching
+Lights are point and spot (`RenderScene.Lights`, editable every frame; light is photometric, see [Exposure and tone mapping](tone-mapping.md); intensity is candela, falling off as the inverse square and reaching
 zero exactly at the light's radius, which is its glTF `range` or where it fades below a faint threshold) plus one directional sun
-(`SunDirection`, `SunColor`) and a two-colour ambient. No shadows and no image-based lighting yet, so a smooth metal reflects only the lights.
+(`SunDirection`, `SunColor`, in lux) and a two-colour ambient. No shadows and no image-based lighting yet, so a smooth metal reflects only the lights.
 `RenderSettings.Debug = DebugView.ClusterLights` tints each pixel by its cluster's light count (dark: none; blue to red: one to eight or more).
 
 **Conventions.** Right-handed, +Y up, a camera looking down -Z at yaw 0. Reverse-Z with an infinite far plane: depth 1 at the near plane, 0
@@ -225,8 +226,8 @@ light the world, that an unknown or removed id draws nothing, that a model 3 000
 scripts use the `debug_draw` library (`debug_draw.line(from, to, color)`, `box`, `sphere`, `arrow`, `axes`; a color is a vector of red, green and blue from 0 to 1, white without one), called every frame for as long as the picture should stay.
 
 `RenderSettings.DebugDraw` is the instance to draw; the renderer reads it and does not clear it (whoever fills it clears it: the runtime does after every frame). When it is not empty a pass, *Debug draw*,
-is added between the forward pass and tone mapping: it loads the HDR image, depth-tests against the scene's depth without writing it, and so draws over the lit picture before exposure and the tone mapper, which is why a color means
-what it says (`debug_draw.slang` takes the colors as sRGB and the tone mapper encodes them back).
+is added between the forward pass and tone mapping: it loads the HDR image, depth-tests against the scene's depth without writing it, and so draws over the lit picture before the tone mapper, as display-referred colors (the exposure does not change them; `debug_draw.slang` takes the colors as sRGB). The
+tone mapper then treats them like any other color: with `Tonemapper.PbrNeutral` they come out as they went in, with GT7 the brightest and most saturated ones are pulled a little towards white.
 
 - **Lines** are quads of two triangles, widened to `RenderSettings.DebugLineWidth` pixels (1.5 by default) in the vertex shader: hardware line width is not portable (Metal has none). A quad cannot be left to the clipper, so the
   shader cuts a line at the near plane itself, and a line wholly behind the camera is not drawn. The part of a line that is behind something is drawn again without the depth test, at `DebugHiddenAlpha` (0.25; 0 hides it).

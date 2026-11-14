@@ -75,6 +75,7 @@ nav:
       - Graphics:
           - Graphics: manual/graphics/graphics.md
           - Rendering: manual/graphics/rendering.md
+          - Exposure and tone mapping: manual/graphics/tone-mapping.md
           - Metal: manual/graphics/metal.md
       - Physics:
           - Physics: manual/physics/physics.md
