@@ -143,6 +143,11 @@ public sealed class PackageLoader
             {
                 failed.Add(package.Id);
                 Log.Error("Packages", $"{package.Id} {error}");
+                if (package.Kind != PackageKind.Base)
+                {
+                    // A mod that is left out must not go on running what its scripts started before they failed (a task.every, say). Its other registrations stay.
+                    vm.Scheduler.CancelOwner(_owners[package.Id]);
+                }
             }
 
             results.Add(new PackageRunResult(package, error is null, error));

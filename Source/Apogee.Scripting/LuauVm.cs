@@ -75,6 +75,7 @@ public sealed unsafe partial class LuauVm : IDisposable, IScriptEnvironments
         }
 
         s_vms[(nint)_main] = this;
+        Scheduler = new ScriptScheduler(this);
         BaseOwner = new ScriptOwner(this, 0, "base", isMod: false, category: 0, memoryLimit: 0, _options.TimeBudgetMilliseconds);
         _owners.Add(BaseOwner);
         Lua.Setthreaddata(_main, (void*)1);
@@ -201,6 +202,9 @@ public sealed unsafe partial class LuauVm : IDisposable, IScriptEnvironments
 
         _disposed = true;
 
+        // The tasks hold registry references and threads of the state: they end before it does.
+        Scheduler.CancelAll();
+
         // Closing the state collects every userdata, which notes the objects scripts made; those the engine did not adopt end here.
         Lua.CloseVm(_main);
         s_vms.TryRemove((nint)_main, out _);
@@ -267,7 +271,9 @@ public sealed unsafe partial class LuauVm : IDisposable, IScriptEnvironments
         throw new ScriptException(kind, message);
     }
 
-    private ScriptOwner OwnerOf(State* thread) => _owners[(int)(nint)Lua.Getthreaddata(thread) - 1];
+    internal State* Main => _main;
+
+    internal ScriptOwner OwnerOf(State* thread) => _owners[(int)(nint)Lua.Getthreaddata(thread) - 1];
 
     private static LuauVm VmOf(State* thread) => s_vms[(nint)Lua.Mainthread(thread)];
 

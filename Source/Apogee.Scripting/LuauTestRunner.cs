@@ -38,6 +38,9 @@ public static class LuauTestRunner
     /// <summary>A case that waits for more frames than this has hung.</summary>
     private const int MaxFrames = 100_000;
 
+    /// <summary>The time one frame of a test case takes for the <c>task</c> library, game and real: 1/60 s.</summary>
+    private const double FrameSeconds = 1.0 / 60;
+
     public static TestRunResult Run(string directory, string? filter = null, TextWriter? output = null, int timeBudgetMilliseconds = 10_000)
     {
         output ??= TextWriter.Null;
@@ -104,6 +107,8 @@ public static class LuauTestRunner
                 {
                     break;
                 }
+
+                vm.AdvanceTime(FrameSeconds, FrameSeconds); // a fixed 60 Hz clock: tasks wake after the same number of frames on every machine
 
                 if (frame >= MaxFrames)
                 {

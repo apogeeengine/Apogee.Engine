@@ -38,6 +38,9 @@ public static class ScriptScope
     [ThreadStatic]
     private static ReloadScope? s_current;
 
+    /// <summary>The scope of the module that is loading now on this thread, or null. A library that starts something later (the task scheduler) notes it to tie that to the module.</summary>
+    public static ReloadScope? Current => s_current;
+
     /// <summary>Makes <paramref name="scope"/> the current one until the result is disposed.</summary>
     public static Restore Enter(ReloadScope scope)
     {
