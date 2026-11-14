@@ -69,6 +69,13 @@ static const float GT7_BLEND_RATIO = 0.6;
 static const float GT7_FADE_START = 0.98;
 static const float GT7_FADE_END = 1.16;
 
+// Derived from the above for the SDR peak (250 cd/m2, 2.5 in frame-buffer units): the shoulder's constants, and the lightness I of ICtCp of a gray at the peak. The original computes them once on
+// the CPU; here they are literals so that every pixel does not recompute them. (The last one is the single-precision value, as the original computes it; in double it is 0.6025592.)
+static const float GT7_SDR_SHOULDER_A = 2.963333333;
+static const float GT7_SDR_SHOULDER_B = -3.373351238;
+static const float GT7_SDR_SHOULDER_C = -0.5395683453;
+static const float GT7_SDR_PEAK_ICTCP = 0.602560759;
+
 // 0 below edge0, 1 above edge1, a cubic smoothstep between. The value comes first, as in the original.
 float gtSmoothStep(float x, float edge0, float edge1)
 {
@@ -159,14 +166,10 @@ float gtCurve(float x, float peak)
     if (x < 0.0)
         return 0.0;
 
-    // The shoulder's constants: kA + kB * exp(x * kC) meets the linear section at LINEAR_SECTION * peak.
-    float k = (GT7_CURVE_LINEAR_SECTION - 1.0) / (GT7_CURVE_ALPHA - 1.0);
-    float kA = peak * GT7_CURVE_LINEAR_SECTION + peak * k;
-    float kB = -peak * k * exp(GT7_CURVE_LINEAR_SECTION / k);
-    float kC = -1.0 / (k * peak);
-
+    // The shoulder kA + kB * exp(x * kC) meets the linear section at LINEAR_SECTION * peak. Its constants are the original's initializeCurve for the SDR peak, written out as literals
+    // (the tests check them against Gt7ToneMapping.cs): k = (LINEAR_SECTION - 1) / (ALPHA - 1), kA = peak * (LINEAR_SECTION + k), kB = -peak * k * exp(LINEAR_SECTION / k), kC = -1 / (k * peak).
     if (x >= GT7_CURVE_LINEAR_SECTION * peak)
-        return kA + kB * exp(x * kC);
+        return GT7_SDR_SHOULDER_A + GT7_SDR_SHOULDER_B * exp(x * GT7_SDR_SHOULDER_C);
 
     float weightLinear = gtSmoothStep(x, 0.0, GT7_CURVE_GRAY_POINT);
     float weightToe = 1.0 - weightLinear;
@@ -180,9 +183,6 @@ float3 gt7ToneMapSdr(float3 rgb)
     const float peak = GRAN_TURISMO_SDR_PAPER_WHITE / REFERENCE_LUMINANCE;
     const float sdrCorrectionFactor = 1.0 / peak;
 
-    // The lightness of a gray at the peak, to know how close to the peak a pixel is.
-    float peakIctcp = rgbToICtCp(float3(peak, peak, peak)).x;
-
     float3 ucs = rgbToICtCp(rgb);
 
     // Each channel through the curve: this "skews" the hue of saturated colors.
@@ -190,7 +190,7 @@ float3 gt7ToneMapSdr(float3 rgb)
     float3 skewedUcs = rgbToICtCp(skewedRgb);
 
     // The input's chroma, faded out as its lightness nears the peak, on the curved lightness.
-    float chromaScale = gtChromaCurve(ucs.x / peakIctcp, GT7_FADE_START, GT7_FADE_END);
+    float chromaScale = gtChromaCurve(ucs.x / GT7_SDR_PEAK_ICTCP, GT7_FADE_START, GT7_FADE_END);
     float3 scaledUcs = float3(skewedUcs.x, ucs.y * chromaScale, ucs.z * chromaScale);
     float3 scaledRgb = iCtCpToRgb(scaledUcs);
 
@@ -215,10 +215,17 @@ float3 rec2020ToRec709(float3 c)
         -0.0181508, -0.1005789,  1.1187297), c);
 }
 
-// An exposed color of the HDR image to the linear Rec.709 color the sRGB transfer function encodes. Negative and NaN channels are taken as 0 (the original assumes valid input).
+// A channel the operator can take: NaN and negative are 0 (the original assumes valid input), and an infinity, which a half-float image holds above 65 504, is that largest value (an infinity
+// would make NaN in the operator's ICtCp, and a NaN is undefined in SPIR-V's min and max).
+float gtSanitize(float v)
+{
+    return isnan(v) ? 0.0 : clamp(v, 0.0, 65504.0);
+}
+
+// An exposed color of the HDR image to the linear Rec.709 color the sRGB transfer function encodes.
 float3 gt7Display(float3 exposed)
 {
-    exposed = float3(isnan(exposed.r) ? 0.0 : max(exposed.r, 0.0), isnan(exposed.g) ? 0.0 : max(exposed.g, 0.0), isnan(exposed.b) ? 0.0 : max(exposed.b, 0.0));
+    exposed = float3(gtSanitize(exposed.r), gtSanitize(exposed.g), gtSanitize(exposed.b));
     float3 mapped = gt7ToneMapSdr(rec709ToRec2020(exposed * (GRAN_TURISMO_SDR_PAPER_WHITE / REFERENCE_LUMINANCE)));
     return saturate(rec2020ToRec709(mapped));
 }
@@ -234,6 +241,7 @@ float3 linearToSrgb(float3 c)
 float4 tonemapFs(FullscreenOutput input) : SV_Target
 {
     float3 hdr = gTextures[push.texture].SampleLevel(gSamplers[push.sampler], input.uv, 0).rgb;
+    hdr = float3(gtSanitize(hdr.r), gtSanitize(hdr.g), gtSanitize(hdr.b));     // for both tone mappers: an infinity or a NaN is not a color
     float3 display = push.tonemapper == 0 ? gt7Display(hdr) : saturate(neutralTonemap(hdr));
     return float4(linearToSrgb(display), 1.0);
 }

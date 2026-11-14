@@ -58,17 +58,23 @@ public unsafe class ExposureTests(GpuFixture gpu) : GpuTest(gpu)
             }
             else if (i % 73 == 0)
             {
-                luminance = float.PositiveInfinity;      // above the range (half precision tops out below it, at 2^16, so only an infinity gets there)
+                luminance = float.PositiveInfinity;      // a pixel that overflowed the half-float image: not measured (bin 0)
             }
             else if (i % 97 == 0)
             {
                 luminance = MathF.Pow(2f, MinLog2 - 3f); // below it
             }
 
-            Half half = (Half)luminance;   // the bins at the top of the range overflow to infinity, which is in the last bin too
+            Half half = (Half)luminance;   // the bins at the top of the range overflow to infinity, which is not measured (bin 0)
+            // Every 13th pixel is unlit: the forward pass writes alpha 0 for it, and it is not measured (it lands in bin 0, which the average leaves out).
+            bool unlit = i % 13 == 7;
             if (depths[i] == 0f)
             {
                 sky++;
+            }
+            else if (unlit)
+            {
+                expected[0]++;
             }
             else
             {
@@ -80,7 +86,7 @@ public unsafe class ExposureTests(GpuFixture gpu) : GpuTest(gpu)
                 BitConverter.TryWriteBytes(texels.AsSpan((i * 8) + (c * 2)), half);
             }
 
-            BitConverter.TryWriteBytes(texels.AsSpan((i * 8) + 6), (Half)1f);
+            BitConverter.TryWriteBytes(texels.AsSpan((i * 8) + 6), unlit ? (Half)0f : (Half)1f);
         }
 
         using GpuImage image = Device.CreateImage(new ImageDescription(PixelFormat.R16G16B16A16Sfloat, width, height, ImageUsage.Sampled), "histogram input");
@@ -121,7 +127,6 @@ public unsafe class ExposureTests(GpuFixture gpu) : GpuTest(gpu)
         Assert.Equal((width * height) - sky, (int)actual.Sum(c => (long)c));
         Assert.Equal(expected, actual);
         Assert.True(actual[0] > 20, "black and too-dark pixels are in bin 0");
-        Assert.True(actual[255] > 5, "pixels above the range are in the last bin");
     }
 
     [Theory]
@@ -390,5 +395,34 @@ public unsafe class ExposureTests(GpuFixture gpu) : GpuTest(gpu)
         (_, float ev4, float average4) = rig.Renderer.ReadExposureState();
         Assert.Equal(2000f, average4, 2000f * 0.05f);
         Assert.Equal(ExposureMath.Ev100FromLuminance(average4), ev4, 1e-3f);
+    }
+
+    [Fact]
+    public void AnUnlitColorIsDisplayReferredAndDoesNotFeedBackIntoTheAutoExposure()
+    {
+        // Most of the view is an unlit quad of 0.8: not light, so it is neither exposed nor measured. Measured as luminance (0.8 divided by the exposure) it would pull the exposure towards
+        // itself a little further every frame; only the small lit patch in the middle, 2000 cd/m2, may set it.
+        var scene = new TestScene();
+        scene.AddGround(2, scene.AddMaterial(new MaterialData { BaseColorFactor = new Vector4(0, 0, 0, 1), EmissiveFactor = new Vector3(2000f), RoughnessFactor = 1f }));
+        scene.AddBox(new Vector3(0, -0.6f, 0), new Vector3(24f, 1f, 24f), scene.AddMaterial(new MaterialData { BaseColorFactor = new Vector4(0.8f, 0.8f, 0.8f, 1), Unlit = true }));
+
+        using var rig = new Rig(Device);
+        using RenderScene mostlyUnlit = rig.Renderer.CreateScene(scene.ToModel());
+        mostlyUnlit.AmbientSky = mostlyUnlit.AmbientGround = Vector3.Zero;
+        var settings = new RenderSettings { Tonemapper = Tonemapper.Gt7, ExposureMode = ExposureMode.Auto, DeltaTime = 0.5f };
+
+        float expected = ExposureMath.Ev100FromLuminance(2000f);
+        byte[] last = [];
+        for (int frame = 0; frame < 6; frame++)
+        {
+            last = rig.Render(mostlyUnlit, settings);
+            (_, float ev, float average) = rig.Renderer.ReadExposureState();
+            Assert.Equal(expected, ev, 0.07f);
+            Assert.Equal(2000f, average, 2000f * 0.05f);
+        }
+
+        // The unlit color is shown as it is authored (0.8 through the tone mapper, whatever the exposure), the lit patch as exposed.
+        int at = ((18 * (int)Width) + 8) * 4;
+        Assert.Equal(Gt7Byte(0.8f), last[at], 2.5f);
     }
 }

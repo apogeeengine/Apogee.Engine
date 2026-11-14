@@ -1,5 +1,8 @@
 using System;
+using System.Globalization;
+using System.IO;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Apogee.Rendering.Tests;
@@ -195,6 +198,12 @@ public class Gt7ToneMappingTests
         Assert.Equal(Vector3.Zero, Gt7ToneMapping.ToDisplay(Vector3.Zero));
         Assert.Equal(Vector3.Zero, Gt7ToneMapping.ToDisplay(new Vector3(-1f, float.NaN, -0.2f)));
 
+        // An infinity (a highlight that overflowed the half-float image) is the largest half float, and comes out finite, at the display's white: not NaN, which min and max do not define.
+        Vector3 overflowed = Gt7ToneMapping.ToDisplay(new Vector3(float.PositiveInfinity, 50f, float.PositiveInfinity));
+        Assert.True(float.IsFinite(overflowed.X) && float.IsFinite(overflowed.Y) && float.IsFinite(overflowed.Z), overflowed.ToString());
+        Assert.Equal(Gt7ToneMapping.ToDisplay(new Vector3(65504f, 50f, 65504f)), overflowed);
+        Assert.Equal(1f, Gt7ToneMapping.ToDisplay(new Vector3(float.PositiveInfinity)).X, 1e-3f);
+
         float previous = 0f;
         for (float v = 0f; v <= 30f; v += 0.05f)
         {
@@ -207,6 +216,60 @@ public class Gt7ToneMappingTests
         // An exposed 1.0 (the sensor's saturation) is shown a little below white, 0.18 as a mid-tone.
         Assert.InRange(Gt7ToneMapping.ToDisplay(Gray(1f)).X, 0.8f, 0.9f);
         Assert.InRange(Gt7ToneMapping.ToDisplay(Gray(0.18f)).X, 0.15f, 0.25f);
+    }
+
+    [Fact]
+    public void TheDerivedConstantsInTheShaderAreTheTwinsValues()
+    {
+        // tonemap.slang has the SDR shoulder's constants and the lightness of the peak as literals (the original computes them once; a shader would do it for every pixel).
+        string source = File.ReadAllText(Path.Combine(ShaderFiles.Directory(), "tonemap.slang"));
+        float Literal(string name) => float.Parse(Regex.Match(source, @"static const float " + name + @" = (-?[0-9.]+);").Groups[1].Value, CultureInfo.InvariantCulture);
+
+        (float a, float b, float c, float peak) = Gt7ToneMapping.Sdr().Derived;
+        Assert.Equal(a, Literal("GT7_SDR_SHOULDER_A"), MathF.Abs(a) * 1e-6f);
+        Assert.Equal(b, Literal("GT7_SDR_SHOULDER_B"), MathF.Abs(b) * 1e-6f);
+        Assert.Equal(c, Literal("GT7_SDR_SHOULDER_C"), MathF.Abs(c) * 1e-6f);
+        Assert.Equal(peak, Literal("GT7_SDR_PEAK_ICTCP"), MathF.Abs(peak) * 1e-6f);
+
+        // And they are the original's: kA 2.9633333, kB -3.3733512, kC -0.5395683, I of the peak 0.60255915 (computed from the original's initializeCurve in double precision).
+        Assert.Equal(2.9633333f, a, 1e-5f);
+        Assert.Equal(-3.3733512f, b, 1e-5f);
+        Assert.Equal(-0.5395683f, c, 1e-5f);
+        Assert.Equal(0.60255915f, peak, 1e-5f);
+    }
+
+    [Fact]
+    public void TheOperatorGivesTheOriginalsOutputsForItsOwnTestInputs()
+    {
+        // The inputs of the original's main() (linear Rec.2020, frame-buffer values) and its outputs, computed in double precision from the original's source (a transliteration; the
+        // original itself was not run). The values are frame-buffer values: the SDR ones are 0 to 1, the HDR ones go up to the peak over 100.
+        Vector3[] inputs = [new(0.5f, 1.23f, 0.75f), new(12.3f, 34.3f, 56.9f), new(1504.7f, 64.51f, 0.5f)];
+        (Gt7ToneMapping Mapper, Vector3[] Expected)[] cases =
+        [
+            (Gt7ToneMapping.Sdr(), [new(0.199664f, 0.490678f, 0.299549f), new(1f, 1f, 1f), new(1f, 1f, 0.738770f)]),
+            (Gt7ToneMapping.Hdr(1000f), [new(0.499930f, 1.229967f, 0.749978f), new(10f, 10f, 10f), new(10f, 10f, 6.706918f)]),
+            (Gt7ToneMapping.Hdr(4000f), [new(0.499930f, 1.229967f, 0.749978f), new(11.355797f, 30.070416f, 40f), new(40f, 40f, 23.848369f)]),
+            (Gt7ToneMapping.Hdr(10000f), [new(0.499930f, 1.229967f, 0.749978f), new(12.279202f, 34.240514f, 56.400996f), new(91.724877f, 68.019940f, 42.573367f)]),
+        ];
+
+        foreach ((Gt7ToneMapping mapper, Vector3[] expected) in cases)
+        {
+            for (int i = 0; i < inputs.Length; i++)
+            {
+                Vector3 actual = mapper.Apply(inputs[i]);
+                Assert.Equal(expected[i].X, actual.X, (expected[i].X * 5e-4f) + 1e-4f);
+                Assert.Equal(expected[i].Y, actual.Y, (expected[i].Y * 5e-4f) + 1e-4f);
+                Assert.Equal(expected[i].Z, actual.Z, (expected[i].Z * 5e-4f) + 1e-4f);
+            }
+        }
+    }
+
+    [Fact]
+    public void TheHdrPeakIsKeptInTheRangeTheOriginalSupports()
+    {
+        // 250 to 10 000 cd/m2: below that the curve's parameters (tuned for a paper white of 250) do not hold.
+        Assert.Equal(Gt7ToneMapping.Hdr(250f).Apply(Gray(100f)), Gt7ToneMapping.Hdr(50f).Apply(Gray(100f)));
+        Assert.Equal(Gt7ToneMapping.Hdr(10_000f).Apply(Gray(500f)), Gt7ToneMapping.Hdr(50_000f).Apply(Gray(500f)));
     }
 
     /// <summary>Solves a 3 x 3 linear system by Cramer's rule.</summary>

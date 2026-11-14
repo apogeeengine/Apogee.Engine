@@ -55,8 +55,14 @@ public readonly struct Gt7ToneMapping
     /// <summary>The operator for an SDR display: the curve peaks at 250 cd/m2 and the result is scaled to 0..1 for the sRGB transfer function.</summary>
     public static Gt7ToneMapping Sdr() => new(SdrPaperWhite, 1f / SdrPaperWhiteFrameBuffer);
 
-    /// <summary>The operator for an HDR display of <paramref name="peakNits"/> cd/m2 (250 to 10 000); the result is in frame-buffer units, up to the peak.</summary>
-    public static Gt7ToneMapping Hdr(float peakNits) => new(peakNits, 1f);
+    /// <summary>
+    /// The operator for an HDR display of <paramref name="peakNits"/> cd/m2; the result is in frame-buffer units, up to the peak. The original supports 250 to 10 000 (its curve's parameters were tuned
+    /// for an SDR paper white of 250), so the peak is clamped to that range.
+    /// </summary>
+    public static Gt7ToneMapping Hdr(float peakNits) => new(Math.Clamp(peakNits, SdrPaperWhite, 10_000f), 1f);
+
+    /// <summary>The shoulder's constants and the ICtCp lightness of a gray at the peak, which <c>tonemap.slang</c> has as literals for the SDR peak; the tests compare them.</summary>
+    internal (float ShoulderA, float ShoulderB, float ShoulderC, float PeakIctcp) Derived => (_kA, _kB, _kC, _peakIctcp);
 
     /// <summary>The tone-mapped color (frame-buffer units, linear Rec.2020) of a scene color in linear Rec.2020 frame-buffer units.</summary>
     public Vector3 Apply(Vector3 rgb)
@@ -200,7 +206,7 @@ public readonly struct Gt7ToneMapping
 
     /// <summary>
     /// The whole SDR path of the renderer's tone-mapping pass for one pixel, as bytes' source values: a color in the HDR image (linear Rec.709, exposed so that 1.0 is the exposure's saturation point)
-    /// to the linear Rec.709 color that is encoded with the sRGB transfer function. Negative and NaN channels are taken as 0.
+    /// to the linear Rec.709 color that is encoded with the sRGB transfer function. Negative and NaN channels are taken as 0, and an infinity as 65 504 (the largest half float): an infinity would make NaN in the ICtCp conversion.
     /// </summary>
     public static Vector3 ToDisplay(Vector3 exposed)
     {
@@ -209,5 +215,8 @@ public readonly struct Gt7ToneMapping
         return Vector3.Clamp(Rec2020ToRec709(mapped), Vector3.Zero, Vector3.One);
     }
 
-    private static float Sanitize(float v) => float.IsNaN(v) ? 0f : MathF.Max(v, 0f);
+    /// <summary>The largest finite half float: what an infinity in the HDR image (a highlight that overflowed it) is taken as.</summary>
+    private const float MaxHalf = 65504f;
+
+    private static float Sanitize(float v) => float.IsNaN(v) ? 0f : Math.Clamp(v, 0f, MaxHalf);
 }

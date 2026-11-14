@@ -52,10 +52,12 @@ public class ExposureMathTests
         Assert.Equal(0, ExposureMath.HistogramBin(-5f, min, max));
         Assert.Equal(0, ExposureMath.HistogramBin(MathF.Pow(2f, min - 1f), min, max));       // below the range
         Assert.Equal(255, ExposureMath.HistogramBin(MathF.Pow(2f, max + 3f), min, max));     // above it
-        Assert.Equal(255, ExposureMath.HistogramBin(float.PositiveInfinity, min, max));
+        Assert.Equal(0, ExposureMath.HistogramBin(float.PositiveInfinity, min, max));      // an overflowed pixel is not measured
+        Assert.Equal(255, ExposureMath.HistogramBin(MathF.Pow(2f, max), min, max));        // at the top of the range: the last bin
+        Assert.Equal(254, ExposureMath.HistogramBin(MathF.Pow(2f, max - 0.01f), min, max));
         Assert.Equal(1, ExposureMath.HistogramBin(MathF.Pow(2f, min + 0.01f), min, max));
 
-        for (int bin = 1; bin < ExposureMath.HistogramBins; bin++)
+        for (int bin = 1; bin < ExposureMath.HistogramBins - 1; bin++)
         {
             float center = ExposureMath.BinLog2Luminance(bin, min, max);
             Assert.Equal(bin, ExposureMath.HistogramBin(MathF.Pow(2f, center), min, max));

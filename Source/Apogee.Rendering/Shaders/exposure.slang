@@ -31,18 +31,19 @@ static const uint HISTOGRAM_BINS = 256;
 static const float SATURATION_FACTOR = 1.2;       // ExposureMath.SaturationFactor
 static const float METER_CALIBRATION = 12.5;      // ExposureMath.MeterCalibration
 
-// The bin of a luminance: 0 for black, NaN or below the range, else 1 to 255 along the range (ExposureMath.HistogramBin).
+// The bin of a luminance: 0 for black, NaN, infinite or below the range, else 1 to 254 along the range, and 255 for what is at or above its top (ExposureMath.HistogramBin).
 uint histogramBin(float luminance)
 {
-    if (!(luminance > 0.0))
+    // Black, negative, NaN and infinite (a pixel that overflowed) are not measured. (Written so that a NaN fails the test even where fast math is on.)
+    if (!(luminance > 0.0) || !(luminance < 3.0e38))
         return 0;
 
-    float log2Luminance = log2(min(luminance, 3.0e38));
+    float log2Luminance = log2(luminance);
     if (log2Luminance < push.minLog2Luminance)
         return 0;
 
     float t = (log2Luminance - push.minLog2Luminance) / push.log2Range;
-    return uint(clamp(t * float(HISTOGRAM_BINS - 2) + 1.0, 1.0, float(HISTOGRAM_BINS - 1)));
+    return min(uint(clamp(t * float(HISTOGRAM_BINS - 2) + 1.0, 1.0, float(HISTOGRAM_BINS - 1))), HISTOGRAM_BINS - 1);
 }
 
 // The log2 luminance at the center of a bin (ExposureMath.BinLog2Luminance).
@@ -60,9 +61,12 @@ void buildHistogram(uint3 id : SV_DispatchThreadID, uint index : SV_GroupIndex)
     gBins[index] = 0;
     GroupMemoryBarrierWithGroupSync();
 
+    // Measured: pixels where something lit was drawn. Where nothing was (depth 0, the sky) or where the forward pass wrote alpha 0 (an unlit color), the value is a display-referred color, not
+    // light, and dividing it by the exposure would feed the exposure back into itself.
     if (id.x < push.width && id.y < push.height && gTextures[push.depth].Load(int3(int2(id.xy), 0)).x > 0.0)
     {
-        float3 color = gTextures[push.texture].Load(int3(int2(id.xy), 0)).rgb;
+        float4 texel = gTextures[push.texture].Load(int3(int2(id.xy), 0));
+        float3 color = texel.a > 0.5 ? texel.rgb : float3(0.0, 0.0, 0.0);
         float luminance = dot(color, float3(0.2126, 0.7152, 0.0722)) / sceneExposure(push.frame);
         uint bin = histogramBin(luminance);
         InterlockedAdd(gBins[bin], 1);

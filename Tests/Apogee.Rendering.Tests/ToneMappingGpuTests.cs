@@ -49,7 +49,7 @@ public class ToneMappingGpuTests(GpuFixture gpu) : GpuTest(gpu)
         new(0.5f, 0.5f, 0.5f),
     ];
 
-    /// <summary>The value of column <paramref name="x"/>: logarithmic from 0.002 to 30 (the exposed range of a very dark pixel to a very bright one).</summary>
+    /// <summary>The value of column <paramref name="x"/>: logarithmic from 0.002 to 30 (the exposed range of a very dark pixel to a very bright one); the last column is overridden with infinities.</summary>
     private static float Gradient(int x) => 0.002f * MathF.Pow(30f / 0.002f, x / (float)(Width - 1));
 
     private byte[] Run(Tonemapper tonemapper, out Vector3[] input)
@@ -62,6 +62,12 @@ public class ToneMappingGpuTests(GpuFixture gpu) : GpuTest(gpu)
             {
                 // Through half precision, as in the HDR image, so the twin sees what the shader does.
                 Vector3 color = s_rows[y] * Gradient(x);
+                if (x == Width - 1)
+                {
+                    // The last column overflowed the half floats: an infinity in the channels that have light.
+                    color = new Vector3(s_rows[y].X > 0f ? float.PositiveInfinity : 0f, s_rows[y].Y > 0f ? float.PositiveInfinity : 0f, s_rows[y].Z > 0f ? float.PositiveInfinity : 0f);
+                }
+
                 var half = new Half[] { (Half)color.X, (Half)color.Y, (Half)color.Z, (Half)1f };
                 input[(y * Width) + x] = new Vector3((float)half[0], (float)half[1], (float)half[2]);
                 for (int c = 0; c < 4; c++)
@@ -139,7 +145,7 @@ public class ToneMappingGpuTests(GpuFixture gpu) : GpuTest(gpu)
 
         for (int i = 0; i < input.Length; i++)
         {
-            Vector3 expected = ToneTwins.Neutral(input[i]);
+            Vector3 expected = ToneTwins.Neutral(Vector3.Clamp(input[i], Vector3.Zero, new Vector3(65504f)));
             for (int c = 0; c < 3; c++)
             {
                 float want = Srgb(c == 0 ? expected.X : c == 1 ? expected.Y : expected.Z);

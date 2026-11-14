@@ -100,8 +100,10 @@ float4 forwardFs(ForwardInput input, bool frontFacing : SV_IsFrontFace) : SV_Tar
         discard;
 
     float alpha = (flags & FLAG_ALPHA_BLEND) != 0 ? baseColor.a : 1.0;
+    // An unlit color is display-referred, not light: it is not exposed, and (opaque) it writes alpha 0 to the HDR image so that the auto-exposure does not measure it as luminance. The
+    // opaque pipelines do not blend, so the alpha is what the target holds. (A blended unlit surface mixes with what is behind it and is measured with it.)
     if ((flags & FLAG_UNLIT) != 0)
-        return float4(baseColor.rgb, alpha);
+        return float4(baseColor.rgb, (flags & FLAG_ALPHA_BLEND) != 0 ? alpha : 0.0);
 
     float4 metallicRoughness = sampleTexture(material, 1, material.textures0.y, material.samplers0.y, input.uv);
     float metallic = saturate(material.emissiveMetallic.a * metallicRoughness.b);
@@ -160,10 +162,16 @@ float4 forwardFs(ForwardInput input, bool frontFacing : SV_IsFrontFace) : SV_Tar
     color += ambient * (diffuseColor + f0 * 0.5) * occlusion + emissive;
 
     // The light above is photometric (cd/m2): the camera's exposure brings it to the range of the HDR image. Unlit colors above and the debug heatmap are already display-referred.
-    color *= sceneExposure(frame);
+    // Kept finite and inside the half floats of the HDR image (65 504): a bright highlight of a point light at a low EV100 would overflow to infinity there, and an infinity turns into NaN in later passes.
+    color = min(color * sceneExposure(frame), float3(65504.0, 65504.0, 65504.0));
 
+    // The debug heatmap is display-referred too, and not measured by the auto-exposure.
     if (frame->counts.y == 1)
+    {
         color = lerp(color * 0.25, heatmap(lightCount), 0.85);
+        if ((flags & FLAG_ALPHA_BLEND) == 0)
+            alpha = 0.0;
+    }
 
     return float4(color, alpha);
 }

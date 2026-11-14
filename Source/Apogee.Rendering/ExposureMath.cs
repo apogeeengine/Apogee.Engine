@@ -13,7 +13,10 @@ namespace Apogee.Rendering;
 /// </summary>
 public static class ExposureMath
 {
-    /// <summary>The number of bins of the luminance histogram. Bin 0 counts the pixels that are too dark to measure; bins 1 to 255 divide the log2-luminance range evenly.</summary>
+    /// <summary>
+    /// The number of bins of the luminance histogram. Bin 0 counts the pixels that are not measured (black, below the range, NaN or infinite); bins 1 to 254 divide the log2-luminance range evenly, and
+    /// bin 255 holds what is at or above the top of the range.
+    /// </summary>
     public const int HistogramBins = 256;
 
     /// <summary>The reflected-light meter's calibration constant K: a gray of average luminance <c>L</c> is exposed correctly at <c>EV100 = log2(L * 100 / K)</c>.</summary>
@@ -44,17 +47,15 @@ public static class ExposureMath
     /// <summary>The luminance of a linear Rec.709 color, in the units of the color.</summary>
     public static float Luminance(float r, float g, float b) => (0.2126f * r) + (0.7152f * g) + (0.0722f * b);
 
-    /// <summary>The histogram bin of a luminance (cd/m2): 0 for black or below the range, otherwise 1 to 255 along the log2 range from <paramref name="minLog2"/> to <paramref name="maxLog2"/>.</summary>
+    /// <summary>
+    /// The histogram bin of a luminance (cd/m2): 0 for black, below the range, NaN or infinite; otherwise 1 to 254 along the log2 range from <paramref name="minLog2"/> to <paramref name="maxLog2"/>, and
+    /// 255 at or above <paramref name="maxLog2"/>.
+    /// </summary>
     public static int HistogramBin(float luminance, float minLog2, float maxLog2)
     {
-        if (float.IsNaN(luminance) || luminance <= 0f)
+        if (!float.IsFinite(luminance) || luminance <= 0f)
         {
             return 0;
-        }
-
-        if (float.IsPositiveInfinity(luminance))
-        {
-            return HistogramBins - 1;
         }
 
         float log2 = MathF.Log2(luminance);
@@ -67,7 +68,7 @@ public static class ExposureMath
         return (int)Math.Clamp((t * (HistogramBins - 2)) + 1f, 1f, HistogramBins - 1);
     }
 
-    /// <summary>The log2 luminance at the center of a histogram bin (1 to 255).</summary>
+    /// <summary>The log2 luminance at the center of a histogram bin (1 to 254; bin 255 holds everything from the top of the range up, and its "center" is just past it).</summary>
     public static float BinLog2Luminance(int bin, float minLog2, float maxLog2) =>
         minLog2 + ((bin - 1 + 0.5f) / (HistogramBins - 2) * (maxLog2 - minLog2));
 
