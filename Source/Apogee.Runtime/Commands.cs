@@ -6,6 +6,7 @@ using System.Text;
 using Apogee.Content;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Import;
+using Apogee.Content.Packages;
 using Apogee.Content.Packs;
 using Apogee.Core.Logging;
 using Apogee.DevTools;
@@ -45,11 +46,64 @@ internal static class Commands
 
         string path = System.IO.Path.GetFullPath(options.Path).Replace('\\', '/');
         string name = System.IO.Path.GetFileName(path);
+        GameManifest? manifest = null;
+        if (game && !TryLoadManifest(path, out manifest))
+        {
+            return 2;
+        }
+
+        return Execute(options, game ? path : null, manifest, name,
+            () => game ? ScriptSession.StartGame(options.Path, options.UserFolder, options.Watch, realAudio: !options.Headless, realSteam: !options.Headless) : ScriptSession.Start(path, realAudio: !options.Headless));
+    }
+
+    /// <summary>
+    /// Runs the game that is next to the program: <paramref name="root"/> holds its <c>game.xml</c> and its <c>data/*.pack</c>, and nothing else of the folder is the game's (<see cref="GameStart.PacksOnly"/>).
+    /// The window is the manifest's.
+    /// </summary>
+    public static int Launch(RuntimeOptions options, string root)
+    {
+        if (!TryLoadManifest(root, out GameManifest? manifest))
+        {
+            return 2;
+        }
+
+        if (manifest is null)
+        {
+            Console.Error.WriteLine($"No {GameManifest.FileName} in {root}.");
+            return 1;
+        }
+
+        // The key is the environment's (APOGEE_PACK_KEY) until an export embeds one in the executable.
+        return Execute(options, root, manifest, manifest.Name,
+            () => ScriptSession.StartGame(new GameStart { Folder = root, UserFolder = options.UserFolder, RealAudio = !options.Headless, RealSteam = !options.Headless, PacksOnly = true }));
+    }
+
+    /// <summary>The manifest of a game folder (null when there is none); false, with the problems on stderr, when it is wrong.</summary>
+    private static bool TryLoadManifest(string folder, out GameManifest? manifest)
+    {
+        manifest = GameManifest.Load(folder, out IReadOnlyList<string> problems);
+        if (problems.Count == 0)
+        {
+            return true;
+        }
+
+        Console.Error.WriteLine($"{GameManifest.FileName} of {folder} is wrong:{Environment.NewLine}{string.Join(Environment.NewLine, problems)}");
+        return false;
+    }
+
+    /// <summary>The loops of <c>--run</c>, <c>--game</c> and a launch: the window is the manifest's (its name for the title, its size unless <c>--size</c> was given), or the old title of a game without one.</summary>
+    private static int Execute(RuntimeOptions options, string? root, GameManifest? manifest, string name, Func<ScriptSession> start)
+    {
+        if (manifest is not null)
+        {
+            options.ApplyWindow(manifest.Window);
+        }
+
         try
         {
             ScriptSession.RegisterLibraries();
             using var host = new ImGuiHost();
-            using ScriptSession session = game ? ScriptSession.StartGame(options.Path, options.UserFolder, options.Watch, realAudio: !options.Headless, realSteam: !options.Headless) : ScriptSession.Start(path, realAudio: !options.Headless);
+            using ScriptSession session = start();
             if (session.Steam.RestartRequested)
             {
                 return 0; // Steam starts the game again, through itself
@@ -59,7 +113,7 @@ internal static class Commands
             int result;
             if (!options.Headless)
             {
-                result = RuntimeLoop.Windowed(options, host, session, "Apogee: " + name, out frames);
+                result = RuntimeLoop.Windowed(options, host, session, manifest?.Name ?? "Apogee: " + name, out frames, manifest, root);
             }
             else if (options.Screenshot is not null)
             {

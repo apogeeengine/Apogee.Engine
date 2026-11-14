@@ -7,7 +7,10 @@ namespace Apogee.Runtime;
 
 internal enum RuntimeCommand
 {
-    /// <summary>No arguments: load every native library and run the smoke tests.</summary>
+    /// <summary>No command: run the game next to the program (its <c>game.xml</c> and <c>data/*.pack</c>).</summary>
+    Launch,
+
+    /// <summary><c>--smoke</c>: load every native library and run the smoke tests.</summary>
     Smoke,
     Help,
 
@@ -45,7 +48,9 @@ internal sealed class RuntimeOptions
     public const string Usage = """
         Usage: Apogee.Runtime [command]
 
-          (no command)                         load the native libraries and run the smoke tests
+          (no command)                         run the game next to the program: the game.xml and data/*.pack beside it (in ../Resources of a macOS app); other arguments it does not know are ignored
+                                               it takes --user, --headless, --frames, --size, --gpu, --screenshot and --overlay as --game does
+          --smoke                              load the native libraries and run the smoke tests
           --luau-test <folder> [--luau-filter <text>]
                                                run the *.test.luau files under the folder; exit code 1 if any fails
           --run <file.luau> [--frames <n>]     run a script with a `world` global, in a window until it is closed (Esc), or for n frames
@@ -71,7 +76,32 @@ internal sealed class RuntimeOptions
         Exit codes: 0 fine, 1 bad arguments or failed tests, 2 a script or the engine failed, 3 Vulkan validation errors.
         """;
 
-    public RuntimeCommand Command { get; private set; } = RuntimeCommand.Smoke;
+    public RuntimeCommand Command { get; private set; } = RuntimeCommand.Launch;
+
+    /// <summary>With no command, when the game is next to the program: the arguments the runtime does not know (Steam passes <c>+connect_lobby 1</c>), which are left alone.</summary>
+    public List<string> Ignored { get; } = [];
+
+    /// <summary>True when <c>--size</c> was given, which wins over the window of <c>game.xml</c>.</summary>
+    public bool SizeGiven { get; private set; }
+
+    /// <summary>The window starts fullscreen (from <c>game.xml</c>).</summary>
+    public bool Fullscreen { get; private set; }
+
+    /// <summary>The window can be resized (from <c>game.xml</c>).</summary>
+    public bool Resizable { get; private set; } = true;
+
+    /// <summary>Takes the window of <c>game.xml</c> as the defaults: the size unless <c>--size</c> was given, and whether it is fullscreen and resizable.</summary>
+    public void ApplyWindow(Apogee.Content.Packages.GameWindow window)
+    {
+        if (!SizeGiven)
+        {
+            Width = window.Width;
+            Height = window.Height;
+        }
+
+        Fullscreen = window.Fullscreen;
+        Resizable = window.Resizable;
+    }
 
     /// <summary>The folder or file the command works on.</summary>
     public string Path { get; private set; } = "";
@@ -135,10 +165,14 @@ internal sealed class RuntimeOptions
     /// <summary>With --workshop-upload: really upload (otherwise the command only describes the upload).</summary>
     public bool Confirm { get; private set; }
 
-    public static bool TryParse(string[] args, out RuntimeOptions options, out string? problem)
+    /// <summary>Reads the command line.</summary>
+    /// <param name="gameNextToProgram">A game (a <c>game.xml</c>) is next to the program. Then, with no command, arguments that are not the runtime's are collected in <see cref="Ignored"/> instead of being an error: Steam appends <c>+connect_lobby</c> to the command line of a game it starts for an invitation, and an old macOS adds <c>-psn_…</c>.</param>
+    public static bool TryParse(string[] args, out RuntimeOptions options, out string? problem, bool gameNextToProgram = false)
     {
         options = new RuntimeOptions();
         problem = null;
+        string? firstUnknown = null;
+        var unknown = new List<string>();
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -147,6 +181,9 @@ internal sealed class RuntimeOptions
             {
                 case "--help" or "-h" or "/?":
                     options.Command = RuntimeCommand.Help;
+                    break;
+                case "--smoke":
+                    options.Command = RuntimeCommand.Smoke;
                     break;
                 case "--luau-test":
                     options.Command = RuntimeCommand.LuauTest;
@@ -405,11 +442,24 @@ internal sealed class RuntimeOptions
 
                     options.Width = width;
                     options.Height = height;
+                    options.SizeGiven = true;
                     break;
                 default:
-                    problem = $"Unknown argument '{argument}'.";
-                    return false;
+                    firstUnknown ??= argument;
+                    unknown.Add(argument);
+                    break;
             }
+        }
+
+        if (unknown.Count > 0)
+        {
+            if (options.Command != RuntimeCommand.Launch || !gameNextToProgram)
+            {
+                problem = $"Unknown argument '{firstUnknown}'.";
+                return false;
+            }
+
+            options.Ignored.AddRange(unknown);
         }
 
         if (options.Filter is not null && options.Command != RuntimeCommand.LuauTest)
@@ -442,9 +492,9 @@ internal sealed class RuntimeOptions
             return false;
         }
 
-        if (options.UserFolder is not null && options.Command != RuntimeCommand.Game)
+        if (options.UserFolder is not null && options.Command is not (RuntimeCommand.Game or RuntimeCommand.Launch))
         {
-            problem = "--user goes with --game.";
+            problem = "--user goes with --game, or with no command.";
             return false;
         }
 
@@ -461,9 +511,9 @@ internal sealed class RuntimeOptions
             return false;
         }
 
-        if (options.Command is not (RuntimeCommand.Run or RuntimeCommand.Game) && (options.Headless || options.Screenshot is not null || options.Overlay || options.Gpu is not null || options.Frames is not null))
+        if (options.Command is not (RuntimeCommand.Run or RuntimeCommand.Game or RuntimeCommand.Launch) && (options.Headless || options.Screenshot is not null || options.Overlay || options.Gpu is not null || options.Frames is not null))
         {
-            problem = "--headless, --frames, --screenshot, --overlay and --gpu go with --run or --game.";
+            problem = "--headless, --frames, --screenshot, --overlay and --gpu go with --run, --game or no command.";
             return false;
         }
 

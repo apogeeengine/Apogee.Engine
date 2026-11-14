@@ -52,6 +52,17 @@ Paths are plain relative paths inside the game folder: no `..`, no drive or sche
   `steam_appid.txt` in its folder still works, with a warning in the log that the file is deprecated.
 - **The entry scene**, when the game starts without a scene of its own (the editor's Play starts from the scene being edited).
 
+## How the runtime finds it
+
+A runtime started with no command looks for `game.xml` in the folder of its executable, then in `../Resources` (the `Contents/Resources` of a macOS app whose executable is in `Contents/MacOS`), and
+the folder it finds is the game's root: `data/*.pack` is there too. That game is run with its packs only (nothing else in the folder is `res://`), with the window of `<Window>` and the name of `name`
+as its title (`--size <w>x<h>` overrides the size). Both places are tried on every system. Arguments the runtime does not know are logged and ignored when a game is found that way, because Steam
+adds `+connect_lobby <id>` to the command line when a player accepts an invitation, and an older macOS adds `-psn_…`; after any command (`--game`, `--pack`, …) they are still mistakes. A development run
+(`--game <folder>`) takes the title and the window from `game.xml` too, but the whole folder stays `res://`. With no `game.xml` anywhere the runtime exits with code 1 (use `--game <folder>`, `--smoke` or `--help`).
+
+The window gets the application's name, version and identifier from the manifest before it is created (SDL's application metadata: the macOS menu, Wayland's application id, the audio stream's name).
+On Linux the icon of the window is `<Icon>`'s file, read from the game's root when it is there; on Windows and macOS it is the executable's icon and the bundle's.
+
 ## From code
 
 ```csharp

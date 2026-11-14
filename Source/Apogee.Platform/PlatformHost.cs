@@ -60,6 +60,23 @@ public static unsafe class PlatformHost
         Log.Info(LogCategory, $"SDL {SDL.GetVersion() / 1_000_000}.{SDL.GetVersion() / 1000 % 1000}.{SDL.GetVersion() % 1000}, video driver {VideoDriver}");
     }
 
+    /// <summary>
+    /// Tells SDL what the application is called, before <see cref="Initialize"/>: the name the platform shows (the macOS menu, audio mixers), the version, and the reverse-DNS identifier that
+    /// Wayland uses as the window's application id (so that a desktop entry of the same name finds its icon) and that PulseAudio and PipeWire use for the stream. Failing is only logged.
+    /// </summary>
+    public static void SetAppMetadata(string name, string version, string identifier)
+    {
+        fixed (byte* nameText = Utf8.ToZeroTerminated(name))
+        fixed (byte* versionText = Utf8.ToZeroTerminated(version))
+        fixed (byte* identifierText = Utf8.ToZeroTerminated(identifier))
+        {
+            if (!SDL.SetAppMetadata(nameText, versionText, identifierText))
+            {
+                Log.Warn(LogCategory, $"Could not set the application metadata: {LastError()}");
+            }
+        }
+    }
+
     /// <summary>Quits SDL. Destroy the windows first.</summary>
     public static void Shutdown()
     {

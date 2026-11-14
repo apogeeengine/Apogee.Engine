@@ -23,7 +23,57 @@ public class OptionsTests
     }
 
     [Fact]
-    public void NoArgumentsIsTheSmokeTest() => Assert.Equal(RuntimeCommand.Smoke, Parse().Command);
+    public void NoArgumentsLaunchesTheGameNextToTheProgram() => Assert.Equal(RuntimeCommand.Launch, Parse().Command);
+
+    [Fact]
+    public void SmokeIsAFlag() => Assert.Equal(RuntimeCommand.Smoke, Parse("--smoke").Command);
+
+    [Fact]
+    public void ALaunchTakesTheRunOptions()
+    {
+        RuntimeOptions launch = Parse("--headless", "--frames", "3", "--user", "u", "--size", "640x360", "--gpu", "llvmpipe", "--screenshot", "s.png", "--overlay");
+        Assert.Equal((RuntimeCommand.Launch, true, 3, "u", 640, 360), (launch.Command, launch.Headless, launch.Frames, launch.UserFolder, launch.Width, launch.Height));
+        Assert.True(launch.SizeGiven);
+        Assert.False(Parse("--headless").SizeGiven);
+        Assert.Equal(["llvmpipe", "s.png", "True"], [launch.Gpu, launch.Screenshot, launch.Overlay.ToString()]);
+    }
+
+    [Fact]
+    public void ALaunchIgnoresWhatItDoesNotKnowButACommandDoesNot()
+    {
+        Assert.True(RuntimeOptions.TryParse(["+connect_lobby", "109775241", "--headless", "-psn_0_12345"], out RuntimeOptions launch, out string? problem, gameNextToProgram: true), problem);
+        Assert.Equal(RuntimeCommand.Launch, launch.Command);
+        Assert.True(launch.Headless);
+        Assert.Equal(["+connect_lobby", "109775241", "-psn_0_12345"], launch.Ignored);
+
+        // Without a game next to the program, and after a command, an unknown argument is a mistake as before.
+        Assert.Equal("Unknown argument '+connect_lobby'.", Fail("+connect_lobby", "1"));
+        Assert.False(RuntimeOptions.TryParse(["--pack", "a", "b", "+connect_lobby"], out _, out string? afterPack, gameNextToProgram: true));
+        Assert.Equal("Unknown argument '+connect_lobby'.", afterPack);
+        Assert.False(RuntimeOptions.TryParse(["--smoke", "--nope"], out _, out _, gameNextToProgram: true));
+        Assert.False(RuntimeOptions.TryParse(["--nope", "--game", "g"], out _, out _, gameNextToProgram: true));
+    }
+
+    [Fact]
+    public void WatchDoesNotGoWithALaunch() => Assert.Equal("--watch goes with --game.", Fail("--watch"));
+
+    [Fact]
+    public void TheWindowComesFromTheManifestUnlessTheSizeIsGiven()
+    {
+        var window = new Apogee.Content.Packages.GameWindow(1920, 1080, Fullscreen: true, Resizable: false);
+
+        RuntimeOptions plain = Parse();
+        plain.ApplyWindow(window);
+        Assert.Equal((1920, 1080, true, false), (plain.Width, plain.Height, plain.Fullscreen, plain.Resizable));
+
+        RuntimeOptions sized = Parse("--size", "640x360");
+        sized.ApplyWindow(window);
+        Assert.Equal((640, 360, true, false), (sized.Width, sized.Height, sized.Fullscreen, sized.Resizable));
+
+        // Without a game.xml the window is as it always was.
+        RuntimeOptions none = Parse();
+        Assert.Equal((1280, 720, false, true), (none.Width, none.Height, none.Fullscreen, none.Resizable));
+    }
 
     [Fact]
     public void EachCommandTakesItsValue()
@@ -45,7 +95,7 @@ public class OptionsTests
     {
         RuntimeOptions game = Parse("--game", "MyGame", "--user", "saves", "--headless", "--frames", "3");
         Assert.Equal((RuntimeCommand.Game, "MyGame", "saves", 3), (game.Command, game.Path, game.UserFolder, game.Frames));
-        Assert.Equal("--user goes with --game.", Fail("--run", "a.luau", "--user", "x"));
+        Assert.Equal("--user goes with --game, or with no command.", Fail("--run", "a.luau", "--user", "x"));
         Assert.Equal("--user needs a value.", Fail("--game", "g", "--user"));
         Assert.Equal("--screenshot goes with --headless.", Fail("--game", "g", "--screenshot", "x.png"));
     }
@@ -99,7 +149,7 @@ public class OptionsTests
         Assert.Equal("--size needs <width>x<height>, at least 16x16.", Fail("--run", "a.luau", "--size", "wide"));
         Assert.Equal("--size needs <width>x<height>, at least 16x16.", Fail("--run", "a.luau", "--size", "8x8"));
         Assert.Equal("--screenshot goes with --headless.", Fail("--run", "a.luau", "--screenshot", "out.png"));
-        Assert.Equal("--headless, --frames, --screenshot, --overlay and --gpu go with --run or --game.", Fail("--luau-defs", "out", "--headless"));
+        Assert.Equal("--headless, --frames, --screenshot, --overlay and --gpu go with --run, --game or no command.", Fail("--luau-defs", "out", "--headless"));
     }
 }
 
@@ -572,6 +622,96 @@ public class CommandTests
         Directory.CreateDirectory(System.IO.Path.Combine(scratch.Root, "game"));
 
         Assert.Equal(0, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", System.IO.Path.Combine(scratch.Root, "user"), "--headless", "--frames", "2")));
+    }
+
+    [Fact]
+    public void TheGameIsFoundNextToTheProgramOrInTheBundlesResources()
+    {
+        using var scratch = new Scratch();
+        string beside = System.IO.Path.Combine(scratch.Root, "beside");
+        scratch.Write("beside/game.xml", "<Game name=\"Beside\" organization=\"Test\" version=\"1.0.0\"/>");
+        Assert.Equal(beside, GameLocator.Find(beside));
+        Assert.Equal(beside, GameLocator.Find(beside + "/"));
+
+        string bundle = System.IO.Path.Combine(scratch.Root, "Beside.app", "Contents");
+        scratch.Write("Beside.app/Contents/Resources/game.xml", "<Game name=\"Bundled\" organization=\"Test\" version=\"1.0.0\"/>");
+        Directory.CreateDirectory(System.IO.Path.Combine(bundle, "MacOS"));
+        Assert.Equal(System.IO.Path.Combine(bundle, "Resources"), GameLocator.Find(System.IO.Path.Combine(bundle, "MacOS")));
+
+        // The program's own folder wins over the bundle's Resources, and a folder with neither has no game.
+        scratch.Write("Beside.app/Contents/MacOS/game.xml", "<Game name=\"Own\" organization=\"Test\" version=\"1.0.0\"/>");
+        Assert.Equal(System.IO.Path.Combine(bundle, "MacOS"), GameLocator.Find(System.IO.Path.Combine(bundle, "MacOS")));
+        Directory.CreateDirectory(System.IO.Path.Combine(scratch.Root, "empty"));
+        Assert.Null(GameLocator.Find(System.IO.Path.Combine(scratch.Root, "empty")));
+    }
+
+    private static string ShippedRoot(Scratch scratch, string gameXml)
+    {
+        string root = System.IO.Path.Combine(scratch.Root, "shipped");
+        scratch.Write("shipped/game.xml", gameXml);
+        scratch.Write("shipped/secret.txt", "loose, so not part of the game");
+        scratch.Write("shipped/packages/loose/mod.xml", "<Mod id=\"loose\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        scratch.Write("shipped/packages/loose/main.luau", "fs.write_text('user://loose.txt', 'a loose package ran')");
+        Directory.CreateDirectory(System.IO.Path.Combine(root, "data"));
+        using var writer = new Apogee.Content.Packs.PackWriter(System.IO.Path.Combine(root, "data", "game.pack"));
+        writer.Add("packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>"u8.ToArray());
+        writer.Add("packages/core/main.luau", System.Text.Encoding.UTF8.GetBytes("""
+            local greeting = fs.read_text("res://greeting.txt")
+            fs.write_text("user://report.txt", "secret=" .. tostring(fs.exists("res://secret.txt")) .. " greeting=" .. tostring(greeting))
+            """));
+        writer.Add("greeting.txt", "hello from the pack"u8.ToArray());
+        writer.Finish();
+        return root;
+    }
+
+    [Fact]
+    public void AShippedGameSeesOnlyItsPacks()
+    {
+        using var scratch = new Scratch();
+        string root = ShippedRoot(scratch, "<Game name=\"Shipped\" organization=\"Test\" version=\"1.0.0\"/>");
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+
+        int exit = Commands.Launch(Options("--user", user, "--headless", "--frames", "2"), root);
+
+        Assert.Equal(0, exit);
+        Assert.Equal("secret=false greeting=hello from the pack", File.ReadAllText(System.IO.Path.Combine(user, "report.txt")));
+        Assert.False(File.Exists(System.IO.Path.Combine(user, "loose.txt")));
+
+        // A game folder run with --game still sees its loose files.
+        Assert.Equal(0, Commands.Run(Options("--game", root, "--user", user, "--headless", "--frames", "1")));
+        Assert.Equal("secret=true greeting=hello from the pack", File.ReadAllText(System.IO.Path.Combine(user, "report.txt")));
+        Assert.True(File.Exists(System.IO.Path.Combine(user, "loose.txt")));
+    }
+
+    [Fact]
+    public void ALaunchWithoutAGameXmlOrWithABrokenOneIsAnError()
+    {
+        using var scratch = new Scratch();
+        Directory.CreateDirectory(System.IO.Path.Combine(scratch.Root, "none"));
+        Assert.Equal(1, Commands.Launch(Options("--headless"), System.IO.Path.Combine(scratch.Root, "none")));
+
+        scratch.Write("broken/game.xml", "<Game name=\"No version\" organization=\"Test\"/>");
+        Assert.Equal(2, Commands.Launch(Options("--headless"), System.IO.Path.Combine(scratch.Root, "broken")));
+    }
+
+    [Fact]
+    public void NoGameNextToTheProgramIsExitCodeOne()
+    {
+        using var scratch = new Scratch();
+        string program = typeof(Commands).Assembly.Location;
+        Assert.Null(GameLocator.Find(System.IO.Path.GetDirectoryName(program)!));
+
+        // The runtime as a program, started from its own output folder (no game.xml there): it says what to pass instead and exits with 1.
+        var info = new System.Diagnostics.ProcessStartInfo("dotnet") { RedirectStandardError = true, RedirectStandardOutput = true, WorkingDirectory = scratch.Root };
+        info.ArgumentList.Add(program);
+        using var process = System.Diagnostics.Process.Start(info)!;
+        string stderr = process.StandardError.ReadToEnd();
+        process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+
+        Assert.Equal(1, process.ExitCode);
+        Assert.Contains("No game.xml next to the program", stderr, StringComparison.Ordinal);
+        Assert.Contains("--smoke", stderr, StringComparison.Ordinal);
     }
 
     private static RuntimeOptions Options(params string[] args)

@@ -4,7 +4,8 @@
 `Bin/publish/runtime`). Its command line is parsed by hand so that it stays AOT-safe.
 
 ```text
-Apogee.Runtime                                    load the native libraries and run the smoke tests
+Apogee.Runtime                                    run the game next to the program (its game.xml and data/*.pack); see below
+Apogee.Runtime --smoke                            load the native libraries and run the smoke tests
 Apogee.Runtime --luau-test <folder> [--luau-filter <text>]
 Apogee.Runtime --run <file.luau> [--frames <n>]   a script with a `world` global, in a window (until it is closed, or n frames)
     --headless                                    no window and no GPU: n frames (default 1)
@@ -17,6 +18,17 @@ Apogee.Runtime --luau-defs <folder>               apogee.d.luau and the engine's
 
 Exit codes: 0 fine, 1 bad arguments, missing files or failed tests, 2 a script or the engine failed (including Vulkan and window errors), 3 the Vulkan validation
 layer reported errors.
+
+## Running a shipped game
+
+With no command, the runtime is a game: it looks for a `game.xml` in the folder of its own executable (and, for a macOS app, in `../Resources`, where `Name.app/Contents/MacOS/<exe>` keeps it
+beside `data/`) and runs that game. The game is its packs: only `data/*.pack` are mounted as `res://`, so loose files next to the executable are not part of it and scripts cannot read them
+(`--game <folder>`, the development run, still mounts the folder). The window, its title and its size come from `game.xml` (`--size` wins), and the packs' key from the environment (`APOGEE_PACK_KEY`).
+`--user`, `--headless`, `--frames`, `--size`, `--gpu`, `--screenshot` and `--overlay` work as they do for `--game`; `--watch` does not (there are no loose files to watch).
+See [The game manifest](../content/game-manifest.md#how-the-runtime-finds-it).
+
+The tests that go with it are `--smoke`, which proves under NativeAOT that every native library loads through its bindings and that the generated registry and the scripting layer work (CI runs it
+on the published runtime). Without a `game.xml` next to the program and without a command, the runtime prints `No game.xml next to the program` and exits with 1.
 
 ## `Apogee.Host`: what runs a game
 

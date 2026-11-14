@@ -110,4 +110,4 @@ when the frame is done: the exception itself when there was one, an `AggregateEx
 and parents, ids that stay dead, queries (with `Not`, with structural changes inside), systems in phases, failing systems, observers, and
 disposal; and `EditingTests`: which entities are the user's, hierarchy order, the components of an entity, clones, snapshots and restoring (ids that come back, names that swapped, a deleted branch),
 and scenes (a round trip with the hierarchy, references, doubles and script components, converters, unknown things, bad files). The scene round trip also runs in the NativeAOT smoke test
-(`Apogee.Runtime` with no arguments) and from Luau (`Tests/Luau/ecs.test.luau`).
+(`Apogee.Runtime --smoke`) and from Luau (`Tests/Luau/ecs.test.luau`).

@@ -126,6 +126,47 @@ public sealed unsafe class Window : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gives the window an icon, from <paramref name="width"/> x <paramref name="height"/> pixels of RGBA8 (four bytes a pixel, rows one after the other). What shows it (the title bar, the task bar,
+    /// the window switcher) is up to the platform: Windows and macOS take theirs from the executable and the bundle, and a driver without icons returns false.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="rgba"/> is smaller than the image.</exception>
+    public bool SetIcon(int width, int height, ReadOnlySpan<byte> rgba)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        if (rgba.Length < (long)width * height * 4)
+        {
+            throw new ArgumentException($"A {width}x{height} icon needs {(long)width * height * 4} bytes, not {rgba.Length}.", nameof(rgba));
+        }
+
+        fixed (byte* pixels = rgba)
+        {
+            // SDL copies the pixels into the icon, so the surface only has to live for the call.
+            Surface* surface = SDL.CreateSurfaceFrom(width, height, Apogee.Native.Sdl.PixelFormat.Rgba32, pixels, width * 4);
+            if (surface is null)
+            {
+                Log.Warn("Platform", $"Could not make the icon: {PlatformHost.LastError()}");
+                return false;
+            }
+
+            try
+            {
+                if (SDL.SetWindowIcon(NativeHandle, surface))
+                {
+                    return true;
+                }
+
+                Log.Debug("Platform", $"The window icon was not set: {PlatformHost.LastError()}");
+                return false;
+            }
+            finally
+            {
+                SDL.DestroySurface(surface);
+            }
+        }
+    }
+
     public void ClearCloseRequest() => CloseRequested = false;
 
     /// <summary>Hides the pointer and reports only its movement (for a camera that turns with the mouse); false gives the pointer back.</summary>

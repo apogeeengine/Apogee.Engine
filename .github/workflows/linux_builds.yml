@@ -74,7 +74,10 @@ jobs:
         run: ./build.sh aot
       # The published runtime runs the reflected ECS (the generated registry, a system called back from Flecs) under NativeAOT.
       - name: Runtime smoke test
-        run: Bin/publish/runtime/Apogee.Runtime
+        run: Bin/publish/runtime/Apogee.Runtime --smoke
+      # With no arguments the runtime runs the game next to it; the published folder has none, so it says so and exits with 1.
+      - name: No game next to the program
+        run: "! Bin/publish/runtime/Apogee.Runtime"
       # The engine's own Luau tests, in the native binary: the scripting layer and the ECS from scripts, with no GPU.
       - name: Luau tests in the NativeAOT runtime
         run: Bin/publish/runtime/Apogee.Runtime --luau-test Tests/Luau

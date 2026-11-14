@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using Apogee.Content;
+using Apogee.Content.Packages;
 using Apogee.Core.Logging;
 using Apogee.DevTools;
 using Apogee.Graphics;
@@ -98,12 +99,27 @@ internal static class RuntimeLoop
     }
 
     /// <summary>A window with a swapchain: the scripts' panels over the background, with the dev overlay (F1 toggles it). Esc or closing the window ends it.</summary>
-    public static int Windowed(RuntimeOptions options, ImGuiHost host, ScriptSession session, string title, out int frames)
+    /// <param name="manifest">The game's <c>game.xml</c>, if it has one: the application metadata and, on Linux, the window icon come from it.</param>
+    /// <param name="root">The folder of the game, where the manifest's icon file is.</param>
+    public static int Windowed(RuntimeOptions options, ImGuiHost host, ScriptSession session, string title, out int frames, GameManifest? manifest = null, string? root = null)
     {
+        if (manifest is not null)
+        {
+            PlatformHost.SetAppMetadata(manifest.Name, manifest.Version.ToString(), manifest.Identifier);
+        }
+
         PlatformHost.Initialize();
         try
         {
-            using var window = new Window(title, options.Width, options.Height, WindowOptions.Resizable | WindowOptions.HighPixelDensity | GraphicsDevice.RequiredWindowOptions());
+            WindowOptions windowOptions = WindowOptions.HighPixelDensity | GraphicsDevice.RequiredWindowOptions();
+            windowOptions |= options.Resizable ? WindowOptions.Resizable : WindowOptions.None;
+            windowOptions |= options.Fullscreen ? WindowOptions.Fullscreen : WindowOptions.None;
+            using var window = new Window(title, options.Width, options.Height, windowOptions);
+            if (manifest?.Icon is { } icon && root is not null)
+            {
+                SetWindowIcon(window, Path.Combine(root, icon));
+            }
+
             using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Apogee runtime", Window = window, PreferredDeviceName = options.Gpu });
             using var swapchain = device.CreateSwapchain();
             using var loop = device.CreateFrameLoop(swapchain);
@@ -181,6 +197,28 @@ internal static class RuntimeLoop
         finally
         {
             PlatformHost.Shutdown();
+        }
+    }
+
+    /// <summary>
+    /// The window's icon from an image file on disk, on Linux only: Windows and macOS take theirs from the executable's resources and the bundle. A missing or broken file is only logged
+    /// (a shipped game keeps its icon beside the executable; a dev run reads it from the game folder).
+    /// </summary>
+    private static void SetWindowIcon(Window window, string file)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        try
+        {
+            TextureData icon = ImageDecoder.Decode(file, File.ReadAllBytes(file), srgb: false, SamplerData.Default, generateMips: false);
+            window.SetIcon(icon.Width, icon.Height, icon.Mips[0]);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ContentException)
+        {
+            Log.Debug("Runtime", $"No window icon: {e.Message}");
         }
     }
 

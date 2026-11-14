@@ -1,4 +1,5 @@
 using System;
+using Apogee.Interop;
 using Apogee.Native.Sdl;
 using Apogee.Native.Tests;
 using Xunit;
@@ -51,6 +52,32 @@ public unsafe class PlatformTests : IDisposable
 
         window.Title = "Renamed";
         Assert.Equal("Renamed", window.Title);
+    }
+
+    [Fact]
+    public void AWindowCanBeGivenAnIcon()
+    {
+        using var window = new Window("Apogee icon", 64, 64, WindowOptions.Resizable);
+        byte[] pixels = new byte[16 * 16 * 4];
+        Array.Fill(pixels, (byte)0xFF);
+
+        // The dummy driver may or may not keep icons; what counts is that a good image does not throw and a short buffer is refused.
+        _ = window.SetIcon(16, 16, pixels);
+        Assert.Throws<ArgumentException>(() => window.SetIcon(16, 16, new byte[10]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => window.SetIcon(0, 16, pixels));
+    }
+
+    [Fact]
+    public void TheApplicationMetadataIsHandedToSdl()
+    {
+        PlatformHost.SetAppMetadata("Fixture Game", "1.2.3", "org.apogee.fixturegame");
+
+        fixed (byte* name = Utf8.ToZeroTerminated(SDL.PropAppMetadataNameString))
+        fixed (byte* identifier = Utf8.ToZeroTerminated(SDL.PropAppMetadataIdentifierString))
+        {
+            Assert.Equal("Fixture Game", Utf8.FromPointer(SDL.GetAppMetadataProperty(name)));
+            Assert.Equal("org.apogee.fixturegame", Utf8.FromPointer(SDL.GetAppMetadataProperty(identifier)));
+        }
     }
 
     [Fact]
