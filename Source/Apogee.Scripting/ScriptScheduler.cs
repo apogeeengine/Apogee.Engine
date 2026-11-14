@@ -155,15 +155,16 @@ public sealed unsafe class ScriptScheduler
         _due.Clear();
         PopDue(_gameHeap, Time);
         PopDue(_realHeap, RealTime);
-        (TaskEntry Entry, int Token)[] due = [.. _due];
-        _due.Clear();
-        foreach ((TaskEntry entry, int token) in due)
+        for (int i = 0; i < _due.Count; i++) // nothing adds to the list while the tasks run
         {
-            if (entry.Phase == Phase.Waiting && entry.Token == token)
+            (TaskEntry entry, int token) = _due[i];
+            if (entry.Phase == Phase.Waiting && entry.Token == token) // an earlier task of this step may have cancelled it
             {
                 Run(entry, _vm.Main, ElapsedOf(entry));
             }
         }
+
+        _due.Clear();
 
         Drain();
     }

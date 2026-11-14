@@ -85,6 +85,7 @@ nav:
           - Steam: manual/network/steam.md
       - Scripting:
           - Scripting: manual/scripting/scripting.md
+          - Tasks and game time: manual/scripting/tasks.md
           - Runtime and Luau tests: manual/scripting/runtime.md
       - Content:
           - Content: manual/content/content.md

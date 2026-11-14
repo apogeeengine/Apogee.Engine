@@ -123,4 +123,4 @@ the report, a file that does not compile, errors outside a case, filters, files 
 
 ## What a game asks of the program
 
-The script table `game` is for a game that runs inside `Apogee.Runtime`: `game.quit()` ends the run at the end of the frame (a menu's Quit; a headless run stops too), and `game.set_escape_quits(false)` stops the Escape key from ending a run in a window, which is the default so that a script or a sample can be closed: a game whose Escape opens its own menu turns it off. See the [UI sample](../../getting-started/samples/ui.md).
+The script table `game` is for a game that runs inside `Apogee.Runtime`: `game.quit()` ends the run at the end of the frame (a menu's Quit; a headless run stops too), `game.set_time_scale(scale)` and `game.time_scale()` change how fast game time runs next to real time ([Tasks and game time](tasks.md#time-scale)), and `game.set_escape_quits(false)` stops the Escape key from ending a run in a window, which is the default so that a script or a sample can be closed: a game whose Escape opens its own menu turns it off. See the [UI sample](../../getting-started/samples/ui.md).

@@ -26,6 +26,7 @@ So every script that required the module sees the new functions, without being r
 - **If the new code fails** (syntax error, runtime error, timeout) **nothing changes**: the old module stays, and so does everything it registered. Fixing the file reloads it. The error and its line are in the log and in `ReloadReport.Failures`.
 - **What a module registers while it loads is taken back and registered again** by the new run: functions given to `devtools.on_gui`, signal connections, `world:system`s, `defs.on_change` listeners. (What a script registers *later*, from an event handler, is the script's to manage.)
   If the new run fails halfway, what it had registered is removed again and the old registrations stay.
+- **Tasks are taken back too**: what the module started with `task.spawn`, `task.delay` or `task.every` while it loaded (and what those tasks started) is cancelled, and the new run starts its own ([Tasks](../scripting/tasks.md#hot-reload)).
 - **A function copied into a local stays the old one**: `local f = module.f` keeps the old function after a reload. Read `module.f` when you call it (or call `module.f()` directly).
 - **State**: the functions of the new module work on the *new* module table, while holders keep the *old* one, so a counter kept as a plain field (`M.count`) would split in two. Keep state in a table of its own and
   hand it over in `on_reload(new, old)`, which the module may define and which is called before the update:

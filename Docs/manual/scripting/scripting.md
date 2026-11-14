@@ -111,6 +111,11 @@ Field types are `bool`, `i8` … `u64`, `f32`, `f64`, `vec3`, `dvec3` (a world p
 `each` are applied when it ends. An error in `each` reaches its caller. A system that fails is logged with its traceback and skipped for the rest of that frame, and
 the other systems still run.
 
+## Tasks and time
+
+The `task` global library (`task.spawn`, `task.wait`, `task.delay`, `task.every`, `task.defer`, `task.cancel`) runs functions over several frames on one scheduler per VM, stepped by
+`LuauVm.AdvanceTime` with the game's time; each resume has its owner's budget and memory category. See [Tasks and game time](tasks.md).
+
 ## Definitions for the editor
 
 `DefinitionWriter.Write()` writes the API as Luau type definitions (`apogee.d.luau`) from the registry: classes as `declare extern type`, enums as unions of strings, signals as
