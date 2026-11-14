@@ -43,8 +43,9 @@ EV100 = log2(N² / t) − log2(S / 100)
 One stop of aperture, shutter or ISO is one EV. A sunny day with f/16 at 1/100 s and ISO 100 is EV100 14.6; a lit room is about 5.
 
 The forward pass multiplies the luminance by `1 / (1.2 · 2^EV100)` (the saturation-based exposure of a camera at that EV100) before it writes the HDR image. The HDR image therefore holds
-**exposed values**: 1.0 is the luminance that just saturates the sensor, a half-float image cannot overflow with a bright sun, and everything after the forward pass (tone mapping, the debug draw) works on
-numbers around 0 to 1.
+**exposed values**: 1.0 is the luminance that just saturates the sensor, a bright sun does not overflow the half-float image the way raw cd/m² would, and everything after the forward pass (tone mapping, the debug
+draw) works on numbers around 0 to 1. A half float tops out at 65 504, and a very bright highlight at a low EV100 can still reach it (at EV100 −6 the exposure is 53), so the forward pass clamps its result to
+65 504 instead of letting it become an infinity, which would turn into NaN in later passes; the tone mapper also takes an infinity as 65 504.
 
 `RenderSettings.ExposureMode` chooses the EV100:
 
@@ -69,9 +70,11 @@ var settings = new RenderSettings
 
 Two compute passes run after the forward pass, and nothing is read back to the CPU:
 
-1. **Luminance histogram** (`buildHistogram`). Every pixel where something was drawn adds one to a bin of a 256-bin histogram of its luminance's log2: bin 0 counts black pixels and bins 1 to 255 divide the range 2⁻¹⁰ to 2¹⁸
-   cd/m² (0.001 to 262 000, 28 stops, about a ninth of a stop per bin) evenly. A pixel's luminance is its value divided by the exposure the frame was drawn with. Pixels where nothing was drawn (the sky color,
-   which is not light) are left out, found by their depth. The group counts in shared memory and adds its counts to the global histogram.
+1. **Luminance histogram** (`buildHistogram`). Every pixel where something lit was drawn adds one to a bin of a 256-bin histogram of its luminance's log2. Bin 0 counts what is not measured (black, below the range,
+   NaN or infinite), bins 1 to 254 divide the range 2⁻¹⁰ to 2¹⁸ cd/m² (0.001 to 262 000, 28 stops, about a ninth of a stop per bin) evenly, and bin 255 holds what is at or above the top. A pixel's luminance is its
+   value divided by the exposure the frame was drawn with. What is not light is left out: pixels where nothing was drawn (the sky color), found by their depth, and opaque unlit pixels, which the forward pass writes
+   with alpha 0 (an unlit color divided by the exposure would read as a luminance that moves with the exposure, and push it further every frame). A blended unlit surface mixes with what is behind it and is measured
+   with it. The group counts in shared memory and adds its counts to the global histogram.
 2. **Resolve exposure** (`resolveExposure`). One thread averages the histogram without its darkest 10 % and brightest 10 % of pixels (a few lamps should not darken the image, a dark corner should not brighten it),
    gets the EV100 `log2(L · 100 / 12.5)` that exposes that luminance as a mid-gray (12.5 is the reflected-light meter's calibration constant), clamps it to `MinEv100` and `MaxEv100`, and moves the exposure towards it:
    `ev += (target − ev) · (1 − e^(−speed · dt))`, with `AdaptationSpeedBright` (default 3 per second) when the scene got brighter and `AdaptationSpeedDark` (1) when it got darker, as an eye does. It writes the
@@ -81,6 +84,7 @@ The forward pass of the **next** frame reads the exposure from that buffer, on t
 
 - The first frame of auto-exposure, and the first after another mode, is drawn with `Ev100`; the histogram then sets the exposure to the target at once (no crawl from a stale value), and the second frame is right.
 - The frame time for the adaptation is measured between calls to `Render` (clamped to a quarter of a second); `RenderSettings.DeltaTime` sets it, which the tests use to be repeatable.
+- There is no way yet to snap the adaptation on a camera cut or a scene load while staying in `Auto` (it restarts only after another mode); after a cut the exposure takes a second or two to settle. Not done.
 - The state belongs to the `SceneRenderer`: two views drawn by one renderer share an exposure. Give each its own renderer when they should adapt separately.
 
 `ExposureMath` is the CPU twin of all of this (EV100, the scale, a bin, the percentile average, the adaptation), and the tests run the shader passes against it.
@@ -104,8 +108,10 @@ to `Gt7ToneMapping.cs`. It works like this:
 exposed value 1.0 (the luminance that saturates the sensor) to that paper white, so a mid-gray at 18 % is shown as a mid-tone and the sensor's saturation just under white. The output is converted back to Rec.709
 (colors outside the sRGB gamut are clipped) before the sRGB encoding.
 
-Two small differences from the original, both for safety on the GPU: negative and NaN channels are taken as 0 before the operator (it assumes valid input), and the operator's constants for the SDR peak are
-computed in the shader instead of being set up once. HDR output (the operator's HDR mode on an HDR10 swapchain) is not implemented.
+Two small differences from the original, both for the GPU: negative and NaN channels are taken as 0 and an infinity as 65 504 before the operator (it assumes valid input, and an infinity makes NaN in the ICtCp
+conversion), and the constants it sets up once for the SDR peak (the shoulder's `kA`, `kB`, `kC` and the lightness of the peak) are literals in the shader, which a test compares with the C# twin's. The C# twin
+clamps an HDR peak to the original's 250 to 10 000 cd/m². HDR output (the operator's HDR mode on an HDR10 swapchain) is not implemented. The twin is also tested against the original's own test inputs
+(SDR and HDR peaks of 1000, 4000 and 10 000), with the outputs computed from the original's source.
 
 ### `Tonemapper.PbrNeutral`
 
@@ -125,10 +131,11 @@ The dev overlay's exposure slider is the compensation (`RenderSettings.Exposure`
 
 ## Tests
 
-- `Gt7ToneMappingTests`: the curve (toe, linear section, continuity, monotonic, the shoulder's asymptote), PQ against its known values, ICtCp round trips, and the gamut matrices against the Rec.709 and Rec.2020
-  primaries they are derived from.
-- `ToneMappingGpuTests`: an image of gradients (gray and colors, 0.002 to 30) goes through `tonemap.slang` and every pixel is compared with the CPU twin, for GT7 and for Neutral.
+- `Gt7ToneMappingTests`: the curve (toe, linear section, continuity, monotonic, the shoulder's asymptote), PQ against its known values, ICtCp round trips, the gamut matrices against the Rec.709 and Rec.2020
+  primaries they are derived from, infinities, the shader's literal constants, and the original's outputs for its test inputs.
+- `ToneMappingGpuTests`: an image of gradients (gray and colors, 0.002 to 30, the last column infinite) goes through `tonemap.slang` and every pixel is compared with the CPU twin, for GT7 and for Neutral.
 - `ExposureMathTests`: EV100, the scale, the bins, the percentile average and the adaptation.
-- `ExposureTests`: the histogram pass against the CPU's bins on an image whose size is not a multiple of the group; the exposure pass against `ExposureMath` (first frame, brighter, darker, clamped, cleared); an emitter of
+- `ExposureTests`: the histogram pass against the CPU's bins on an image whose size is not a multiple of the group; the exposure pass against `ExposureMath` (first frame, brighter, darker, clamped, cleared); an unlit
+  quad covering most of the view not moving the exposure; an emitter of
   known luminance at several EV100s; the physical camera against the same EV100 set by hand; a lux and a candela giving the same picture with the luminance the BRDF predicts; and auto-exposure following a scene
   four stops darker with the adaptation's rate and restarting after another mode.
