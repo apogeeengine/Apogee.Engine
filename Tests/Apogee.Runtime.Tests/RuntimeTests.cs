@@ -291,7 +291,7 @@ public class CommandTests
         using var packed = Apogee.Content.Packs.PackSource.Open(pack);
         var files = new Apogee.Content.FileSystem.VirtualFileSystem();
         files.Mount("res://", packed);
-        Assert.Equal(["res://imported/index.xml", "res://imported/textures/ground.png.ktx2", "res://readme.txt"], files.EnumerateFiles("res://", recursive: true));
+        Assert.Equal(["res://imported/assets.xml", "res://imported/index.xml", "res://imported/textures/ground.png.ktx2", "res://readme.txt"], files.EnumerateFiles("res://", recursive: true));
         Assert.Equal(16, new Apogee.Content.Import.ContentLoader(files).LoadTexture("res://textures/ground.png", true, Apogee.Content.TextureCaps.None).Width);
 
         // A second import changes nothing, and --force does it all again.
@@ -320,7 +320,7 @@ public class CommandTests
         using var packed = Apogee.Content.Packs.PackSource.Open(pack);
         var files = new Apogee.Content.FileSystem.VirtualFileSystem();
         files.Mount("res://", packed);
-        Assert.Equal(["res://imported/index.xml", "res://imported/shaders/run.slang.ashader"], files.EnumerateFiles("res://", recursive: true));
+        Assert.Equal(["res://imported/assets.xml", "res://imported/index.xml", "res://imported/shaders/run.slang.ashader"], files.EnumerateFiles("res://", recursive: true));
         var library = new Apogee.Rendering.Shaders.ShaderLibrary(files, createCompiler: _ => throw new InvalidOperationException("the compiler was started"));
         Assert.Equal(["run"], library.Load("res://shaders/run.slang").EntryPoints);
     }

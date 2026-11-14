@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using Apogee.Content.Assets;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Xml;
+using Apogee.Core.Assets;
+using Apogee.Core.Logging;
 
 namespace Apogee.Content.Import;
 
@@ -32,9 +35,17 @@ public enum AssetStatus
 }
 
 /// <summary>What <see cref="AssetImporter.Run"/> did.</summary>
-public sealed record ImportReport(IReadOnlyList<string> Imported, IReadOnlyList<string> UpToDate, IReadOnlyList<string> Removed, IReadOnlyList<(string Source, string Message)> Failed)
+/// <param name="Imported">The assets that were imported.</param>
+/// <param name="UpToDate">The assets whose artifact was already good.</param>
+/// <param name="Removed">The artifacts that were deleted because their source is gone.</param>
+/// <param name="Failed">The assets that could not be imported, with the reason.</param>
+/// <param name="Reassigned">The assets that shared their UID with another (a copy of an asset and its <c>.import.xml</c>) and were given a new one: the path relative to <c>res://</c>, the UID it had and the one it has now.</param>
+public sealed record ImportReport(IReadOnlyList<string> Imported, IReadOnlyList<string> UpToDate, IReadOnlyList<string> Removed, IReadOnlyList<(string Source, string Message)> Failed, IReadOnlyList<(string Path, AssetUid Old, AssetUid New)>? Reassigned = null)
 {
     public bool Success => Failed.Count == 0;
+
+    /// <summary>The assets that were given a new UID because another had the same (see the constructor's parameter); empty when none.</summary>
+    public IReadOnlyList<(string Path, AssetUid Old, AssetUid New)> Reassigned { get; init; } = Reassigned ?? [];
 }
 
 /// <summary>
@@ -43,6 +54,11 @@ public sealed record ImportReport(IReadOnlyList<string> Imported, IReadOnlyList<
 /// again only when its <em>key</em> changes, the SHA-256 of the importer's name and fingerprint, the asset's <c>.import.xml</c> settings, the asset, and every file the import read for it (a model's
 /// buffers and textures, the modules a shader imports). Artifacts whose source is gone are deleted. Importers run in the order of the list, and a file that an earlier import read (a model's
 /// image) is not imported on its own. <c>res://</c> has to be writable.
+/// <para>
+/// Importing also gives assets their UID (<see cref="AssetUid"/>): an imported file gets one in its <c>.import.xml</c> (made if there is none), an authored one (<see cref="AuthoredAssets"/>) in its root,
+/// and <c>imported/assets.xml</c> lists them all for <see cref="AssetDatabase"/>. The UID is not part of the key (<see cref="ImportSettings.KeyText"/>), so minting one never imports anything again.
+/// A UID that is already there is never changed, except to tell a copy from its original.
+/// </para>
 /// </summary>
 public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetImporter>? importers = null)
 {
@@ -63,6 +79,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
     public ImportReport Run(bool force = false)
     {
         ImportIndex index = ImportIndex.Load(files);
+        var uids = new UidRun(AssetDatabase.Load(files));
         var imported = new List<string>();
         var upToDate = new List<string>();
         var failed = new List<(string, string)>();
@@ -78,8 +95,15 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
         {
             foreach (string source in sources.Where(s => Has(s, importer.Extensions) && !consumed.Contains(s)))
             {
-                Import(importer, source, index, force, imported, upToDate, failed, kept, consumed);
+                Import(importer, source, index, force, imported, upToDate, failed, kept, consumed, uids);
             }
+        }
+
+        // Authored files are not imported (they are already in the engine's format), but they need a UID too.
+        List<string> authored = [.. sources.Where(AuthoredAssets.IsAuthored)];
+        foreach (string source in authored)
+        {
+            MintAuthoredUid(source, uids, failed);
         }
 
         var removed = new List<string>();
@@ -96,7 +120,13 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
         }
 
         ImportIndex.Save(files, kept.Values.OrderBy(e => e.Source, StringComparer.Ordinal));
-        return new ImportReport(imported, upToDate, removed, failed);
+
+        // The UIDs as the files say now (what was just minted, and what failed imports still have), with copies told apart, then written to the project's list.
+        Dictionary<string, AssetUid> current = CurrentUids(kept.Keys, authored);
+        List<(string, AssetUid, AssetUid)> reassigned = ReassignCopies(current, uids);
+        ReportLostUids(current, uids);
+        AssetDatabase.Save(files, current);
+        return new ImportReport(imported, upToDate, removed, failed, reassigned);
     }
 
     /// <summary>Where the asset <paramref name="source"/> (relative to <c>res://</c>: <c>models/car.glb</c>) stands, from the index and the file as it is now. It reads the files, so it is for a person looking at one, not for every file every frame.</summary>
@@ -131,15 +161,28 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
         var upToDate = new List<string>();
         var failed = new List<(string, string)>();
         var kept = index.Entries.ToDictionary(e => e.Source, StringComparer.Ordinal);
-        Import(importer, source, index, force: true, imported, upToDate, failed, kept, new HashSet<string>(StringComparer.Ordinal));
+        Dictionary<string, AssetUid> listed = AssetDatabase.Load(files);
+        Import(importer, source, index, force: true, imported, upToDate, failed, kept, new HashSet<string>(StringComparer.Ordinal), new UidRun(listed));
         ImportIndex.Save(files, kept.Values.OrderBy(e => e.Source, StringComparer.Ordinal));
+
+        // Only this asset's row of the project's list changes (the copies of the other assets are told apart by Run, which looks at all of them).
+        if (SidecarUid(source) is { IsNone: false } uid)
+        {
+            listed["res://" + source] = uid;
+        }
+        else
+        {
+            listed.Remove("res://" + source);
+        }
+
+        AssetDatabase.Save(files, listed);
         return new ImportReport(imported, upToDate, [], failed);
     }
 
     private IAssetImporter? ImporterOf(string source) =>
         source.StartsWith(CacheFolder + "/", StringComparison.Ordinal) || source.Split('/').Any(segment => segment.StartsWith('.')) ? null : _importers.FirstOrDefault(i => Has(source, i.Extensions));
 
-    private void Import(IAssetImporter importer, string source, ImportIndex index, bool force, List<string> imported, List<string> upToDate, List<(string, string)> failed, Dictionary<string, ImportEntry> kept, HashSet<string> consumed)
+    private void Import(IAssetImporter importer, string source, ImportIndex index, bool force, List<string> imported, List<string> upToDate, List<(string, string)> failed, Dictionary<string, ImportEntry> kept, HashSet<string> consumed, UidRun uids)
     {
         try
         {
@@ -150,9 +193,10 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
 
             if (!force && index.Find(source) is { } previous && files.FileExists("res://" + previous.Artifact) && KeyOf(importer, settingsText, sourceBytes, previous.Dependencies) == previous.Key)
             {
-                upToDate.Add(source);
                 kept[source] = previous;
                 consumed.UnionWith(previous.Dependencies);
+                EnsureUid(source, uids); // a project imported before UIDs existed gets them here, without importing anything
+                upToDate.Add(source);
                 return;
             }
 
@@ -167,11 +211,170 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
             files.WriteAllBytes("res://" + artifactPath, result.Bytes);
             kept[source] = new ImportEntry(source, artifactPath, KeyOf(importer, settingsText, sourceBytes, dependencies), dependencies);
             consumed.UnionWith(dependencies);
+            EnsureUid(source, uids);
             imported.Add(source);
         }
         catch (Exception e) when (e is ContentException or System.IO.IOException or UnauthorizedAccessException)
         {
             failed.Add((source, e.Message));
+        }
+    }
+
+    private const string LogCategory = "Content";
+
+    /// <summary>What one run knows about UIDs: the list the last import wrote, and what this run did with it.</summary>
+    private sealed class UidRun(IReadOnlyDictionary<string, AssetUid> listed)
+    {
+        /// <summary>The UID the last import recorded for each path (<c>res://…</c>).</summary>
+        public IReadOnlyDictionary<string, AssetUid> Listed => listed;
+
+        /// <summary>The paths that got a UID that was not in a file of theirs: a new one, or the one the list had for them.</summary>
+        public HashSet<string> Given { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>The paths that got the UID the list had for them (a sidecar that was deleted): they must not take the UID from a file that has it now.</summary>
+        public HashSet<string> Recovered { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>The UID for a path that has none: the list's, if it had one for the path (the sidecar was deleted: the asset stays what it was), or a new one.</summary>
+        public AssetUid Make(string path)
+        {
+            Given.Add(path);
+            if (listed.TryGetValue(path, out AssetUid recorded))
+            {
+                Recovered.Add(path);
+                return recorded;
+            }
+
+            return AssetUid.New();
+        }
+    }
+
+    // Not ReadAllText: that drops a byte order mark, and the file is written back.
+    private string ReadText(string path) => Encoding.UTF8.GetString(files.ReadAllBytes(path));
+
+    private AssetUid SidecarUid(string source) => files.FileExists("res://" + source + ImportSidecar.Suffix) ? ImportSidecar.ReadUid(ReadText("res://" + source + ImportSidecar.Suffix)) : AssetUid.None;
+
+    /// <summary>
+    /// Gives an imported asset the UID in its <c>.import.xml</c> if it has none: the UID the project's list has for the path when the sidecar was deleted (so deleting a sidecar loses nothing),
+    /// a new one otherwise. A sidecar that exists has its text kept (only the attribute is added), and one that does not is made. The key ignores the attribute, so nothing imports again.
+    /// </summary>
+    private void EnsureUid(string source, UidRun uids)
+    {
+        string path = "res://" + source + ImportSidecar.Suffix;
+        string text = files.FileExists(path) ? ReadText(path) : "";
+        if (!ImportSidecar.ReadUid(text).IsNone)
+        {
+            return;
+        }
+
+        files.WriteAllText(path, ImportSidecar.SetUid(text, uids.Make("res://" + source)));
+    }
+
+    /// <summary>Gives an authored file (a scene) a UID in its root element if it has none. A file that is not XML (a JSON scene, until scenes are XML) has nowhere to put one and is left alone.</summary>
+    private void MintAuthoredUid(string source, UidRun uids, List<(string, string)> failed)
+    {
+        string path = "res://" + source;
+        try
+        {
+            byte[] bytes = files.ReadAllBytes(path);
+            if (!AuthoredAssets.ReadUid(bytes).IsNone)
+            {
+                return;
+            }
+
+            string text = Encoding.UTF8.GetString(bytes);
+            if (!text.TrimStart('\uFEFF', ' ', '\t', '\r', '\n').StartsWith('<'))
+            {
+                return;
+            }
+
+            files.WriteAllText(path, AuthoredAssets.SetUid(text, uids.Make(path)));
+        }
+        catch (Exception e) when (e is ContentException or System.IO.IOException or UnauthorizedAccessException)
+        {
+            failed.Add((source, e.Message));
+        }
+    }
+
+    /// <summary>The UID of every imported asset in <paramref name="imported"/> and every authored file in <paramref name="authored"/> (relative paths) that has one, by <c>res://</c> path, as the files say now.</summary>
+    private Dictionary<string, AssetUid> CurrentUids(IEnumerable<string> imported, IEnumerable<string> authored)
+    {
+        var current = new Dictionary<string, AssetUid>(StringComparer.Ordinal);
+        foreach (string source in imported)
+        {
+            if (SidecarUid(source) is { IsNone: false } uid)
+            {
+                current["res://" + source] = uid;
+            }
+        }
+
+        foreach (string source in authored)
+        {
+            using System.IO.Stream stream = files.OpenRead("res://" + source);
+            if (AuthoredAssets.ReadUid(stream) is { IsNone: false } uid)
+            {
+                current["res://" + source] = uid;
+            }
+        }
+
+        return current;
+    }
+
+    /// <summary>
+    /// Gives a new UID to every asset that shares its UID with another one, which is what copying an asset together with its <c>.import.xml</c> (or a folder of them) does. Of each group one file
+    /// keeps the UID, and it is the original:
+    /// <list type="number">
+    /// <item>A path that was just given the UID the list had for it (its sidecar was deleted) never keeps it against a file that has it in a file of its own: that file moved, with its sidecar.</item>
+    /// <item>Among the others, the path the list recorded for the UID (the file that had it before this import, wherever the copy sorts), and failing that the first path in ordinal order.</item>
+    /// </list>
+    /// The others get a new UID in their sidecar or root (only the attribute changes, so nothing imports again). If one cannot be written to it keeps the shared UID with a warning; the database
+    /// then reports the group in <see cref="AssetDatabase.Duplicates"/>.
+    /// </summary>
+    private List<(string, AssetUid, AssetUid)> ReassignCopies(Dictionary<string, AssetUid> current, UidRun uids)
+    {
+        var reassigned = new List<(string, AssetUid, AssetUid)>();
+        foreach (IGrouping<AssetUid, string> group in current.GroupBy(c => c.Value, c => c.Key).Where(g => g.Count() > 1).OrderBy(g => g.Key.Value))
+        {
+            List<string> paths = [.. group.Order(StringComparer.Ordinal)];
+            List<string> candidates = [.. paths.Where(p => !uids.Recovered.Contains(p))];
+            if (candidates.Count == 0)
+            {
+                candidates = paths;
+            }
+
+            string keeper = candidates.Find(p => uids.Listed.TryGetValue(p, out AssetUid recorded) && recorded == group.Key) ?? candidates[0];
+            foreach (string path in paths.Where(p => p != keeper))
+            {
+                AssetUid replacement = AssetUid.New();
+                try
+                {
+                    files.WriteAllText(
+                        AuthoredAssets.IsAuthored(path) ? path : path + ImportSidecar.Suffix,
+                        AuthoredAssets.IsAuthored(path) ? AuthoredAssets.SetUid(ReadText(path), replacement) : ImportSidecar.SetUid(ReadText(path + ImportSidecar.Suffix), replacement));
+                }
+                catch (Exception e) when (e is ContentException or System.IO.IOException or UnauthorizedAccessException)
+                {
+                    Log.Warn(LogCategory, $"{path} has the same UID as {keeper} ({group.Key}) and cannot be given another: {e.Message}");
+                    continue;
+                }
+
+                current[path] = replacement;
+                reassigned.Add((path["res://".Length..], group.Key, replacement));
+                Log.Info(LogCategory, $"{path} had the UID of {keeper} (a copy?) and has a new one, {replacement}.");
+            }
+        }
+
+        return reassigned;
+    }
+
+    /// <summary>Says so when UIDs disappeared in a run that made new ones: the likely cause is a file that was moved without its <c>.import.xml</c>, which is a new asset to the engine.</summary>
+    private static void ReportLostUids(Dictionary<string, AssetUid> current, UidRun uids)
+    {
+        HashSet<AssetUid> present = [.. current.Values];
+        List<string> lost = [.. uids.Listed.Where(l => !present.Contains(l.Value)).Select(l => l.Key).Order(StringComparer.Ordinal)];
+        List<string> made = [.. uids.Given.Except(uids.Recovered).Order(StringComparer.Ordinal)];
+        if (lost.Count > 0 && made.Count > 0)
+        {
+            Log.Info(LogCategory, $"New UIDs were made for {string.Join(", ", made)} while {string.Join(", ", lost)} no longer exist: if one was moved without its .import.xml it is a new asset now, and references to its old path or UID do not follow it. Move the .import.xml together with the file.");
         }
     }
 
@@ -185,7 +388,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
         AddText($"apogee-import-{ImporterVersion}");
         AddText(importer.Name);
         AddText(importer.Fingerprint);
-        AddText(settingsText);
+        AddText(ImportSettings.KeyText(settingsText)); // without the uid: minting one must not import the asset again
         Add(SHA256.HashData(sourceBytes));
         foreach (string dependency in dependencies)
         {
@@ -285,8 +488,23 @@ public sealed class ContentLoader(VirtualFileSystem files)
 {
     private readonly Dictionary<string, ImportIndex> _indexes = new(StringComparer.Ordinal);
 
-    /// <summary>Reads the indexes again (after an import).</summary>
-    public void Refresh() => _indexes.Clear();
+    private readonly Lazy<AssetDatabase> _assets = new(() => new AssetDatabase(files));
+
+    /// <summary>Which file has which UID, over the same files. The host sets its <see cref="AssetDatabase.Roots"/> (the mounted packages) once they are mounted.</summary>
+    public AssetDatabase Assets => _assets.Value;
+
+    /// <summary>What a script or a document names as a path: a <c>uid://</c> becomes the file that has it (<see cref="ContentException"/> when none does), anything else is returned as it is.</summary>
+    public string ResolveAssetPath(string pathOrUid) => Assets.ResolvePath(pathOrUid);
+
+    /// <summary>Reads the indexes (and the UIDs) again (after an import).</summary>
+    public void Refresh()
+    {
+        _indexes.Clear();
+        if (_assets.IsValueCreated)
+        {
+            _assets.Value.Refresh();
+        }
+    }
 
     /// <summary>The virtual path of the artifact that replaces the asset at <paramref name="path"/>, or null when it was not imported.</summary>
     public string? ArtifactPathFor(string path) => ImportedFor(VfsPath.Normalize(path))?.Path;
