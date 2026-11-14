@@ -12,6 +12,7 @@ Apogee.Runtime --run <file.luau> [--frames <n>]   a script with a `world` global
     --headless --screenshot <file.png>            no window, rendered on the GPU: the last frame as an image
     --size <w>x<h>  --overlay  --gpu <name>       the window or image size (1280x720), the dev overlay in images, which GPU
 Apogee.Runtime --game <folder> [--user <folder>]  a game: its packages and mods (see Packages and mods), then the same loops as --run
+Apogee.Runtime --export <game folder> <out> --target <rid> [--cooked]  export the game as a folder that runs on its own (see Exporting a game)
 Apogee.Runtime --workshop-upload <mod folder> ... publish a mod folder as a Steam Workshop item (only describes it without --confirm; see Steam)
 Apogee.Runtime --luau-defs <folder>               apogee.d.luau and the engine's Luau modules, for luau-lsp
 ```
@@ -23,7 +24,7 @@ layer reported errors.
 
 With no command, the runtime is a game: it looks for a `game.xml` in the folder of its own executable (and, for a macOS app, in `../Resources`, where `Name.app/Contents/MacOS/<exe>` keeps it
 beside `data/`) and runs that game. The game is its packs: only `data/*.pack` are mounted as `res://`, so loose files next to the executable are not part of it and scripts cannot read them
-(`--game <folder>`, the development run, still mounts the folder). The window, its title and its size come from `game.xml` (`--size` wins), and the packs' key from the environment (`APOGEE_PACK_KEY`).
+(`--game <folder>`, the development run, still mounts the folder). The window, its title and its size come from `game.xml` (`--size` wins), and the packs' key from the executable, where an [export](../tools/export.md#the-pack-key) wrote it, else from the environment (`APOGEE_PACK_KEY`).
 `--user`, `--headless`, `--frames`, `--size`, `--gpu`, `--screenshot` and `--overlay` work as they do for `--game`; `--watch` does not (there are no loose files to watch).
 See [The game manifest](../content/game-manifest.md#how-the-runtime-finds-it).
 

@@ -10,7 +10,7 @@ frame on arithmetic: simulations with big worlds, many entities and a lot of phy
 
 > **Pre-alpha.** APIs change without notice. Developed on Linux with Vulkan; Windows is built and tested by CI; the Metal (macOS) backend is written but has never run on a GPU. [Help wanted](#help-wanted).
 >
-> The editor is very bare-bones for now: it cannot import 3D models or other assets (it only places and re-imports files already in the game folder), and it has no materials, no animations and no game export.
+> The editor is very bare-bones for now: it cannot import 3D models or other assets (it only places and re-imports files already in the game folder), and it has no materials, no animations and no Export dialog (a game is exported from the command line with `./build.sh export`).
 
 ## Why
 

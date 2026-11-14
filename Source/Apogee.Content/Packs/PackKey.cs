@@ -5,7 +5,8 @@ namespace Apogee.Content.Packs;
 
 /// <summary>
 /// The secret that encrypts a game's packs: 32 bytes, written as 64 hexadecimal digits. The build tool and the editor read it from the environment (<c>APOGEE_PACK_KEY</c>, which the
-/// <c>.env</c> file of the repository sets), a shipped game has it baked in. Without a key packs are not encrypted. It is never written to a pack, a log, or an error message.
+/// <c>.env</c> file of the repository sets), and an export writes it, masked, into the executable of the game it makes (<c>Apogee.Export.PackKeySlot</c>; obfuscation, not protection) so that a shipped game
+/// needs no variable. Without a key packs are not encrypted. It is never written to a pack, a log, or an error message.
 /// </summary>
 public sealed class PackKey
 {

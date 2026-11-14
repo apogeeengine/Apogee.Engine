@@ -67,8 +67,18 @@ is streamed without being read whole (and without its hash checked).
 
 If `APOGEE_PACK_KEY` is set (64 hexadecimal digits: 32 bytes) the pack is encrypted; if it is not, it is not. **No key is set up yet**: nothing in the repository or the CI has one, so packs
 are plain. When you want one, put it in `.env` (which git ignores and the `./build.sh` wrapper loads), make the same key available to everything that makes or opens packs (the editor, the
-tools, the shipped game, a CI secret), and never commit it or print it (a `PackKey` writes itself as `PackKey(…)`). A pack made with one key cannot be read with another, and changing the
+tools, a CI secret), and never commit it or print it (a `PackKey` writes itself as `PackKey(…)`). A pack made with one key cannot be read with another, and changing the
 key means making the packs again.
+
+Where each program gets the key:
+
+- **Development runs** (`--game <folder>`, the editor, `--pack`, `--export`) read `APOGEE_PACK_KEY` from the environment.
+- **An exported game** has it in its executable: [`--export`](../tools/export.md#the-pack-key) encrypts the pack with the key it finds in the environment and writes the key, masked, into a reserved slot of the
+  copy of the runtime (`PackKeySlot`). The game reads the slot first and the environment after it, so it needs no variable (and a variable does not override the embedded key).
+
+!!! warning "The embedded key is obfuscation, not protection"
+    The slot keeps the key out of `strings` and out of a casual look at the file: the 32 bytes are XORed with a hash of a random salt and a constant, all of which are in the file next to them, and the
+    format is documented here. Anyone who wants the key can read it from the executable or from the memory of the running game. Use a key for one game, and expect it to be found.
 
 What it does, in detail (`PackFormat` has the layout):
 
@@ -82,7 +92,7 @@ What it does, in detail (`PackFormat` has the layout):
 
 AES-GCM comes from the platform: Windows and macOS have it, and on Linux it needs OpenSSL (`libssl`), which desktops and Steam's runtime have.
 
-**What it is not.** A game has to be able to open its own packs, so the key is in the game; a determined person can get it out. The encryption keeps the content from being taken apart
+**What it is not.** A game has to be able to open its own packs, so the key is in the game (the embedded slot above); a determined person can get it out. The encryption keeps the content from being taken apart
 casually and makes a changed pack fail to load. It is not copy protection.
 
 ## Tests

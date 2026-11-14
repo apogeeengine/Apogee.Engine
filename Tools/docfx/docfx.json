@@ -10,6 +10,7 @@
             "Apogee.Core/*.csproj",
             "Apogee.DevTools/*.csproj",
             "Apogee.Ecs/*.csproj",
+            "Apogee.Export/*.csproj",
             "Apogee.Graphics/*.csproj",
             "Apogee.Host/*.csproj",
             "Apogee.Input/*.csproj",

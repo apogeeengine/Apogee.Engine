@@ -39,6 +39,7 @@ compiler, but it has never run on a GPU. Direct3D 12 is not planned. The editor 
 | `Apogee.Graphics` | the portable GPU API, with Vulkan (complete) and Metal (untested), Slang shaders, bindless resources |
 | `Apogee.Rendering` | a render graph, Forward+ lighting, glTF models, culling |
 | `Apogee.Content` | the virtual file system, XML definitions with schemas, packages and mods, packs, asset import, hot reload |
+| `Apogee.Export` | exporting a game: the runtime of a platform, the game's packs and manifest, the pack key in the executable |
 | `Apogee.Physics` | Jolt in double precision, vehicles, hitches, character controller |
 | `Apogee.Audio`, `Apogee.Network`, `Apogee.Steam` | OpenAL Soft audio, GameNetworkingSockets transport, Steamworks |
 | `Apogee.UI`, `Apogee.DevTools` | RmlUi game UI with Luau in its documents; Dear ImGui dev tools |
