@@ -39,6 +39,7 @@ public sealed unsafe class EditingMathTests
         Assert.Equal([1.0, 2.0, 3.5], RoundTrip(FieldKind.Vector3, 1, 2, 3.5));
         Assert.Equal([1e12 + 0.5, -2.0, 3.0], RoundTrip(FieldKind.Double3, 1e12 + 0.5, -2, 3));   // a double position keeps its precision
         Assert.Equal([42.0], RoundTrip(FieldKind.Entity, 42));
+        Assert.Equal([4000000000.0], RoundTrip(FieldKind.AssetRef, 4000000000));   // a four-byte handle, a number until E1's asset picker replaces the widget
     }
 
     [Fact]

@@ -224,6 +224,21 @@ public sealed class EditingTests : IDisposable
     // ---- Scenes ----
 
     [Fact]
+    public void AnAssetRefFieldIsASceneNumberUntilScenesKnowAssets()
+    {
+        // A1.4 saves the field as a path and a UID; until then it is saved like any uint, and must not leave the JSON writer without a value.
+        Entity a = Make("lamp");
+        _world.Set(a, new Furnished { Count = 2, Model = 41 });
+
+        string text = _world.SaveScene();
+        Assert.Matches("\"Model\": 41", text);
+
+        using var other = new World();
+        other.LoadScene(text);
+        Assert.Equal(new Furnished { Count = 2, Model = 41 }, other.Get<Furnished>(other.Lookup("lamp")));
+    }
+
+    [Fact]
     public void ASceneRoundTripsEntitiesComponentsHierarchyAndReferences()
     {
         Entity a = Make("root");

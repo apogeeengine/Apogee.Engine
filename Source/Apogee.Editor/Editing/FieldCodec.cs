@@ -57,6 +57,7 @@ public static unsafe class FieldCodec
             case FieldKind.UInt16: return [*(ushort*)at];
             case FieldKind.Int32: return [*(int*)at];
             case FieldKind.UInt32: return [*(uint*)at];
+            case FieldKind.AssetRef: return [*(uint*)at]; // E1: an asset picker replaces this (FieldKind.AssetRef, FieldDef.AssetType)
             case FieldKind.Int64: return [*(long*)at];
             case FieldKind.UInt64: return [*(ulong*)at];
             case FieldKind.Float32: return [*(float*)at];
@@ -91,6 +92,7 @@ public static unsafe class FieldCodec
             case FieldKind.UInt16: *(ushort*)at = (ushort)Clamp(v, ushort.MinValue, ushort.MaxValue); break;
             case FieldKind.Int32: *(int*)at = (int)Clamp(v, int.MinValue, int.MaxValue); break;
             case FieldKind.UInt32: *(uint*)at = (uint)Clamp(v, uint.MinValue, uint.MaxValue); break;
+            case FieldKind.AssetRef: *(uint*)at = (uint)Clamp(v, uint.MinValue, uint.MaxValue); break; // E1: an asset picker replaces this (FieldKind.AssetRef, FieldDef.AssetType)
             case FieldKind.Int64: *(long*)at = (long)Clamp(v, long.MinValue, long.MaxValue); break;
             case FieldKind.UInt64: *(ulong*)at = (ulong)Clamp(v, 0, ulong.MaxValue); break;
             case FieldKind.Float32: *(float*)at = (float)v; break;

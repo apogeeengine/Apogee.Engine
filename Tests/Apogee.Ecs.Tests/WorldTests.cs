@@ -44,6 +44,15 @@ public struct Frozen
 {
 }
 
+[Component]
+public struct Furnished
+{
+    public int Count;
+
+    [Property(Asset = "model")]
+    public uint Model;
+}
+
 public unsafe class WorldTests
 {
     private static World NewWorld()
@@ -188,6 +197,47 @@ public unsafe class WorldTests
         // The same schema, in any order, is the same component; another under the same name is an error.
         Assert.Equal(spin, world.DefineComponent("Spin", [("axis", FieldKind.Vector3), ("speed", FieldKind.Float32), ("on", FieldKind.Bool)]));
         Assert.Throws<InvalidOperationException>(() => world.DefineComponent("Spin", [("speed", FieldKind.Float64)]));
+    }
+
+    [Fact]
+    public void AScriptComponentWithAnAssetRefFieldHasAU32Member()
+    {
+        using World world = NewWorld();
+
+        // Defined at run time: four bytes, so the neighbour that follows sits right after it (an Entity member would take eight).
+        Entity decorated = world.DefineComponent("Decorated", [("model", FieldKind.AssetRef), ("count", FieldKind.Int32)]);
+        ComponentInfo info = world.GetComponentInfo(decorated)!;
+        Assert.Equal([0, 4], info.Fields.Select(f => f.Offset)); // laid out in name order: count, then model
+        Assert.Equal(8, info.Size);
+
+        Entity e = world.CreateEntity();
+        byte* data = world.EnsurePointer(e, decorated, info.Size);
+        FieldAccess.Write(data, info.FindField("model")!, Value.Int(4_000_000_000));
+        FieldAccess.Write(data, info.FindField("count")!, Value.Int(3));
+        Assert.Equal(4_000_000_000, FieldAccess.Read(data, info.FindField("model")!).ToInt64());
+        Assert.Equal(3, FieldAccess.Read(data, info.FindField("count")!).ToInt32());
+
+        // Flecs' reflection sees a plain 32-bit number there, as for a UInt32 field.
+        Assert.Contains("\"model\":4000000000", world.ToJson(decorated, data));
+
+        // The same from a C# struct, which marks the field with [Property(Asset = ...)].
+        Entity furnished = world.Component<Furnished>();
+        FieldDef model = world.GetComponentInfo(furnished)!.FindField("Model")!;
+        Assert.Equal(FieldKind.AssetRef, model.Kind);
+        Assert.Equal("model", model.AssetType);
+        Assert.Equal(4, model.Offset);
+        Assert.Contains("\"Model\":7", world.ToJson(new Furnished { Count = 2, Model = 7 }));
+    }
+
+    [Fact]
+    public void EntityIsNotAComponentName()
+    {
+        // A scene file writes a child entity as <Entity>; a component of that name could not be told from it.
+        using World world = NewWorld();
+        Assert.Throws<InvalidOperationException>(() => world.DefineComponent("Entity", [("x", FieldKind.Int32)]));
+        Assert.Throws<InvalidOperationException>(() => world.RegisterComponent(new ComponentInfo("Entity", null, 0, 1, [])));
+        Assert.True(world.FindComponent("Entity").IsNull);
+        Assert.False(world.DefineComponent("Entities", [("x", FieldKind.Int32)]).IsNull); // only the exact name
     }
 
     [Fact]

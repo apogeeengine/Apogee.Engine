@@ -177,6 +177,7 @@ public sealed unsafe partial class World
             case FieldKind.UInt16: json.WriteNumberValue(*(ushort*)at); break;
             case FieldKind.Int32: json.WriteNumberValue(*(int*)at); break;
             case FieldKind.UInt32: json.WriteNumberValue(*(uint*)at); break;
+            case FieldKind.AssetRef: json.WriteNumberValue(*(uint*)at); break; // A1.4 writes the path and UID instead; until then the handle, as for any uint
             case FieldKind.Int64: WriteLong(json, *(long*)at); break;
             case FieldKind.UInt64: WriteULong(json, *(ulong*)at); break;
             case FieldKind.Float32: WriteDouble(json, *(float*)at); break;
@@ -474,6 +475,7 @@ public sealed unsafe partial class World
             case FieldKind.UInt16: *(ushort*)at = value.GetUInt16(); break;
             case FieldKind.Int32: *(int*)at = value.GetInt32(); break;
             case FieldKind.UInt32: *(uint*)at = value.GetUInt32(); break;
+            case FieldKind.AssetRef: *(uint*)at = value.GetUInt32(); break;
             case FieldKind.Int64: *(long*)at = value.ValueKind == JsonValueKind.String ? long.Parse(value.GetString()!, CultureInfo.InvariantCulture) : value.GetInt64(); break;
             case FieldKind.UInt64: *(ulong*)at = value.ValueKind == JsonValueKind.String ? ulong.Parse(value.GetString()!, CultureInfo.InvariantCulture) : value.GetUInt64(); break;
             case FieldKind.Float32: *(float*)at = (float)ReadDouble(value); break;

@@ -34,10 +34,10 @@ public partial class Actor : EngineObject
   `Creatable = true` gives scripts a `new()` (it needs a parameterless constructor).
 - **Documentation:** the `<summary>` above a member is copied into the registry, for the generated `.d.luau` and the inspectors.
 - **Types** a member may have: `bool`, the integer types, `float`, `double`, `string`, `Vector3`, `Double3` (seen as a vector in scripts), `Quaternion`, enums (a `[Flags]` enum is a list of
-  names in scripts), `Entity`, `Value` (any), `ScriptFunction`, `EngineObject` classes, and `T[]`, `List<T>` and `IReadOnlyList<T>` of
+  names in scripts), `Entity`, `AssetRef` (a string in scripts, see [asset fields](#asset-fields)), `Value` (any), `ScriptFunction`, `EngineObject` classes, and `T[]`, `List<T>` and `IReadOnlyList<T>` of
   those. `T?` is nullable. Anything else is error `APG002` that names the member, as are non-partial classes (`APG001`), two members
   with one script name (`APG003`), a component that is not an unmanaged struct or has an unsupported field (`APG004`) and a member
-  that cannot be described, such as a `ref` parameter or a signal of the wrong type (`APG005`). A type with an error writes nothing,
+  that cannot be described, such as a `ref` parameter or a signal of the wrong type (`APG005`), and `Asset` where it does not belong (`APG006`). A type with an error writes nothing,
   so the first error is the only one.
 
 ## Components and libraries
@@ -77,6 +77,26 @@ public struct Engine
 `RangeText` is `0 to 100` for the generated Luau definitions, which add `(Range: 0 to 1.)` to the doc of a property. A field without `[Property]` has no hints. A component a script defines gives
 them in a table: `world:component("Vehicle", { speed = { type = "f32", min = 0, max = 90, step = 0.5, category = "Motion" }, gear = "i32", token = { type = "u32", hidden = true } })`;
 the plain `name = "type"` form still works.
+
+### Asset fields
+
+A component is made of unmanaged memory, so a field that names an asset (a model, a texture) is a `uint` handle in the loaded library of that asset type. `[Property(Asset = "model")]` on a `uint`
+field says so: the field's `FieldDef.Kind` is `FieldKind.AssetRef` (four bytes, like a `uint`) and `FieldDef.AssetType` is `"model"`. Scripts still read and write a number; scenes and the editor
+use the kind and the type to turn the handle into a reference by path and UID.
+
+```csharp
+[Component]
+public struct Furnished
+{
+    [Property(Category = "Model", Asset = "model")] public uint Model;   // FieldKind.AssetRef, AssetType "model"
+}
+```
+
+`Asset` is only for `uint` fields of a `[Component]` struct, and needs a non-empty type name; anywhere else it is error `APG006`. Without it a `uint` stays a number.
+
+On a class, a property that names an asset has the type `Apogee.Core.Assets.AssetRef` (path and UID). Scripts see its text form as a string (`res://models/car.glb|uid://4k2m9x7q1w3ze`, a path alone or a
+`uid://…` alone), and the generated `.d.luau` says `string` (`string?` for `AssetRef?`). Text that is not an asset reference is an error in the script (`Value.ToAssetRef` throws a `ValueException`)
+and the property keeps its value.
 
 ## Using the registry
 

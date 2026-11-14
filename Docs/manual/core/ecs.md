@@ -34,6 +34,15 @@ component; another schema under a known name is an error. `GetComponentInfo(id)`
 `FieldAccess.Read`/`Write` (in `Apogee.Reflection`) read and write a field of the component's memory as a `Value`, with range checks.
 The pointer API (`GetPointer`, `EnsurePointer`, `SetPointer`) works on any component id.
 
+### Asset fields
+
+A `uint` field marked `[Property(Asset = "model")]` has the kind `FieldKind.AssetRef` and `FieldDef.AssetType = "model"` (see [reflection](reflection.md#asset-fields)). In memory it is four bytes, a `uint` handle
+into the host's library of that asset type; Flecs describes it as a 32-bit number, `FieldAccess` reads and writes it as a number, and scripts see a number. The kind is what tells a scene file
+or an inspector that the number names an asset. `DefineComponent` takes the kind too (`("model", FieldKind.AssetRef)`), though a script-defined component cannot name its asset type yet.
+Until scenes learn to save a reference by path and UID, a scene stores the handle as a plain number, as for any `uint`.
+
+`Entity` is not a component name: `RegisterComponent` and `DefineComponent` refuse it (`InvalidOperationException`), because a scene file writes a child entity as `<Entity>`.
+
 ### Editing: hierarchy, copies, snapshots and scenes
 
 What an editor needs of a world, in `World.Editing.cs` and `World.Scene.cs`. "**User entities**" are the ones a game or an editor made (`IsUserEntity`): not Flecs' own entities (modules, systems, observers),

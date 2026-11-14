@@ -289,6 +289,14 @@ public sealed unsafe partial class World : EngineObject, IDisposable
     public Entity RegisterComponent(ComponentInfo info)
     {
         ArgumentNullException.ThrowIfNull(info);
+
+        // A scene file writes a child entity as <Entity> and a component as an element named after it, so a component called Entity would be ambiguous.
+        // InvalidOperationException like the other refusals here: the script loader and the scene loader already turn it into a script error or a warning.
+        if (info.Name == "Entity")
+        {
+            throw new InvalidOperationException("Entity is not a component name: scene files use <Entity> for entities.");
+        }
+
         if (_componentsByName.TryGetValue(info.Name, out Entity existing))
         {
             ComponentInfo known = _infoById[existing];
@@ -402,7 +410,7 @@ public sealed unsafe partial class World : EngineObject, IDisposable
         FieldKind.Int16 => Flecs.I16Id,
         FieldKind.UInt16 => Flecs.U16Id,
         FieldKind.Int32 => Flecs.I32Id,
-        FieldKind.UInt32 => Flecs.U32Id,
+        FieldKind.UInt32 or FieldKind.AssetRef => Flecs.U32Id, // an asset handle is a uint; the last arm is the 8-byte Entity
         FieldKind.Int64 => Flecs.I64Id,
         FieldKind.UInt64 => Flecs.U64Id,
         FieldKind.Float32 => Flecs.F32Id,
