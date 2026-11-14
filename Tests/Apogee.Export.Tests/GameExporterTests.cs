@@ -113,11 +113,11 @@ public class GameExporterTests
         Assert.DoesNotContain(GameExporter.MarkerFile, result.Files);
         Assert.Equal(target, RuntimeFolder.Detect(exe));
 
-        // The exported game.xml is the game's, read by the runtime from beside the program (the icon is not a loose file: the platform steps put it in the executable or write their own).
+        // The exported game.xml is the game's, read by the runtime from beside the program (the icon is in the executable or the bundle, except on Linux where the step writes icon.png).
         GameManifest exported = GameManifest.Load(root, out IReadOnlyList<string> problems)!;
         Assert.Empty(problems);
         Assert.Equal(("Fixture Game", "Test Studio", "1.2.3", "FixtureGame", 480u, 800, 600), (exported.Name, exported.Organization, exported.Version.ToString(), exported.Executable, exported.SteamAppId, exported.Window.Width, exported.Window.Height));
-        Assert.Null(exported.Icon);
+        Assert.Equal(target.Os == "linux" ? "icon.png" : null, exported.Icon);
     }
 
     [Fact]
@@ -128,7 +128,8 @@ public class GameExporterTests
         ExportResult result = GameExporter.Export(setup.Options(new ExportTarget("linux", "x64")));
 
         // No Apogee.Runtime, pdb, dbg, lib, slang library or source, steam_appid.txt, or the runtime folder's own game.xml and data.
-        Assert.Equal(["FixtureGame", "Shaders/imported/x.spv", "data/game.pack", "game.xml", "libflecs.so"], result.Files);
+        // On Linux the step adds the icon and the desktop entry.
+        Assert.Equal(["FixtureGame", "Shaders/imported/x.spv", "data/game.pack", "game.xml", "icon.png", "libflecs.so", "org.test.fixturegame.desktop"], result.Files);
         Assert.Equal(FakeRuntime.Executable(new ExportTarget("linux", "x64")), File.ReadAllBytes(result.Executable)); // with no key the program is copied as it is
         Assert.Equal("<Game/>", File.ReadAllText(Path.Combine(setup.Runtime, "game.xml"))); // the runtime folder itself is not touched
     }
