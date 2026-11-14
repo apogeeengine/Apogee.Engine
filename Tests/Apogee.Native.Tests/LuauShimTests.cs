@@ -394,6 +394,43 @@ public unsafe class LuauShimTests
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    private static int YieldNow(State* state) => Lua.Yield;
+
+    [Fact]
+    public void AManagedFunctionYieldsWithTheYieldResult()
+    {
+        RequireLuau();
+
+        State* state = Lua.NewVm(0);
+        try
+        {
+            Lua.LuaLOpenlibs(state);
+            Register(state, &YieldNow, "yield_now");
+            Assert.Equal(CallResult.Ok, Run(state, "return coroutine.create(function() return yield_now() end)", results: 1));
+            State* co = Lua.Tothread(state, -1);
+            Assert.True(co is not null);
+
+            Assert.Equal(CallResult.Yielded, Lua.ProtectedResume(co, state, 0, 0));
+
+            // What the resume passes becomes the results of the call that yielded.
+            Lua.Pushnumber(co, 1);
+            Lua.Pushnumber(co, 2);
+            Assert.Equal(CallResult.Ok, Lua.ProtectedResume(co, state, 2, 0));
+            Assert.Equal(2, Lua.Gettop(co));
+            Assert.Equal(1.0, Lua.Tonumberx(co, 1, null));
+            Assert.Equal(2.0, Lua.Tonumberx(co, 2, null));
+
+            // Where a thread cannot yield (here a call from the host), Luau's own error is raised.
+            Assert.Equal(CallResult.RuntimeError, Run(state, "yield_now()"));
+            Assert.Contains("yield across", Message(state));
+        }
+        finally
+        {
+            Lua.CloseVm(state);
+        }
+    }
+
     [Fact]
     public void NativeCodeGenerationRunsAnOptedInChunk()
     {

@@ -36,4 +36,5 @@ public static partial class Lua
     public const string Utf8libname = "utf8";
     public const string Veclibname = "vector";
     public const int VectorDouble = 0;
+    public const int Yield = -2;
 }

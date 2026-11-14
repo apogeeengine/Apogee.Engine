@@ -135,6 +135,9 @@ int trampoline(lua_State* L)
             luaD_throw(L, LUA_ERRMEM);
     }
 
+    if (results == APOGEE_LUAU_YIELD)
+        return lua_yield(L, 0);
+
     if (results < 0)
         lua_error(L);
     return results;

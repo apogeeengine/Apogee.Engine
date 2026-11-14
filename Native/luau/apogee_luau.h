@@ -49,6 +49,12 @@ typedef int (*apogee_luau_function)(lua_State* L);
 
 #define APOGEE_LUAU_RAISE (-1)
 
+/* What a managed function returns to yield the thread it runs in, with no results: whatever the next apogee_luau_resume passes
+ * becomes the results of the call, as for any C function that yields without a continuation. A thread that cannot yield (inside a
+ * metamethod, a protected call of the host, a module's top level) gets Luau's own "attempt to yield across metamethod/C-call
+ * boundary" error instead. */
+#define APOGEE_LUAU_YIELD (-2)
+
 /* A new state with the allocator, interrupt and memory accounting installed. memory_limit is a hard limit on the bytes the
  * state may allocate while Luau code runs (0: none). Native code generation is created when the machine supports it. */
 APOGEE_LUAU_API lua_State* apogee_luau_newstate(size_t memory_limit);

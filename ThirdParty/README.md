@@ -67,7 +67,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
   `LUACODE_API` and `LUACODEGEN_API` are Luau's hooks for that) and `LUA_USE_LONGJMP=1`, because C++ exceptions cannot cross managed
   frames. Our layer, `Native/luau/apogee_luau.{h,cpp}`, is part of it: the allocator with its limits, the interrupt for the time
   budget, the wrapper for managed functions, protected calls and loading (see `Docs/manual/native/native-libraries.md`). Errors raised from
-  managed callbacks must not unwind through managed code: callbacks return a code and the wrapper calls `lua_error`. The bindings
+  managed callbacks must not unwind through managed code: callbacks return a code and the wrapper calls `lua_error`. A callback may also return `APOGEE_LUAU_YIELD`, and the wrapper yields its thread (`lua_yield`): that is how the `task` library waits. The bindings
   leave out what can raise an error on input a script controls. CodeGen is built for both x64 and arm64 and picks at run time; a
   macOS app signed with the hardened runtime needs the `allow-jit` entitlement.
 - Bound by: `Tools/Apogee.Build/Bindings/Configs/luau.json` into `Source/Apogee.Native.Luau`, with the shim's header.
