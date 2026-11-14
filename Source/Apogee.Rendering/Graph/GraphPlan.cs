@@ -5,11 +5,16 @@ using Apogee.Graphics;
 
 namespace Apogee.Rendering.Graph;
 
+/// <summary>One image transition the planner put in front of a pass (or at the end): a rectangle of mips and layers going from one state to another.</summary>
+public sealed record ImageBarrierPlan(string Image, ImageState Before, ImageState After, uint BaseMip, uint MipCount, uint BaseLayer, uint LayerCount);
+
 /// <summary>What the planner decided about one pass.</summary>
 /// <param name="Culled">Nothing that reaches an output depends on it, so it does not run.</param>
-public sealed record PassPlan(string Name, PassType Type, bool Culled, IReadOnlyList<string> Reads, IReadOnlyList<string> Writes, int Barriers);
+/// <param name="Barriers">How many barriers (image rectangles and buffers) go in front of it.</param>
+/// <param name="ImageBarriers">The image part of those barriers, for tools and tests.</param>
+public sealed record PassPlan(string Name, PassType Type, bool Culled, IReadOnlyList<string> Reads, IReadOnlyList<string> Writes, int Barriers, IReadOnlyList<ImageBarrierPlan> ImageBarriers);
 
-internal readonly record struct PlannedImageBarrier(int Resource, ImageState Before, ImageState After);
+internal readonly record struct PlannedImageBarrier(int Resource, ImageState Before, ImageState After, uint BaseMip, uint MipCount, uint BaseLayer, uint LayerCount);
 
 internal readonly record struct PlannedBufferBarrier(int Resource, BufferState Before, BufferState After);
 
@@ -40,6 +45,9 @@ public sealed class GraphPlan
     public int PhysicalImageCount => PhysicalImages.Count;
 
     public int PhysicalBufferCount => PhysicalBuffers.Count;
+
+    /// <summary>The image barriers at the end of the graph, where imported images are put in the state their owner asked for.</summary>
+    public IReadOnlyList<ImageBarrierPlan> EpilogueImageBarriers { get; internal set; } = [];
 
     public int BarrierCount => Passes.Sum(p => p.Barriers) + Epilogue.Images.Count + Epilogue.Buffers.Count;
 

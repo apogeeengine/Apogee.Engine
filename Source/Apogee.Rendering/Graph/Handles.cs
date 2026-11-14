@@ -17,6 +17,34 @@ public readonly record struct BufferHandle(int Index, int Graph)
     public bool IsValid => Graph != 0;
 }
 
+/// <summary>
+/// A rectangle of an image's subresources: some mip levels of some array layers (six per cube). A pass that declares one of these uses only that part of the image, and the graph tracks and transitions the parts
+/// separately. A count of <see cref="uint.MaxValue"/> means every level or layer that remains.
+/// </summary>
+public readonly record struct SubresourceRange(uint BaseMip, uint MipCount, uint BaseLayer, uint LayerCount)
+{
+    /// <summary>One mip level, every layer.</summary>
+    public static SubresourceRange Mip(uint level) => new(level, 1, 0, uint.MaxValue);
+
+    /// <summary>Several mip levels, every layer.</summary>
+    public static SubresourceRange Mips(uint baseMip, uint count = uint.MaxValue) => new(baseMip, count, 0, uint.MaxValue);
+
+    /// <summary>One array layer (a cube face is a layer), every mip level.</summary>
+    public static SubresourceRange Layer(uint layer) => new(0, uint.MaxValue, layer, 1);
+
+    /// <summary>Several array layers, every mip level.</summary>
+    public static SubresourceRange Layers(uint baseLayer, uint count = uint.MaxValue) => new(0, uint.MaxValue, baseLayer, count);
+
+    /// <summary>One mip level of one layer.</summary>
+    public static SubresourceRange Of(uint mip, uint layer) => new(mip, 1, layer, 1);
+
+    internal bool Overlaps(SubresourceRange other) =>
+        BaseMip < other.BaseMip + other.MipCount && other.BaseMip < BaseMip + MipCount
+        && BaseLayer < other.BaseLayer + other.LayerCount && other.BaseLayer < BaseLayer + LayerCount;
+
+    public override string ToString() => $"mips {BaseMip}+{MipCount}, layers {BaseLayer}+{LayerCount}";
+}
+
 public enum PassType
 {
     Graphics,
@@ -53,6 +81,12 @@ public readonly struct PassContext
 
     public ResolvedImage Image(ImageHandle handle) => _graph.Resolve(handle);
 
+    /// <summary>
+    /// The image as a view of some of its mips and layers: <see cref="ResolvedImage.View"/> is a view of just that part, the bindless indices read or write just that part (a mip to build the next one from, a face to
+    /// store into), and the size is that of its first mip. The view lives as long as the image's frame slot needs it: do not keep it past the frame.
+    /// </summary>
+    public ResolvedImage Image(ImageHandle handle, SubresourceRange range) => _graph.Resolve(handle, range);
+
     public GpuBuffer Buffer(BufferHandle handle) => _graph.Resolve(handle);
 }
 
@@ -79,6 +113,12 @@ internal sealed class ResourceNode
     public ImageDescription ImageDescription { get; init; }
 
     public GpuImage? ImportedImage { get; init; }
+
+    /// <summary>The mip levels the image has (images only).</summary>
+    public uint MipCount { get; init; } = 1;
+
+    /// <summary>The array layers the image has, six per cube (images only).</summary>
+    public uint LayerCount { get; init; } = 1;
 
     public Backbuffer? ImportedBackbuffer { get; init; }
 
@@ -107,11 +147,11 @@ internal sealed class ResourceNode
 }
 
 /// <summary>How one pass uses one resource.</summary>
-internal readonly record struct ResourceUse(int Resource, int State, bool Reads, bool Writes);
+internal readonly record struct ResourceUse(int Resource, int State, bool Reads, bool Writes, SubresourceRange Range = default);
 
-internal sealed record ColorAttachmentUse(int Resource, Vector4? Clear);
+internal sealed record ColorAttachmentUse(int Resource, Vector4? Clear, SubresourceRange Range);
 
-internal sealed record DepthAttachmentUse(int Resource, float? Clear, bool ReadOnly);
+internal sealed record DepthAttachmentUse(int Resource, float? Clear, bool ReadOnly, SubresourceRange Range);
 
 internal sealed class PassNode
 {

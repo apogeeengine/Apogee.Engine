@@ -287,12 +287,188 @@ public class PlannerTests
     }
 
     [Fact]
-    public void TransientsHaveOneMipAndNoMultisampling()
+    public void TransientsMayHaveMipsAndLayersButNoMultisampling()
     {
         var graph = new RenderGraph();
 
-        Assert.Throws<RenderGraphException>(() => graph.CreateImage("mips", Color() with { MipLevels = 3 }));
+        graph.CreateImage("mips", Color() with { MipLevels = 3 });
+        graph.CreateImage("layers", Color() with { ArrayLayers = 4 });
         Assert.Throws<RenderGraphException>(() => graph.CreateImage("msaa", Color() with { Samples = SampleCount.Count4 }));
+    }
+
+    private static ImageDescription Chain(uint mips = 4, uint layers = 1, bool cube = false) =>
+        new(PixelFormat.R32Sfloat, 8, 8, ImageUsage.Storage | ImageUsage.Sampled, MipLevels: mips, ArrayLayers: layers, Cube: cube);
+
+    private static ImageBarrierPlan Barrier(GraphPlan plan, string pass, int index = 0) => Pass(plan, pass).ImageBarriers[index];
+
+    [Fact]
+    public void ABarrierIsPlannedPerMipLevelAPassUses()
+    {
+        var graph = new RenderGraph();
+        ImageHandle chain = graph.CreateImage("chain", Chain());
+        graph.AddPass("Level 0", PassType.Compute, p => { p.WriteStorage(chain, SubresourceRange.Mip(0)); p.NoCull(); });
+        graph.AddPass("Level 1", PassType.Compute, p => { p.ReadSampled(chain, SubresourceRange.Mip(0)); p.WriteStorage(chain, SubresourceRange.Mip(1)); p.NoCull(); });
+        graph.AddPass("Level 2", PassType.Compute, p => { p.ReadSampled(chain, SubresourceRange.Mip(1)); p.WriteStorage(chain, SubresourceRange.Mip(2)); p.NoCull(); });
+
+        GraphPlan plan = graph.Compile();
+
+        Assert.Equal(new ImageBarrierPlan("chain", ImageState.Undefined, ImageState.StorageReadWrite, 0, 1, 0, 1), Barrier(plan, "Level 0"));
+        Assert.Equal(2, Pass(plan, "Level 1").Barriers);
+        Assert.Contains(new ImageBarrierPlan("chain", ImageState.StorageReadWrite, ImageState.ShaderRead, 0, 1, 0, 1), Pass(plan, "Level 1").ImageBarriers);     // mip 0 is done being written
+        Assert.Contains(new ImageBarrierPlan("chain", ImageState.Undefined, ImageState.StorageReadWrite, 1, 1, 0, 1), Pass(plan, "Level 1").ImageBarriers);       // mip 1 starts
+        Assert.Equal(2, Pass(plan, "Level 2").Barriers);     // mip 0 is not touched again, mip 1 moves on, mip 2 starts
+        Assert.DoesNotContain(Pass(plan, "Level 2").ImageBarriers, b => b.BaseMip == 0);
+    }
+
+    [Fact]
+    public void AWholeImageInOneStateIsOneBarrierCoveringEveryMipAndLayer()
+    {
+        var graph = new RenderGraph();
+        ImageHandle image = graph.CreateImage("array", Chain(mips: 3, layers: 2));
+        graph.AddPass("Fill", PassType.Compute, p => { p.WriteStorage(image); p.NoCull(); });
+        graph.AddPass("Use", PassType.Compute, p => { p.ReadSampled(image); p.NoCull(); });
+
+        GraphPlan plan = graph.Compile();
+
+        Assert.Equal(new ImageBarrierPlan("array", ImageState.Undefined, ImageState.StorageReadWrite, 0, 3, 0, 2), Barrier(plan, "Fill"));
+        Assert.Equal(new ImageBarrierPlan("array", ImageState.StorageReadWrite, ImageState.ShaderRead, 0, 3, 0, 2), Barrier(plan, "Use"));
+    }
+
+    [Fact]
+    public void MipsWrittenSeparatelyAndThenReadTogetherAreMergedIntoOneBarrier()
+    {
+        var graph = new RenderGraph();
+        ImageHandle image = graph.CreateImage("chain", Chain(mips: 3));
+        for (uint mip = 0; mip < 3; mip++)
+        {
+            uint level = mip;
+            graph.AddPass("Write " + mip, PassType.Compute, p => { p.WriteStorage(image, SubresourceRange.Mip(level)); p.NoCull(); });
+        }
+
+        graph.AddPass("Read all", PassType.Compute, p => { p.ReadSampled(image); p.NoCull(); });
+
+        GraphPlan plan = graph.Compile();
+
+        Assert.Equal(new ImageBarrierPlan("chain", ImageState.StorageReadWrite, ImageState.ShaderRead, 0, 3, 0, 1), Barrier(plan, "Read all"));
+        Assert.Equal(1, Pass(plan, "Read all").Barriers);
+    }
+
+    [Fact]
+    public void LayersInDifferentStatesNeedTheirOwnBarriers()
+    {
+        var graph = new RenderGraph();
+        ImageHandle image = graph.CreateImage("faces", Chain(mips: 1, layers: 1, cube: true));
+        graph.AddPass("Face 2", PassType.Compute, p => { p.WriteStorage(image, SubresourceRange.Layer(2)); p.NoCull(); });
+        graph.AddPass("Others", PassType.Compute, p => { p.WriteStorage(image, SubresourceRange.Layers(0, 2)); p.WriteStorage(image, SubresourceRange.Layers(3)); p.NoCull(); });
+        graph.AddPass("Read cube", PassType.Compute, p => { p.ReadSampled(image); p.NoCull(); });
+
+        GraphPlan plan = graph.Compile();
+
+        Assert.Equal(new ImageBarrierPlan("faces", ImageState.Undefined, ImageState.StorageReadWrite, 0, 1, 2, 1), Barrier(plan, "Face 2"));
+        Assert.Equal(2, Pass(plan, "Others").Barriers);
+        Assert.Equal(1, Pass(plan, "Read cube").Barriers);   // all six are in the same state by now
+        Assert.Equal(6u, Barrier(plan, "Read cube").LayerCount);
+    }
+
+    [Fact]
+    public void WritingOneMipDoesNotMakeTheWriterOfAnotherMipUnneeded()
+    {
+        var graph = new RenderGraph();
+        ImageHandle image = graph.CreateImage("chain", Chain(mips: 2));
+        graph.AddPass("Mip 0", PassType.Compute, p => p.WriteStorage(image, SubresourceRange.Mip(0)));
+        graph.AddPass("Mip 1", PassType.Compute, p => p.WriteStorage(image, SubresourceRange.Mip(1)));
+        graph.AddPass("Overwrite all", PassType.Compute, p => p.WriteStorage(image));
+        graph.AddPass("Use", PassType.Compute, p => { p.ReadSampled(image); p.NoCull(); });
+
+        GraphPlan plan = graph.Compile();
+
+        Assert.True(Pass(plan, "Mip 0").Culled);              // a write of the whole image makes both earlier writers unneeded...
+        Assert.True(Pass(plan, "Mip 1").Culled);
+
+        var partial = new RenderGraph();
+        ImageHandle chain = partial.CreateImage("chain", Chain(mips: 2));
+        partial.AddPass("Mip 0", PassType.Compute, p => p.WriteStorage(chain, SubresourceRange.Mip(0)));
+        partial.AddPass("Mip 1", PassType.Compute, p => p.WriteStorage(chain, SubresourceRange.Mip(1)));
+        partial.AddPass("Use", PassType.Compute, p => { p.ReadSampled(chain); p.NoCull(); });
+        GraphPlan partialPlan = partial.Compile();
+
+        Assert.False(Pass(partialPlan, "Mip 0").Culled);      // ...but a write of one mip does not
+        Assert.False(Pass(partialPlan, "Mip 1").Culled);
+    }
+
+    [Fact]
+    public void ReadingMipsNobodyWroteIsAnError()
+    {
+        var graph = new RenderGraph();
+        ImageHandle chain = graph.CreateImage("chain", Chain(mips: 3));
+        graph.AddPass("Mip 0", PassType.Compute, p => p.WriteStorage(chain, SubresourceRange.Mip(0)));
+        graph.AddPass("Read all", PassType.Compute, p => { p.ReadSampled(chain); p.NoCull(); });
+
+        Assert.Contains("chain", Assert.Throws<RenderGraphException>(() => graph.Compile()).Message);
+
+        var fine = new RenderGraph();
+        ImageHandle ok = fine.CreateImage("chain", Chain(mips: 3));
+        fine.AddPass("Mip 0", PassType.Compute, p => p.WriteStorage(ok, SubresourceRange.Mip(0)));
+        fine.AddPass("Read mip 0", PassType.Compute, p => { p.ReadSampled(ok, SubresourceRange.Mip(0)); p.NoCull(); });
+        Assert.Equal(2, fine.Compile().LivePassCount);
+    }
+
+    [Fact]
+    public void OnePassMayReadOneMipAndWriteTheNextButNotUseTheSamePartTwoWays()
+    {
+        var graph = new RenderGraph();
+        ImageHandle chain = graph.CreateImage("chain", Chain(mips: 2));
+        graph.AddPass("Down", PassType.Compute, p => { p.ReadSampled(chain, SubresourceRange.Mip(0)); p.WriteStorage(chain, SubresourceRange.Mip(1)); });
+
+        var both = Assert.Throws<RenderGraphException>(() => graph.AddPass("Both", PassType.Compute, p => { p.ReadSampled(chain, SubresourceRange.Mip(0)); p.WriteStorage(chain, SubresourceRange.Mips(0, 2)); }));
+        Assert.Contains("two different ways", both.Message);
+    }
+
+    [Fact]
+    public void ARangeOutsideTheImageIsAnError()
+    {
+        var graph = new RenderGraph();
+        ImageHandle chain = graph.CreateImage("chain", Chain(mips: 3, layers: 2));
+
+        Assert.Throws<RenderGraphException>(() => graph.AddPass("Mip", PassType.Compute, p => p.WriteStorage(chain, SubresourceRange.Mip(3))));
+        Assert.Throws<RenderGraphException>(() => graph.AddPass("Layer", PassType.Compute, p => p.WriteStorage(chain, SubresourceRange.Layer(2))));
+        Assert.Throws<RenderGraphException>(() => graph.AddPass("Count", PassType.Compute, p => p.WriteStorage(chain, SubresourceRange.Mips(1, 5))));
+    }
+
+    [Fact]
+    public void AnAttachmentIsOneMipAndItsSizeIsThatOfTheLevel()
+    {
+        var graph = new RenderGraph();
+        ImageHandle chain = graph.CreateImage("chain", new ImageDescription(PixelFormat.R8G8B8A8Unorm, 64, 64, ImageUsage.ColorAttachment | ImageUsage.Sampled, MipLevels: 3));
+        ImageHandle small = graph.CreateImage("small", Color(16));
+
+        Assert.Contains("which one", Assert.Throws<RenderGraphException>(() => graph.AddPass("No range", PassType.Graphics, p => p.WriteColor(chain, Vector4.Zero))).Message);
+        Assert.Contains("one level", Assert.Throws<RenderGraphException>(() => graph.AddPass("Two", PassType.Graphics, p => p.WriteColor(chain, Vector4.Zero, SubresourceRange.Mips(0, 2)))).Message);
+
+        // Mip 2 of a 64x64 image is 16x16: the same size as 'small'.
+        graph.AddPass("Fits", PassType.Graphics, p => { p.WriteColor(chain, Vector4.Zero, SubresourceRange.Mip(2)); p.WriteColor(small, Vector4.Zero); p.NoCull(); });
+        graph.Compile();
+
+        var wrong = new RenderGraph();
+        ImageHandle a = wrong.CreateImage("chain", new ImageDescription(PixelFormat.R8G8B8A8Unorm, 64, 64, ImageUsage.ColorAttachment, MipLevels: 3));
+        ImageHandle b = wrong.CreateImage("small", Color(16));
+        wrong.AddPass("Mismatch", PassType.Graphics, p => { p.WriteColor(a, Vector4.Zero, SubresourceRange.Mip(1)); p.WriteColor(b, Vector4.Zero); p.NoCull(); });
+        Assert.Contains("different sizes", Assert.Throws<RenderGraphException>(() => wrong.Compile()).Message);
+    }
+
+    [Fact]
+    public void ImportedImagesLeaveEveryMipInTheRequestedState()
+    {
+        var graph = new RenderGraph();
+        var image = new FakeImage(PixelFormat.R32Sfloat, 8, mips: 3);
+        ImageHandle imported = graph.ImportImage("persistent", image, ImageState.ShaderRead, ImageState.ShaderRead, output: true);
+        graph.AddPass("Rewrite mip 1", PassType.Compute, p => p.ReadWriteStorage(imported, SubresourceRange.Mip(1)));
+
+        GraphPlan plan = graph.Compile();
+
+        Assert.Equal(new ImageBarrierPlan("persistent", ImageState.ShaderRead, ImageState.StorageReadWrite, 1, 1, 0, 1), Barrier(plan, "Rewrite mip 1"));
+        ImageBarrierPlan epilogue = Assert.Single(plan.EpilogueImageBarriers);       // only the mip that was moved goes back
+        Assert.Equal(new ImageBarrierPlan("persistent", ImageState.StorageReadWrite, ImageState.ShaderRead, 1, 1, 0, 1), epilogue);
     }
 
     [Fact]
@@ -312,9 +488,9 @@ public class PlannerTests
 }
 
 /// <summary>An image that is not on any GPU, for planning a graph (the planner never touches the GPU).</summary>
-internal sealed class FakeImage(PixelFormat format, uint size) : GpuImage(new ImageDescription(format, size, size, ImageUsage.ColorAttachment))
+internal sealed class FakeImage(PixelFormat format, uint size, uint mips = 1, uint layers = 1) : GpuImage(new ImageDescription(format, size, size, ImageUsage.ColorAttachment, MipLevels: mips, ArrayLayers: layers))
 {
-    public override uint Layers => 1;
+    public override uint Layers => layers;
 
     public override ImageView View { get; } = new FakeView();
 

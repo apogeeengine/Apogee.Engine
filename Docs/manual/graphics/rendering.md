@@ -34,29 +34,55 @@ void RenderFrame(Frame frame, Backbuffer back)
 
 **Declaring.** `AddPass(name, type, setup)` runs `setup` immediately; it declares uses on the `PassBuilder` and sets the callback that records
 the commands (`pass.Execute`). Images: `ReadSampled`, `WriteColor`, `WriteDepth`, `ReadDepth`, `WriteStorage`, `ReadWriteStorage`, `CopyFrom`,
-`CopyTo`. Buffers: `Read`, `Write`, `ReadWrite`, `CopyFrom`, `CopyTo`. The difference between *write* and *read-write* matters: a write
+`CopyTo`. Buffers: `Read`, `Write`, `ReadWrite`, `ReadIndirect` (the arguments of an indirect dispatch or draw), `CopyFrom`, `CopyTo`. The difference between *write* and *read-write* matters: a write
 replaces everything (so whatever wrote it earlier is no longer needed, and a fresh transient can be written first), a read-write needs the
 previous contents. Attachments are begun and ended by the graph for graphics passes, with clear (give a value) or load (give none); depth is
 reverse-Z, so its default clear is 0. A pass the graph cannot see the effect of calls `NoCull()`.
 
+**Mips and layers.** Every image method takes an optional `SubresourceRange` (`SubresourceRange.Mip(2)`, `Layer(3)`, `Of(mip, layer)`, `Mips(1)`, `Layers(0, 2)`; a count of `uint.MaxValue` means all that remain). Without one a
+pass uses the whole image; with one, only that part, and the graph keeps a state for each mip level and layer. So one pass can read level *n* while it writes level *n+1* of the same image, a mip chain or a
+cube map is built a level or a face at a time, and the barrier in front of a pass moves only the parts it uses (a whole image in one state is still one barrier). A transient may have several mips and layers
+(`ImageDescription.MipLevels`, `ArrayLayers`, `Cube`; not multisampling); an attachment is one mip level, so a range is required for an image with several.
+
+```csharp
+ImageHandle chain = graph.CreateImage("Bloom", new ImageDescription(PixelFormat.R16G16B16A16Sfloat, w, h, ImageUsage.Storage | ImageUsage.Sampled, MipLevels: 6));
+for (uint mip = 1; mip < 6; mip++)
+{
+    uint level = mip;
+    graph.AddPass($"Down {level}", PassType.Compute, pass =>
+    {
+        pass.ReadSampled(chain, SubresourceRange.Mip(level - 1));
+        pass.WriteStorage(chain, SubresourceRange.Mip(level));
+        pass.Execute(ctx =>
+        {
+            ResolvedImage source = ctx.Image(chain, SubresourceRange.Mip(level - 1));      // a view of that level alone
+            ResolvedImage target = ctx.Image(chain, SubresourceRange.Mip(level));
+            Downsample(ctx.Recorder, source.SampledIndex, target.StorageIndex, target.Width, target.Height);
+        });
+    });
+}
+```
+
 **Compiling** (`graph.Compile()`, done by `Execute` if you did not) is pure and needs no GPU:
 
 1. *Culling.* Walking back from the outputs (the backbuffer, and imports marked `output: true`), a pass runs only if it writes something that
-   is needed; what it reads becomes needed. A pass that overwrites a resource completely makes earlier writers of it unneeded.
-2. *Validation.* A read of something no earlier pass wrote is a `RenderGraphException`, as are one resource used two ways in a pass,
-   attachments of different sizes, and attachments in a compute pass.
+   is needed; what it reads becomes needed. A pass that overwrites a resource completely (all its mips and layers) makes earlier writers of it unneeded; one that writes a part of it does not.
+2. *Validation.* A read of something no earlier pass wrote is a `RenderGraphException` (for an image, every mip and layer the read covers must have been written), as are one part of a resource used two ways in a pass,
+   a range outside the image, attachments of different sizes (an attachment is the size of its mip level), and attachments in a compute pass.
 3. *Memory.* Transients whose lifetimes do not overlap and whose descriptions are equal share one image (buffers: equal size and usage).
 4. *Barriers.* In front of each pass, one batched barrier brings each resource from its last state to the one the pass declared. Reading a
    resource again in the same state needs none; anything after a write does, even in the same state. Imported resources leave in the state
-   you gave (`Present` for the backbuffer). `graph.Plan` describes the result (`ToString()` prints it for the dev overlay).
+   you gave (`Present` for the backbuffer). `graph.Plan` describes the result (`ToString()` prints it for the dev overlay); `PassPlan.ImageBarriers` lists the image rectangles (mips and layers, before and after) of each pass.
 
 **Executing.** Each live pass runs inside `frame.Scope(name)`, so it is a RenderDoc label and a GPU timer. `PassContext` resolves handles:
 `ctx.Image(h)` gives the `VkImage`, view, size and, for transients created with `Sampled` / `Storage` usage, the **bindless index** to read or
-write it by; `ctx.Buffer(h)` gives the `GpuBuffer` (use `.Address` in push constants).
+write it by; `ctx.Image(h, range)` gives the same for a part of the image: a view of just those mips and layers, the bindless indices for that view, and the size of its first mip (the indices exist when the image has the
+`Sampled` / `Storage` usage, and a storage view is a 2D view, which `RWTexture2D` in `common.slang` reads: see [the bindless heap](graphics.md#the-bindless-heap)). `ctx.Buffer(h)` gives the `GpuBuffer` (use `.Address` in push constants).
 
 **Transients** come from `TransientPool`, one set per frame in flight, so a steady-state frame allocates nothing; resources unused for eight
-frames are freed. A transient image with `Sampled` or `Storage` usage keeps its bindless slot for as long as it lives. Limits: images are tracked
-as a whole (every mip and layer in one state), transients have one mip and no multisampling, and everything runs on the one queue.
+frames are freed. A transient image with `Sampled` or `Storage` usage keeps its bindless slot for as long as it lives, and so do the
+views of its parts that passes asked for (made the first time and kept with the image). The views of a part of an *imported* image are made per frame and destroyed when the same frame slot next starts a graph, after the GPU
+has finished with them. Limits: transients have no multisampling, a storage view of a cube or array is read as `RWTexture2D` (one face or layer at a time), and everything runs on the one queue.
 
 `new RenderGraph()` without a device can only be compiled, which is how the planner is unit tested.
 

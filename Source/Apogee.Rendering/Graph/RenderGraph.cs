@@ -13,7 +13,8 @@ namespace Apogee.Rendering.Graph;
 /// <see cref="TransientPool"/> that lives across frames.
 /// </summary>
 /// <remarks>
-/// Images are tracked as a whole: every mip and layer is in one state. Transients have one mip and are not multisampled.
+/// Images are tracked per mip level and array layer: a pass that declares a <see cref="SubresourceRange"/> uses (and the graph transitions) just that part, so one pass can read a mip another is writing, and a
+/// mip chain or a cube map can be built a level or a face at a time. Transients may have several mips and layers, and are not multisampled.
 /// </remarks>
 public sealed class RenderGraph
 {
@@ -27,6 +28,9 @@ public sealed class RenderGraph
     private GraphPlan? _plan;
     private ResolvedImage[] _images = [];
     private GpuBuffer?[] _buffers = [];
+    private TransientPool.PooledImage?[] _pooledOf = [];
+    private readonly Dictionary<(int Resource, SubresourceRange Range), ResolvedImage> _partViews = [];
+    private int _slot;
 
     /// <summary>A graph that can be compiled and executed.</summary>
     public RenderGraph(GraphicsDevice device, TransientPool pool)
@@ -46,13 +50,26 @@ public sealed class RenderGraph
     /// <summary>An image the graph allocates and frees: its contents exist only inside the frame.</summary>
     public ImageHandle CreateImage(string name, in ImageDescription description)
     {
-        if (description.MipLevels != 1 || description.Samples != SampleCount.Count1)
+        if (description.Samples != SampleCount.Count1)
         {
-            throw new RenderGraphException($"Transient image '{name}' must have one mip level and no multisampling.");
+            throw new RenderGraphException($"Transient image '{name}' must not be multisampled.");
+        }
+
+        if (description.MipLevels == 0 || description.ArrayLayers == 0)
+        {
+            throw new RenderGraphException($"Transient image '{name}' needs at least one mip level and one layer.");
         }
 
         _plan = null;
-        _resources.Add(new ResourceNode { Index = _resources.Count, Name = name, Kind = ResourceKind.Image, ImageDescription = description });
+        _resources.Add(new ResourceNode
+        {
+            Index = _resources.Count,
+            Name = name,
+            Kind = ResourceKind.Image,
+            ImageDescription = description,
+            MipCount = description.MipLevels,
+            LayerCount = description.Cube ? 6 * description.ArrayLayers : description.ArrayLayers,
+        });
         return new ImageHandle(_resources.Count - 1, _id);
     }
 
@@ -72,6 +89,8 @@ public sealed class RenderGraph
             Imported = true,
             IsOutput = output,
             ImportedImage = image,
+            MipCount = image.MipLevels,
+            LayerCount = image.Layers,
             ImportedSampledIndex = sampledIndex,
             ImageInitial = initial,
             ImageFinal = final,
@@ -183,6 +202,46 @@ public sealed class RenderGraph
             : throw new RenderGraphException($"Image '{_resources[handle.Index].Name}' is not available: its passes were culled or the graph is not executing.");
     }
 
+    /// <summary>The image seen through a view of some of its mips and layers.</summary>
+    internal ResolvedImage Resolve(ImageHandle handle, SubresourceRange range)
+    {
+        ResolvedImage whole = Resolve(handle);
+        return ResolvePart(handle.Index, whole, range);
+    }
+
+    private ResolvedImage ResolvePart(int resource, ResolvedImage whole, SubresourceRange range)
+    {
+        ResourceNode node = _resources[resource];
+        uint mips = range.MipCount == uint.MaxValue && range.BaseMip <= node.MipCount ? node.MipCount - range.BaseMip : range.MipCount;
+        uint layers = range.LayerCount == uint.MaxValue && range.BaseLayer <= node.LayerCount ? node.LayerCount - range.BaseLayer : range.LayerCount;
+        if (mips == 0 || layers == 0 || (ulong)range.BaseMip + mips > node.MipCount || (ulong)range.BaseLayer + layers > node.LayerCount)
+        {
+            throw new RenderGraphException($"{range} is outside image '{node.Name}' ({node.MipCount} mip level(s), {node.LayerCount} layer(s)).");
+        }
+
+        var part = new SubresourceRange(range.BaseMip, mips, range.BaseLayer, layers);
+        if (part == new SubresourceRange(0, node.MipCount, 0, node.LayerCount))
+        {
+            return whole;
+        }
+
+        if (!_partViews.TryGetValue((resource, part), out ResolvedImage resolved))
+        {
+            TransientPool.ViewEntry view = _pooledOf[resource] is { } pooled ? pooled.GetView(part) : _pool!.AcquireTemporaryView(_slot, whole.Image, part);
+            resolved = whole with
+            {
+                View = view.View,
+                Width = Math.Max(1, whole.Width >> (int)part.BaseMip),
+                Height = Math.Max(1, whole.Height >> (int)part.BaseMip),
+                SampledIndex = view.SampledIndex,
+                StorageIndex = view.StorageIndex,
+            };
+            _partViews.Add((resource, part), resolved);
+        }
+
+        return resolved;
+    }
+
     internal GpuBuffer Resolve(BufferHandle handle)
     {
         CheckBuffer(handle);
@@ -205,6 +264,10 @@ public sealed class RenderGraph
     {
         _images = new ResolvedImage[_resources.Count];
         _buffers = new GpuBuffer?[_resources.Count];
+        _pooledOf = new TransientPool.PooledImage?[_resources.Count];
+        _partViews.Clear();
+        _slot = slot;
+        _pool!.BeginExecution(slot);
 
         // Transients sharing a physical slot get the same pooled object.
         var pooledImages = new TransientPool.PooledImage?[plan.PhysicalImages.Count];
@@ -224,6 +287,7 @@ public sealed class RenderGraph
                 else
                 {
                     TransientPool.PooledImage pooled = pooledImages[resource.Physical] ??= _pool!.AcquireImage(slot, plan.PhysicalImages[resource.Physical]);
+                    _pooledOf[resource.Index] = pooled;
                     GpuImage image2 = pooled.Image;
                     _images[resource.Index] = new ResolvedImage(image2, image2.View, image2.Format, image2.Width, image2.Height, pooled.SampledIndex, pooled.StorageIndex);
                 }
@@ -246,7 +310,7 @@ public sealed class RenderGraph
         ImageBarrier[] imageBarriers = [.. images.Select(b =>
         {
             ResolvedImage image = _images[b.Resource];
-            return new ImageBarrier(image.Image, b.Before, b.After);
+            return new ImageBarrier(image.Image, b.Before, b.After, b.BaseMip, b.MipCount, b.BaseLayer, b.LayerCount);
         })];
         BufferBarrier[] bufferBarriers = [.. buffers.Select(b => new BufferBarrier(_buffers[b.Resource]!, b.Before, b.After))];
         recorder.Barriers(imageBarriers, bufferBarriers);
@@ -254,11 +318,11 @@ public sealed class RenderGraph
 
     private void BeginRendering(CommandRecorder recorder, PassNode pass)
     {
-        ColorTarget[] colors = [.. pass.Colors.Select(c => new ColorTarget(_images[c.Resource].View, Clear: c.Clear is not null, ClearColor: c.Clear ?? default))];
+        ColorTarget[] colors = [.. pass.Colors.Select(c => new ColorTarget(ResolvePart(c.Resource, _images[c.Resource], c.Range).View, Clear: c.Clear is not null, ClearColor: c.Clear ?? default))];
         DepthTarget? depth = pass.Depth is { } d
-            ? new DepthTarget(_images[d.Resource].View, Clear: d.Clear is not null, ClearDepth: d.Clear ?? 0f, ReadOnly: d.ReadOnly)
+            ? new DepthTarget(ResolvePart(d.Resource, _images[d.Resource], d.Range).View, Clear: d.Clear is not null, ClearDepth: d.Clear ?? 0f, ReadOnly: d.ReadOnly)
             : null;
-        ResolvedImage first = pass.Colors.Count > 0 ? _images[pass.Colors[0].Resource] : _images[pass.Depth!.Resource];
+        ResolvedImage first = pass.Colors.Count > 0 ? ResolvePart(pass.Colors[0].Resource, _images[pass.Colors[0].Resource], pass.Colors[0].Range) : ResolvePart(pass.Depth!.Resource, _images[pass.Depth!.Resource], pass.Depth!.Range);
         recorder.BeginRendering(first.Width, first.Height, colors, depth);
     }
 }

@@ -18,6 +18,7 @@ public sealed class TransientPool : IDisposable
     private readonly List<PooledImage>[] _images;
     private readonly List<PooledBuffer>[] _buffers;
     private readonly int[] _executions;
+    private readonly List<(GpuImage Image, ViewEntry View)>[] _temporaryViews;
 
     public TransientPool(GraphicsDevice device, int framesInFlight = 2)
     {
@@ -25,6 +26,55 @@ public sealed class TransientPool : IDisposable
         _images = Create(framesInFlight, () => new List<PooledImage>());
         _buffers = Create(framesInFlight, () => new List<PooledBuffer>());
         _executions = new int[framesInFlight];
+        _temporaryViews = Create(framesInFlight, () => new List<(GpuImage, ViewEntry)>());
+    }
+
+    /// <summary>A view of part of an image, with the bindless indices that read or write just that part (0 where the image has no such usage).</summary>
+    internal readonly record struct ViewEntry(ImageView View, uint SampledIndex, uint StorageIndex);
+
+    /// <summary>
+    /// A view of part of an image the graph imported (a transient's views are kept with the transient). It, and its bindless entries, are destroyed the next time this frame slot starts a graph, which is
+    /// after the GPU has finished the frame that used it.
+    /// </summary>
+    internal ViewEntry AcquireTemporaryView(int slot, GpuImage image, SubresourceRange range)
+    {
+        ViewEntry view = CreateView(_device, image, range);
+        _temporaryViews[slot].Add((image, view));
+        return view;
+    }
+
+    /// <summary>Called when a graph starts executing in a frame slot: the slot's frame from before is finished, so the views it needed can go.</summary>
+    internal void BeginExecution(int slot)
+    {
+        foreach ((GpuImage image, ViewEntry view) in _temporaryViews[slot])
+        {
+            DestroyView(_device, image, view);
+        }
+
+        _temporaryViews[slot].Clear();
+    }
+
+    private static ViewEntry CreateView(GraphicsDevice device, GpuImage image, SubresourceRange range)
+    {
+        ImageView view = image.CreateView(range.BaseMip, range.MipCount, range.BaseLayer, range.LayerCount);
+        uint sampled = image.Description.Usage.HasFlag(ImageUsage.Sampled) ? device.Bindless.AddSampledImage(view) : 0;
+        uint storage = image.Description.Usage.HasFlag(ImageUsage.Storage) ? device.Bindless.AddStorageImage(view) : 0;
+        return new ViewEntry(view, sampled, storage);
+    }
+
+    private static void DestroyView(GraphicsDevice device, GpuImage image, ViewEntry entry)
+    {
+        if (entry.SampledIndex != 0)
+        {
+            device.Bindless.RemoveSampledImage(entry.SampledIndex);
+        }
+
+        if (entry.StorageIndex != 0)
+        {
+            device.Bindless.RemoveStorageImage(entry.StorageIndex);
+        }
+
+        image.DestroyView(entry.View);
     }
 
     /// <summary>Images and buffers currently alive across all frame slots.</summary>
@@ -95,6 +145,11 @@ public sealed class TransientPool : IDisposable
 
     public void Dispose()
     {
+        for (int slot = 0; slot < _temporaryViews.Length; slot++)
+        {
+            BeginExecution(slot);
+        }
+
         foreach (List<PooledImage> list in _images)
         {
             list.ForEach(i => i.Dispose());
@@ -122,6 +177,7 @@ public sealed class TransientPool : IDisposable
     internal sealed class PooledImage : IDisposable
     {
         private readonly GraphicsDevice _device;
+        private readonly Dictionary<SubresourceRange, ViewEntry> _views = [];
 
         public PooledImage(GraphicsDevice device, in ImageDescription description)
         {
@@ -153,8 +209,27 @@ public sealed class TransientPool : IDisposable
 
         public int LastUsed { get; set; }
 
+        /// <summary>The view of a part of this image, made when first asked for and kept as long as the image lives.</summary>
+        public ViewEntry GetView(SubresourceRange range)
+        {
+            if (!_views.TryGetValue(range, out ViewEntry entry))
+            {
+                entry = CreateView(_device, Image, range);
+                _views.Add(range, entry);
+            }
+
+            return entry;
+        }
+
         public void Dispose()
         {
+            foreach (ViewEntry view in _views.Values)
+            {
+                DestroyView(_device, Image, view);
+            }
+
+            _views.Clear();
+
             if (SampledIndex != 0)
             {
                 _device.Bindless.RemoveSampledImage(SampledIndex);

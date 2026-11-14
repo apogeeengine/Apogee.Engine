@@ -60,6 +60,301 @@ public unsafe class GraphExecutionTests(GpuFixture gpu) : GpuTest(gpu)
         }
         """;
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MipPush
+    {
+        public uint Source;
+        public uint Destination;
+        public uint Size;
+        public float Value;
+        public ulong Output;
+    }
+
+    private const string MipShader = """
+        [[vk::binding(0, 0)]] Texture2D<float4> gTextures[];
+        [[vk::binding(0, 0)]] Texture2DArray<float4> gArrays[];
+        [[vk::binding(2, 0)]] RWTexture2D<float4> gStorage[];
+
+        struct Push { uint source; uint destination; uint size; float value; float* output; };
+        [[vk::push_constant]] ConstantBuffer<Push> push;
+
+        // The first level: each texel is x + y.
+        [shader("compute")] [numthreads(8, 8, 1)]
+        void patternMain(uint3 id : SV_DispatchThreadID)
+        {
+            if (id.x < push.size && id.y < push.size)
+                gStorage[push.destination][id.xy] = float4(id.x + id.y, 0.0, 0.0, 1.0);
+        }
+
+        // A level is the average of 2x2 texels of the one before, read through a view of that level alone.
+        [shader("compute")] [numthreads(8, 8, 1)]
+        void downMain(uint3 id : SV_DispatchThreadID)
+        {
+            if (id.x < push.size && id.y < push.size)
+            {
+                int2 p = int2(id.xy) * 2;
+                float sum = gTextures[push.source].Load(int3(p, 0)).x + gTextures[push.source].Load(int3(p + int2(1, 0), 0)).x
+                          + gTextures[push.source].Load(int3(p + int2(0, 1), 0)).x + gTextures[push.source].Load(int3(p + int2(1, 1), 0)).x;
+                gStorage[push.destination][id.xy] = float4(sum * 0.25, 0.0, 0.0, 1.0);
+            }
+        }
+
+        [shader("compute")] [numthreads(8, 8, 1)]
+        void constMain(uint3 id : SV_DispatchThreadID)
+        {
+            if (id.x < push.size && id.y < push.size)
+                gStorage[push.destination][id.xy] = float4(push.value, 0.0, 0.0, 1.0);
+        }
+
+        [shader("compute")] [numthreads(1, 1, 1)]
+        void readMain()
+        {
+            push.output[0] = gTextures[push.source].Load(int3(0, 0, 0)).x;
+        }
+
+        [shader("compute")] [numthreads(1, 1, 1)]
+        void readLayersMain()
+        {
+            push.output[0] = gArrays[push.source].Load(int4(0, 0, 0, 0)).x;
+            push.output[1] = gArrays[push.source].Load(int4(0, 0, 1, 0)).x;
+        }
+        """;
+
+    /// <summary>Builds a mip chain of an 8x8 R32F image in four passes, each reading the level before through a view of that level and writing its own through another, and checks every level against the same maths on the CPU.</summary>
+    private static void BuildChain(GraphicsDevice device, TransientPool pool, FrameLoop loop, GpuImage image, Pipeline pattern, Pipeline down)
+    {
+        RunFrame(device, loop, frame =>
+        {
+            var graph = new RenderGraph(device, pool);
+            ImageHandle chain = graph.ImportImage("Chain", image, ImageState.Undefined, ImageState.ShaderRead, output: true);
+
+            graph.AddPass("Level 0", PassType.Compute, pass =>
+            {
+                pass.WriteStorage(chain, SubresourceRange.Mip(0));
+                pass.Execute(context =>
+                {
+                    context.Recorder.BindPipeline(pattern);
+                    context.Recorder.PushConstants(new MipPush { Destination = context.Image(chain, SubresourceRange.Mip(0)).StorageIndex, Size = 8 });
+                    context.Recorder.Dispatch(1, 1);
+                });
+            });
+            for (uint level = 1; level < 4; level++)
+            {
+                uint mip = level;
+                graph.AddPass("Level " + mip, PassType.Compute, pass =>
+                {
+                    pass.ReadSampled(chain, SubresourceRange.Mip(mip - 1));
+                    pass.WriteStorage(chain, SubresourceRange.Mip(mip));
+                    pass.Execute(context =>
+                    {
+                        ResolvedImage source = context.Image(chain, SubresourceRange.Mip(mip - 1));
+                        ResolvedImage destination = context.Image(chain, SubresourceRange.Mip(mip));
+                        Assert.Equal(8u >> (int)mip, destination.Width);
+                        context.Recorder.BindPipeline(down);
+                        context.Recorder.PushConstants(new MipPush { Source = source.SampledIndex, Destination = destination.StorageIndex, Size = destination.Width });
+                        context.Recorder.Dispatch(1, 1);
+                    });
+                });
+            }
+
+            graph.Execute(frame);
+            Assert.Equal(4, graph.Plan!.LivePassCount);
+        });
+    }
+
+    [Fact]
+    public void AMipChainIsWrittenALevelAtATimeThroughViewsOfOneImportedImage()
+    {
+        CompiledShader shader = Compiler().CompileSource("mips", MipShader);
+        using Pipeline pattern = Device.CreateComputePipeline(shader.Code("patternMain"), "pattern");
+        using Pipeline down = Device.CreateComputePipeline(shader.Code("downMain"), "down");
+        using GpuImage image = Device.CreateImage(new ImageDescription(PixelFormat.R32Sfloat, 8, 8, ImageUsage.Storage | ImageUsage.Sampled, MipLevels: 4), "chain");
+        int sampledBaseline = Device.Bindless.SampledImageCount;
+        using var pool = new TransientPool(Device);
+        using var loop = Device.CreateFrameLoop();
+
+        // Two frames, so that the views of the first are made again and the ones of the frame slot before are destroyed.
+        BuildChain(Device, pool, loop, image, pattern, down);
+        BuildChain(Device, pool, loop, image, pattern, down);
+
+        float[,] expected = new float[8, 8];
+        for (int y = 0; y < 8; y++)
+        {
+            for (int x = 0; x < 8; x++)
+            {
+                expected[y, x] = x + y;
+            }
+        }
+
+        for (uint mip = 0; mip < 4; mip++)
+        {
+            int size = 8 >> (int)mip;
+            float[] texels = new float[size * size];
+            Buffer.BlockCopy(Device.ReadImage(image, ImageState.ShaderRead, mip), 0, texels, 0, texels.Length * 4);
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    Assert.Equal(expected[y, x], texels[(y * size) + x], 0.0001f);
+                }
+            }
+
+            // The next level: the average of 2x2 texels.
+            float[,] next = new float[Math.Max(1, size / 2), Math.Max(1, size / 2)];
+            for (int y = 0; y < size / 2; y++)
+            {
+                for (int x = 0; x < size / 2; x++)
+                {
+                    next[y, x] = (expected[2 * y, 2 * x] + expected[2 * y, (2 * x) + 1] + expected[(2 * y) + 1, 2 * x] + expected[(2 * y) + 1, (2 * x) + 1]) * 0.25f;
+                }
+            }
+
+            expected = next;
+        }
+
+        pool.Dispose();
+        Assert.Equal(sampledBaseline, Device.Bindless.SampledImageCount);   // every view's bindless entry went with it
+    }
+
+    [Fact]
+    public void ATransientWithMipsAndLayersHasViewsPerPartAndIsUsedByPart()
+    {
+        CompiledShader shader = Compiler().CompileSource("mips", MipShader);
+        using Pipeline pattern = Device.CreateComputePipeline(shader.Code("patternMain"), "pattern");
+        using Pipeline down = Device.CreateComputePipeline(shader.Code("downMain"), "down");
+        using Pipeline read = Device.CreateComputePipeline(shader.Code("readMain"), "read");
+        using GpuBuffer output = Device.CreateBuffer(16, BufferUsage.Storage, MemoryKind.DeviceLocal, "output");
+        using var pool = new TransientPool(Device);
+        using var loop = Device.CreateFrameLoop();
+
+        RunFrame(Device, loop, frame =>
+        {
+            var graph = new RenderGraph(Device, pool);
+            ImageHandle chain = graph.CreateImage("Chain", new ImageDescription(PixelFormat.R32Sfloat, 8, 8, ImageUsage.Storage | ImageUsage.Sampled, MipLevels: 4));
+            BufferHandle result = graph.ImportBuffer("Output", output, BufferState.Undefined, BufferState.TransferSource, output: true);
+
+            graph.AddPass("Level 0", PassType.Compute, pass =>
+            {
+                pass.WriteStorage(chain, SubresourceRange.Mip(0));
+                pass.Execute(context =>
+                {
+                    context.Recorder.BindPipeline(pattern);
+                    context.Recorder.PushConstants(new MipPush { Destination = context.Image(chain, SubresourceRange.Mip(0)).StorageIndex, Size = 8 });
+                    context.Recorder.Dispatch(1, 1);
+                });
+            });
+            for (uint level = 1; level < 4; level++)
+            {
+                uint mip = level;
+                graph.AddPass("Level " + mip, PassType.Compute, pass =>
+                {
+                    pass.ReadSampled(chain, SubresourceRange.Mip(mip - 1));
+                    pass.WriteStorage(chain, SubresourceRange.Mip(mip));
+                    pass.Execute(context =>
+                    {
+                        ResolvedImage source = context.Image(chain, SubresourceRange.Mip(mip - 1));
+                        ResolvedImage destination = context.Image(chain, SubresourceRange.Mip(mip));
+                        Assert.NotEqual(0u, source.SampledIndex);
+                        Assert.NotEqual(0u, destination.StorageIndex);
+                        context.Recorder.BindPipeline(down);
+                        context.Recorder.PushConstants(new MipPush { Source = source.SampledIndex, Destination = destination.StorageIndex, Size = destination.Width });
+                        context.Recorder.Dispatch(1, 1);
+                    });
+                });
+            }
+
+            graph.AddPass("Read the top", PassType.Compute, pass =>
+            {
+                pass.ReadSampled(chain, SubresourceRange.Mip(3));
+                pass.Write(result);
+                pass.Execute(context =>
+                {
+                    context.Recorder.BindPipeline(read);
+                    context.Recorder.PushConstants(new MipPush { Source = context.Image(chain, SubresourceRange.Mip(3)).SampledIndex, Output = context.Buffer(result).Address });
+                    context.Recorder.Dispatch(1);
+                });
+            });
+            graph.Execute(frame);
+        });
+
+        // Every level keeps the mean of the first, which is 7.
+        Assert.Equal(7f, BitConverter.ToSingle(Device.ReadBuffer(output, 0, 4)), 0.0001f);
+    }
+
+    [Fact]
+    public void LayersOfATransientArrayAreWrittenByDifferentPassesAndSampledTogether()
+    {
+        CompiledShader shader = Compiler().CompileSource("mips", MipShader);
+        using Pipeline constant = Device.CreateComputePipeline(shader.Code("constMain"), "const");
+        using Pipeline readLayers = Device.CreateComputePipeline(shader.Code("readLayersMain"), "layers");
+        using GpuBuffer output = Device.CreateBuffer(16, BufferUsage.Storage, MemoryKind.DeviceLocal, "output");
+        using var pool = new TransientPool(Device);
+        using var loop = Device.CreateFrameLoop();
+
+        RunFrame(Device, loop, frame =>
+        {
+            var graph = new RenderGraph(Device, pool);
+            ImageHandle array = graph.CreateImage("Array", new ImageDescription(PixelFormat.R32Sfloat, 4, 4, ImageUsage.Storage | ImageUsage.Sampled, ArrayLayers: 2));
+            BufferHandle result = graph.ImportBuffer("Output", output, BufferState.Undefined, BufferState.TransferSource, output: true);
+
+            for (uint layer = 0; layer < 2; layer++)
+            {
+                uint index = layer;
+                graph.AddPass("Layer " + index, PassType.Compute, pass =>
+                {
+                    pass.WriteStorage(array, SubresourceRange.Layer(index));
+                    pass.Execute(context =>
+                    {
+                        context.Recorder.BindPipeline(constant);
+                        context.Recorder.PushConstants(new MipPush { Destination = context.Image(array, SubresourceRange.Layer(index)).StorageIndex, Size = 4, Value = index + 1 });
+                        context.Recorder.Dispatch(1, 1);
+                    });
+                });
+            }
+
+            graph.AddPass("Read both", PassType.Compute, pass =>
+            {
+                pass.ReadSampled(array);
+                pass.Write(result);
+                pass.Execute(context =>
+                {
+                    context.Recorder.BindPipeline(readLayers);
+                    context.Recorder.PushConstants(new MipPush { Source = context.Image(array).SampledIndex, Output = context.Buffer(result).Address });
+                    context.Recorder.Dispatch(1);
+                });
+            });
+            graph.Execute(frame);
+        });
+
+        float[] values = new float[2];
+        Buffer.BlockCopy(Device.ReadBuffer(output, 0, 8), 0, values, 0, 8);
+        Assert.Equal([1f, 2f], values);
+    }
+
+    [Fact]
+    public void AnAttachmentCanBeOneMipOfAnImportedImage()
+    {
+        using var pool = new TransientPool(Device);
+        using var loop = Device.CreateFrameLoop();
+        using GpuImage target = Device.CreateImage(new ImageDescription(PixelFormat.R8G8B8A8Unorm, 4, 4, ImageUsage.ColorAttachment | ImageUsage.Sampled, MipLevels: 3), "mips");
+
+        RunFrame(Device, loop, frame =>
+        {
+            var graph = new RenderGraph(Device, pool);
+            ImageHandle output = graph.ImportImage("Output", target, ImageState.Undefined, ImageState.ShaderRead, output: true);
+            graph.AddPass("Mip 1", PassType.Graphics, pass =>
+            {
+                pass.WriteColor(output, new Vector4(0f, 0f, 1f, 1f), SubresourceRange.Mip(1));
+                pass.Execute(context => Assert.Equal(2u, context.Image(output, SubresourceRange.Mip(1)).Width));
+            });
+            graph.Execute(frame);
+        });
+
+        byte[] pixels = Device.ReadImage(target, ImageState.ShaderRead, mipLevel: 1);
+        Assert.Equal(16, pixels.Length);                      // 2x2 texels: the attachment was the size of the level
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, pixels[..4]);
+    }
+
     private static ImageDescription ColorTarget(uint size = 8) =>
         new(PixelFormat.R8G8B8A8Unorm, size, size, ImageUsage.ColorAttachment | ImageUsage.Sampled);
 
