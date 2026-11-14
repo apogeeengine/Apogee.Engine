@@ -90,7 +90,7 @@ public sealed class ShaderReloadTests : GpuTest, IDisposable
         public void Render(bool wait = true)
         {
             Frame frame = _loop.BeginFrame()!;
-            Renderer.Render(frame, _scene, _camera, RenderTarget.Offscreen(_target), new RenderSettings { SkyColor = new Vector3(0.3f, 0.42f, 0.65f) });
+            Renderer.Render(frame, _scene, _camera, RenderTarget.Offscreen(_target), new RenderSettings { Tonemapper = Tonemapper.PbrNeutral, ExposureMode = ExposureMode.Fixed, Ev100 = Legacy.Ev100, SkyColor = new Vector3(0.3f, 0.42f, 0.65f) });
             _loop.EndFrame(frame);
             if (wait)
             {
@@ -127,7 +127,7 @@ public sealed class ShaderReloadTests : GpuTest, IDisposable
         return sum / (a.Length / 4 * 3);
     }
 
-    private const string TonemapReturn = "return float4(linearToSrgb(saturate(neutralTonemap(hdr))), 1.0);";
+    private const string TonemapReturn = "return float4(linearToSrgb(display), 1.0);";
 
     [Fact]
     public void AnEditToTheToneMapperChangesTheNextImageAndRebuildsOnlyItsPipelines()
@@ -137,7 +137,7 @@ public sealed class ShaderReloadTests : GpuTest, IDisposable
         rig.Render();
         byte[] before = rig.Pixels();
 
-        Edit("tonemap.slang", text => text.Replace(TonemapReturn, "return float4(1.0 - linearToSrgb(saturate(neutralTonemap(hdr))), 1.0);", StringComparison.Ordinal));
+        Edit("tonemap.slang", text => text.Replace(TonemapReturn, "return float4(1.0 - linearToSrgb(display), 1.0);", StringComparison.Ordinal));
         library.NotifyChanged(["shaders://tonemap.slang"]);
         rig.Renderer.WaitForShaderRebuilds();
         rig.Render();

@@ -40,7 +40,7 @@ public class DebugDrawRenderingTests(GpuFixture gpu) : GpuTest(gpu)
         public byte[] Render(Camera camera, DebugDraw? draw, float hiddenAlpha = 0.25f, float width = 1.5f)
         {
             Frame frame = _loop.BeginFrame()!;
-            Renderer.Render(frame, Scene, camera, RenderTarget.Offscreen(_target), new RenderSettings { DebugDraw = draw, DebugHiddenAlpha = hiddenAlpha, DebugLineWidth = width });
+            Renderer.Render(frame, Scene, camera, RenderTarget.Offscreen(_target), new RenderSettings { Tonemapper = Tonemapper.PbrNeutral, ExposureMode = ExposureMode.Fixed, Ev100 = Legacy.Ev100, DebugDraw = draw, DebugHiddenAlpha = hiddenAlpha, DebugLineWidth = width });
             _loop.EndFrame(frame);
             _loop.WaitIdle();
             return _device.ReadImage(_target, ImageState.TransferSource);

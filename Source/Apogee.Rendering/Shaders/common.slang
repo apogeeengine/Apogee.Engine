@@ -136,6 +136,9 @@ struct FrameData
     uint* clusterLights;      // per cluster: CLUSTER_STRIDE uints
     uint2 reserved0;
     uint2 reserved1;
+    float4 exposure;          // x: the exposure the CPU chose, y: the compensation, z: 1 to take the auto-exposure's (exposureState) instead
+    float4* exposureState;    // written by exposure.slang: x: exposure (without compensation), y: the adapted EV100, z: the scene's average luminance
+    uint2 reserved4;
 };
 
 struct DrawPush
@@ -163,4 +166,11 @@ uint clusterSlice(FrameData* frame, float viewDepth)
 float sliceDepth(FrameData* frame, uint k)
 {
     return frame->clusterParams.x * pow(frame->clusterParams.y / frame->clusterParams.x, float(k) / float(CLUSTERS_Z));
+}
+
+// The exposure the forward pass multiplies the scene's luminance (cd/m2) by, so that the HDR image holds exposed values: 1.0 is the luminance that saturates the sensor
+// (ExposureMath.Scale on the CPU). With auto-exposure it is the one the previous frame's histogram led to, so no frame waits for the GPU.
+float sceneExposure(FrameData* frame)
+{
+    return frame->exposure.z > 0.5 ? frame->exposureState[0].x * frame->exposure.y : frame->exposure.x;
 }

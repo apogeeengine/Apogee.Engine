@@ -1,4 +1,6 @@
 // The forward pass: glTF metallic-roughness PBR (Cook-Torrance GGX), lit by the sun and by the lights of the pixel's cluster.
+// Light is photometric: the sun's color is multiplied by its illuminance in lux, a point or spot light's by its intensity in candela (falling off with the inverse square of the distance, so lux
+// at the surface), the ambient colors are radiances and the emissive color is in cd/m2 (nits, as glTF's emissive strength is). The result is luminance in cd/m2, then exposed (sceneExposure).
 #include "common.slang"
 
 [[vk::push_constant]] ConstantBuffer<DrawPush> push PUSH_SLOT;
@@ -156,6 +158,9 @@ float4 forwardFs(ForwardInput input, bool frontFacing : SV_IsFrontFace) : SV_Tar
     // A flat two-colour hemisphere for the light that comes from everywhere.
     float3 ambient = lerp(frame->ambientGround.rgb, frame->ambientSky.rgb, N.y * 0.5 + 0.5);
     color += ambient * (diffuseColor + f0 * 0.5) * occlusion + emissive;
+
+    // The light above is photometric (cd/m2): the camera's exposure brings it to the range of the HDR image. Unlit colors above and the debug heatmap are already display-referred.
+    color *= sceneExposure(frame);
 
     if (frame->counts.y == 1)
         color = lerp(color * 0.25, heatmap(lightCount), 0.85);

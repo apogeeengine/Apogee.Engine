@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Apogee.Content;
@@ -112,4 +113,16 @@ internal sealed class TestScene
         Face(-Vector3.UnitY, Vector3.UnitX, Vector3.UnitZ);
         return new MeshData("box", [.. vertices], [.. indices], material, -h, h);
     }
+}
+
+/// <summary>
+/// The settings that leave the renderer's image as it was before physical exposure and GT7: the Khronos PBR Neutral tone mapper and an exposure of exactly 1, so the existing tests' scenes (a sun of
+/// "3 lux", a point light of 80 "candela") keep the values they were written for. Tests of the new behavior set their own.
+/// </summary>
+internal static class Legacy
+{
+    /// <summary>The EV100 at which <see cref="ExposureMath.Scale"/> is 1.</summary>
+    public static readonly float Ev100 = -MathF.Log2(ExposureMath.SaturationFactor);
+
+    public static RenderSettings Settings() => new() { Tonemapper = Tonemapper.PbrNeutral, ExposureMode = ExposureMode.Fixed, Ev100 = Ev100 };
 }

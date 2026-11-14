@@ -23,6 +23,7 @@ public class ShaderCompilationTests
     [InlineData("light_cull.slang", new[] { "cullLights" })]
     [InlineData("forward.slang", new[] { "forwardVs", "forwardFs" })]
     [InlineData("tonemap.slang", new[] { "fullscreenVs", "tonemapFs" })]
+    [InlineData("exposure.slang", new[] { "buildHistogram", "resolveExposure" })]
     public void AShippedShaderCompilesWithItsEntryPoints(string file, string[] entryPoints)
     {
         CompiledShader shader = new ShaderCompiler(new ShaderCompilerOptions { SearchPaths = [s_shaders] }).CompileFile(Path.Combine(s_shaders, file));

@@ -17,9 +17,10 @@ public class LayoutAndMathTests
         Assert.Equal(144, Unsafe.SizeOf<GpuInstance>());      // two matrices and four uints
         Assert.Equal(272, Unsafe.SizeOf<GpuMaterial>());
         Assert.Equal(64, Unsafe.SizeOf<GpuLight>());
-        Assert.Equal(400, Unsafe.SizeOf<GpuFrameData>());
+        Assert.Equal(432, Unsafe.SizeOf<GpuFrameData>());
         Assert.Equal(32, Unsafe.SizeOf<GpuDrawPush>());
         Assert.Equal(16, Unsafe.SizeOf<GpuTonemapPush>());
+        Assert.Equal(80, Unsafe.SizeOf<GpuExposurePush>());
     }
 
     [Fact]
@@ -31,6 +32,8 @@ public class LayoutAndMathTests
         Assert.Equal(320, (int)Marshal.OffsetOf<GpuFrameData>(nameof(GpuFrameData.ProjScale)));
         Assert.Equal(336, (int)Marshal.OffsetOf<GpuFrameData>(nameof(GpuFrameData.Instances)));
         Assert.Equal(376, (int)Marshal.OffsetOf<GpuFrameData>(nameof(GpuFrameData.ClusterLights)));
+        Assert.Equal(400, (int)Marshal.OffsetOf<GpuFrameData>(nameof(GpuFrameData.Exposure)));
+        Assert.Equal(416, (int)Marshal.OffsetOf<GpuFrameData>(nameof(GpuFrameData.ExposureState)));
         Assert.Equal(128, (int)Marshal.OffsetOf<GpuInstance>(nameof(GpuInstance.VertexOffset)));
         Assert.Equal(112, (int)Marshal.OffsetOf<GpuMaterial>(nameof(GpuMaterial.Transforms)));
     }

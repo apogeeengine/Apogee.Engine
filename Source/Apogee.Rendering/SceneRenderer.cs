@@ -21,14 +21,82 @@ public enum DebugView
     ClusterLights = 1,
 }
 
+/// <summary>The tone mapper that turns the exposed HDR image into the display's range. See <c>Docs/manual/graphics/tone-mapping.md</c>.</summary>
+public enum Tonemapper
+{
+    /// <summary>Gran Turismo 7's operator (Polyphony Digital, MIT): a curve with a convergent shoulder on each channel, with the chroma kept in ICtCp and faded out towards the peak, so bright colors go to white and keep their hue. SDR output, with the display's white at 250 cd/m2.</summary>
+    Gt7 = 0,
+
+    /// <summary>The Khronos PBR Neutral tone mapper: colors below the compression point are untouched, so a base color texture shows as it is authored.</summary>
+    PbrNeutral = 1,
+}
+
+/// <summary>How the camera's exposure is chosen.</summary>
+public enum ExposureMode
+{
+    /// <summary>The exposure value you set, <see cref="RenderSettings.Ev100"/>.</summary>
+    Fixed = 0,
+
+    /// <summary>The exposure value of a physical camera: <see cref="RenderSettings.Aperture"/>, <see cref="RenderSettings.ShutterSeconds"/> and <see cref="RenderSettings.Iso"/>.</summary>
+    Camera = 1,
+
+    /// <summary>The GPU measures the scene's luminance in a histogram every frame and adapts the exposure to it over time, like an eye. The first frame uses <see cref="RenderSettings.Ev100"/>.</summary>
+    Auto = 2,
+}
+
 public sealed class RenderSettings
 {
-    /// <summary>Scales the scene's light before tone mapping.</summary>
+    /// <summary>The tone mapper. <see cref="Apogee.Rendering.Tonemapper.Gt7"/> by default.</summary>
+    public Tonemapper Tonemapper { get; set; } = Tonemapper.Gt7;
+
+    /// <summary>How the exposure is chosen; <see cref="ExposureMode.Auto"/> by default, which suits any scene whatever the scale of its lights.</summary>
+    public ExposureMode ExposureMode { get; set; } = ExposureMode.Auto;
+
+    /// <summary>The exposure value at ISO 100 for <see cref="ExposureMode.Fixed"/>, and where <see cref="ExposureMode.Auto"/> starts on its first frame. 12 suits an overcast day (EV100 15 is the "sunny 16" day, 5 a lit room).</summary>
+    public float Ev100 { get; set; } = 12f;
+
+    /// <summary>The f-number of the physical camera (<see cref="ExposureMode.Camera"/>).</summary>
+    public float Aperture { get; set; } = 8f;
+
+    /// <summary>How long the physical camera's shutter is open, in seconds.</summary>
+    public float ShutterSeconds { get; set; } = 1f / 125f;
+
+    /// <summary>The physical camera's sensitivity.</summary>
+    public float Iso { get; set; } = 100f;
+
+    /// <summary>
+    /// The exposure compensation, as a factor: it multiplies the exposure of every mode (2 is one stop brighter, 0.5 one stop darker). The scene's light is photometric (the sun in lux, point and
+    /// spot lights in candela), and this is applied after the camera's exposure, so 1 leaves it as the camera chose.
+    /// </summary>
     public float Exposure { get; set; } = 1f;
+
+    /// <summary>The auto-exposure never goes below this EV100 (a dark scene is not brightened beyond it).</summary>
+    public float MinEv100 { get; set; } = -6f;
+
+    /// <summary>The auto-exposure never goes above this EV100.</summary>
+    public float MaxEv100 { get; set; } = 20f;
+
+    /// <summary>How fast the auto-exposure follows a scene that got brighter, per second: it moves a fraction of <c>1 - e^(-speed * dt)</c> of the way to the target each frame.</summary>
+    public float AdaptationSpeedBright { get; set; } = 3f;
+
+    /// <summary>How fast the auto-exposure follows a scene that got darker, per second. The eye adapts to dark slower than to light.</summary>
+    public float AdaptationSpeedDark { get; set; } = 1f;
+
+    /// <summary>The share of the darkest measured pixels the auto-exposure leaves out of the average (0 to 1).</summary>
+    public float AutoLowPercentile { get; set; } = 0.1f;
+
+    /// <summary>The pixels above this share, in brightness, are left out of the average: a few lamps should not darken the whole image.</summary>
+    public float AutoHighPercentile { get; set; } = 0.9f;
+
+    /// <summary>The seconds since the previous frame, for the adaptation; null measures it with the clock between calls to <c>Render</c> (tests set it to be repeatable).</summary>
+    public float? DeltaTime { get; set; }
+
+    /// <summary>The EV100 of <see cref="ExposureMode.Fixed"/> and <see cref="ExposureMode.Camera"/> (and the start of <see cref="ExposureMode.Auto"/>), before the compensation.</summary>
+    public float ManualEv100 => ExposureMode == ExposureMode.Camera ? ExposureMath.Ev100(MathF.Max(Aperture, 0.1f), MathF.Max(ShutterSeconds, 1e-6f), MathF.Max(Iso, 1f)) : Ev100;
 
     public DebugView Debug { get; set; }
 
-    /// <summary>What the HDR image is cleared to where nothing is drawn.</summary>
+    /// <summary>What the HDR image is cleared to where nothing is drawn. It is a display-referred color, not a luminance: the exposure does not change it (1 is the brightest the exposure shows without tone mapping).</summary>
     public Vector3 SkyColor { get; set; } = new(0.35f, 0.5f, 0.75f);
 
     /// <summary>Lines and triangles to draw over the lit scene, depth-tested against it; null draws none. The renderer reads it and leaves it alone: whoever fills it clears it for the next frame.</summary>
@@ -112,6 +180,7 @@ public sealed unsafe class SceneRenderer : IDisposable
     private readonly ReloadablePipelines<DepthPipelines> _depth;
     private readonly ReloadablePipelines<ForwardPipelines> _forward;
     private readonly ReloadablePipelines<TonemapPipelines> _tonemap;
+    private readonly ReloadablePipelines<ExposurePipelines> _exposure;
     private readonly ReloadablePipelines<DebugPipelines> _debugPipelines;
     private readonly DebugDrawRenderer _debugDraw;
     private readonly HashSet<PixelFormat> _targetFormats = [];
@@ -121,6 +190,12 @@ public sealed unsafe class SceneRenderer : IDisposable
     private readonly GpuBuffer?[] _clusterLights;
     private readonly Vector4[] _clusterKeys;
     private readonly GpuBuffer?[] _instanceBuffers;
+
+    // The auto-exposure's state lives on the GPU between frames: the adapted exposure (read by the next frame's forward pass) and the luminance histogram (cleared by the pass that reads it).
+    private readonly GpuBuffer _exposureState;
+    private readonly GpuBuffer _histogram;
+    private bool _exposureValid;
+    private long _lastExposureTicks;
     private BoxSet _boxes = new(0);
     private byte[] _visible = [];
 
@@ -132,6 +207,9 @@ public sealed unsafe class SceneRenderer : IDisposable
     private sealed record ForwardPipelines(Pipeline[] Opaque, Pipeline[] Blend);
 
     /// <summary>The debug lines (depth-tested, and a faint pass without the test for what is hidden) and triangles.</summary>
+    /// <summary>The auto-exposure's two compute passes: the luminance histogram of the HDR image, and the exposure it leads to.</summary>
+    private sealed record ExposurePipelines(Pipeline Histogram, Pipeline Resolve);
+
     private sealed record DebugPipelines(Pipeline Lines, Pipeline HiddenLines, Pipeline Triangles);
 
     /// <summary>The tone mapper: one pipeline per target format, made when the format is first rendered to (a rebuild makes them again for the formats seen).</summary>
@@ -229,6 +307,17 @@ public sealed unsafe class SceneRenderer : IDisposable
             return group;
         });
 
+        _exposure = new ReloadablePipelines<ExposurePipelines>(shaders, "Exposure pipelines", ["shaders://exposure.slang"], scope =>
+        {
+            CompiledShader exposure = shaders.Load("shaders://exposure.slang", backend: device.ShaderBackend);
+            return new ExposurePipelines(
+                scope.Add(device.CreateComputePipeline(exposure.Code("buildHistogram"), "Luminance histogram")),
+                scope.Add(device.CreateComputePipeline(exposure.Code("resolveExposure"), "Resolve exposure")));
+        });
+
+        _exposureState = device.CreateBuffer(new byte[4 * sizeof(float)], BufferUsage.Storage, "Exposure state");
+        _histogram = device.CreateBuffer(new byte[ExposureMath.HistogramBins * sizeof(uint)], BufferUsage.Storage, "Luminance histogram");
+
         _debugDraw = new DebugDrawRenderer(device, framesInFlight);
         _debugPipelines = new ReloadablePipelines<DebugPipelines>(shaders, "Debug draw pipelines", ["shaders://debug_draw.slang"], scope =>
         {
@@ -257,6 +346,7 @@ public sealed unsafe class SceneRenderer : IDisposable
         _depth.WaitForPending();
         _forward.WaitForPending();
         _tonemap.WaitForPending();
+        _exposure.WaitForPending();
         _debugPipelines.WaitForPending();
     }
 
@@ -273,6 +363,13 @@ public sealed unsafe class SceneRenderer : IDisposable
         uint[] result = new uint[bytes.Length / sizeof(uint)];
         Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
         return result;
+    }
+
+    /// <summary>The auto-exposure's state as the GPU left it: the exposure factor (without compensation), the adapted EV100 and the scene's average luminance in cd/m2. For tests; the renderer itself never reads it back.</summary>
+    internal (float Scale, float Ev100, float AverageLuminance) ReadExposureState()
+    {
+        byte[] bytes = _device.ReadBuffer(_exposureState, 0, 4 * sizeof(float));
+        return (BitConverter.ToSingle(bytes, 0), BitConverter.ToSingle(bytes, 4), BitConverter.ToSingle(bytes, 8));
     }
 
     /// <summary>Puts a model on the GPU, with its origin at <paramref name="at"/> in the world (the world's origin by default). The scene owns the model.</summary>
@@ -317,6 +414,7 @@ public sealed unsafe class SceneRenderer : IDisposable
         _depth.Apply(frame);
         _forward.Apply(frame);
         _tonemap.Apply(frame);
+        _exposure.Apply(frame);
         _debugPipelines.Apply(frame);
 
         uint width = target.Width;
@@ -414,6 +512,15 @@ public sealed unsafe class SceneRenderer : IDisposable
             gpuLights[i] = _gather.Lights[i];
         }
 
+        // The exposure: the scene's luminance (cd/m2) is multiplied by it in the forward pass. With auto-exposure it is the one the previous frame's histogram led to (so no frame waits for the
+        // GPU); the first frame, and the one after a switch from another mode, uses the manual EV100 and then starts the adaptation at the exposure the histogram calls for.
+        bool autoExposure = settings.ExposureMode == ExposureMode.Auto;
+        bool useAdapted = autoExposure && _exposureValid;
+        bool resetAdaptation = autoExposure && !_exposureValid;
+        float compensation = MathF.Max(settings.Exposure, 1e-4f);
+        float deltaTime = settings.DeltaTime ?? MeasureDeltaTime(autoExposure);
+        _exposureValid = autoExposure;
+
         FrameAllocation dataMemory = frame.Allocate(sizeof(GpuFrameData), 16);
         *(GpuFrameData*)dataMemory.Memory = new GpuFrameData
         {
@@ -433,6 +540,8 @@ public sealed unsafe class SceneRenderer : IDisposable
             Lights = lightMemory.Address,
             ClusterBounds = bounds.Address,
             ClusterLights = lists.Address,
+            Exposure = new Vector4(compensation * ExposureMath.Scale(settings.ManualEv100), compensation, useAdapted ? 1f : 0f, 0f),
+            ExposureState = _exposureState.Address,
         };
         ulong frameAddress = dataMemory.Address;
 
@@ -479,6 +588,16 @@ public sealed unsafe class SceneRenderer : IDisposable
         ImageHandle hdr = graph.CreateImage("HDR color", new ImageDescription(PixelFormat.R16G16B16A16Sfloat, width, height, ImageUsage.ColorAttachment | ImageUsage.Sampled));
         BufferHandle clusterBounds = graph.ImportBuffer("Cluster bounds", bounds, BufferState.ShaderRead, BufferState.ShaderRead);
         BufferHandle clusterLists = graph.ImportBuffer("Cluster lights", lists, BufferState.ShaderRead, BufferState.ShaderRead);
+
+        // The auto-exposure's buffers are outputs, so the passes that write them are not culled; they stay readable between frames.
+        BufferHandle exposureState = default;
+        BufferHandle histogram = default;
+        if (autoExposure)
+        {
+            exposureState = graph.ImportBuffer("Exposure state", _exposureState, BufferState.ShaderRead, BufferState.ShaderRead, output: true);
+            histogram = graph.ImportBuffer("Luminance histogram", _histogram, BufferState.ShaderRead, BufferState.ShaderRead, output: true);
+        }
+
         int draws = 0;
 
         graph.AddPass("Depth prepass", PassType.Graphics, pass =>
@@ -523,6 +642,11 @@ public sealed unsafe class SceneRenderer : IDisposable
             pass.ReadDepth(depth);
             pass.WriteColor(hdr, new Vector4(settings.SkyColor, 1f));
             pass.Read(clusterLists);
+            if (useAdapted)
+            {
+                pass.Read(exposureState);
+            }
+
             pass.Execute(context =>
             {
                 CommandRecorder recorder = context.Recorder;
@@ -531,6 +655,61 @@ public sealed unsafe class SceneRenderer : IDisposable
                 draws += DrawAll(recorder, _forward.Current.Blend, blend, frameAddress);
             });
         });
+
+        if (autoExposure)
+        {
+            // Measured before the debug lines are drawn: they are display-referred colors, not light.
+            var push = new GpuExposurePush
+            {
+                Frame = frameAddress,
+                Histogram = _histogram.Address,
+                Width = width,
+                Height = height,
+                Reset = resetAdaptation ? 1u : 0u,
+                MinLog2Luminance = ExposureMath.DefaultMinLog2Luminance,
+                Log2Range = ExposureMath.DefaultMaxLog2Luminance - ExposureMath.DefaultMinLog2Luminance,
+                LowPercentile = Math.Clamp(settings.AutoLowPercentile, 0f, 1f),
+                HighPercentile = Math.Clamp(settings.AutoHighPercentile, 0f, 1f),
+                MinEv100 = settings.MinEv100,
+                MaxEv100 = MathF.Max(settings.MaxEv100, settings.MinEv100),
+                SpeedBright = settings.AdaptationSpeedBright,
+                SpeedDark = settings.AdaptationSpeedDark,
+                DeltaTime = deltaTime,
+            };
+
+            graph.AddPass("Luminance histogram", PassType.Compute, pass =>
+            {
+                pass.ReadSampled(hdr);
+                pass.ReadSampled(depth);
+                pass.ReadWrite(histogram);
+                if (useAdapted)
+                {
+                    pass.Read(exposureState);
+                }
+
+                pass.Execute(context =>
+                {
+                    GpuExposurePush constants = push;
+                    constants.Texture = context.Image(hdr).SampledIndex;
+                    constants.Depth = context.Image(depth).SampledIndex;
+                    context.Recorder.BindPipeline(_exposure.Current.Histogram);
+                    context.Recorder.PushConstants(constants);
+                    context.Recorder.Dispatch((width + 15) / 16, (height + 15) / 16);
+                });
+            });
+
+            graph.AddPass("Resolve exposure", PassType.Compute, pass =>
+            {
+                pass.ReadWrite(histogram);
+                pass.ReadWrite(exposureState);
+                pass.Execute(context =>
+                {
+                    context.Recorder.BindPipeline(_exposure.Current.Resolve);
+                    context.Recorder.PushConstants(push);
+                    context.Recorder.Dispatch(1);
+                });
+            });
+        }
 
         if (settings.DebugDraw is { IsEmpty: false } debug)
         {
@@ -574,7 +753,7 @@ public sealed unsafe class SceneRenderer : IDisposable
             pass.Execute(context =>
             {
                 context.Recorder.BindPipeline(TonemapPipeline(targetFormat));
-                context.Recorder.PushConstants(new GpuTonemapPush { Texture = context.Image(hdr).SampledIndex, Sampler = _clampSamplerIndex, Exposure = settings.Exposure });
+                context.Recorder.PushConstants(new GpuTonemapPush { Texture = context.Image(hdr).SampledIndex, Sampler = _clampSamplerIndex, Tonemapper = (uint)settings.Tonemapper });
                 context.Recorder.Draw(3);
             });
         });
@@ -583,6 +762,15 @@ public sealed unsafe class SceneRenderer : IDisposable
         graph.Execute(frame);
         LastPlan = graph.Plan;
         LastStats = new RenderStats(draws, lightCount, rebuild ? ClusterGrid.Total : 0, graph.Plan!.LivePassCount, culled);
+    }
+
+    /// <summary>The seconds since the previous frame that adapted the exposure (0.25 at most, so a stall does not make the exposure jump), for the adaptation of auto-exposure.</summary>
+    private float MeasureDeltaTime(bool autoExposure)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        float seconds = _lastExposureTicks == 0 || !_exposureValid ? 1f / 60f : (float)System.Diagnostics.Stopwatch.GetElapsedTime(_lastExposureTicks, now).TotalSeconds;
+        _lastExposureTicks = autoExposure ? now : 0;
+        return Math.Clamp(seconds, 0f, 0.25f);
     }
 
     /// <summary>1 / <paramref name="scale"/>, kept finite for a scale of zero (a flattened object has no meaningful normal anyway).</summary>
@@ -666,6 +854,9 @@ public sealed unsafe class SceneRenderer : IDisposable
         _depth.Dispose();
         _forward.Dispose();
         _tonemap.Dispose();
+        _exposure.Dispose();
+        _exposureState.Dispose();
+        _histogram.Dispose();
         _debugPipelines.Dispose();
         _debugDraw.Dispose();
 

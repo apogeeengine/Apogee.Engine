@@ -89,7 +89,7 @@ public class RenderWorldTests(GpuFixture gpu) : GpuTest(gpu)
         {
             Ecs.Progress(1f / 60f);
             Frame frame = _loop.BeginFrame()!;
-            Renderer.Render(frame, View, camera, RenderTarget.Offscreen(_target), settings);
+            Renderer.Render(frame, View, camera, RenderTarget.Offscreen(_target), settings ?? Legacy.Settings());
             _loop.EndFrame(frame);
             _loop.WaitIdle();
             return _device.ReadImage(_target, ImageState.TransferSource);
@@ -153,7 +153,7 @@ public class RenderWorldTests(GpuFixture gpu) : GpuTest(gpu)
         using var loop = Device.CreateFrameLoop();
         using GpuImage target = Device.CreateImage(new ImageDescription(PixelFormat.R8G8B8A8Unorm, Width, Height, ImageUsage.ColorAttachment), "scene target");
         Frame frame = loop.BeginFrame()!;
-        rig.Renderer.Render(frame, scene, camera, RenderTarget.Offscreen(target), new RenderSettings());
+        rig.Renderer.Render(frame, scene, camera, RenderTarget.Offscreen(target), Legacy.Settings());
         loop.EndFrame(frame);
         loop.WaitIdle();
         byte[] fromScene = Device.ReadImage(target, ImageState.TransferSource);
@@ -185,7 +185,7 @@ public class RenderWorldTests(GpuFixture gpu) : GpuTest(gpu)
 
         var camera = new Camera { Position = new Double3(0, 1, 8) };
         camera.LookAt(new Double3(0, 0.5, 0));
-        rig.Render(camera, new RenderSettings { CullDraws = false });
+        rig.Render(camera, new RenderSettings { Tonemapper = Tonemapper.PbrNeutral, ExposureMode = ExposureMode.Fixed, Ev100 = Legacy.Ev100, CullDraws = false });
 
         Assert.Equal(5 * 2 * 2, rig.Renderer.LastStats!.Draws); // two passes (depth and forward) of ten meshes
         Assert.Equal(1, rig.Models.Count);

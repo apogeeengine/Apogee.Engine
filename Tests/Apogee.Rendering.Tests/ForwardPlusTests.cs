@@ -49,7 +49,7 @@ public class ForwardPlusTests(GpuFixture gpu) : GpuTest(gpu)
             for (int i = 0; i < frames; i++)
             {
                 Frame frame = _loop.BeginFrame()!;
-                Renderer.Render(frame, scene, camera, RenderTarget.Offscreen(_target), settings);
+                Renderer.Render(frame, scene, camera, RenderTarget.Offscreen(_target), settings ?? Legacy.Settings());
                 _loop.EndFrame(frame);
                 _loop.WaitIdle();
             }
@@ -156,15 +156,17 @@ public class ForwardPlusTests(GpuFixture gpu) : GpuTest(gpu)
         var model = new TestScene();
         model.AddGround(1, GrayMaterial(model));      // a small patch; the top of the image is empty
         using RenderScene scene = rig.Renderer.CreateScene(model.ToModel());
-        var settings = new RenderSettings { SkyColor = new Vector3(0.35f, 0.5f, 0.75f), Exposure = 1f };
+        RenderSettings settings = Legacy.Settings();
+        settings.SkyColor = new Vector3(0.35f, 0.5f, 0.75f);
 
         byte[] pixels = rig.Render(scene, DefaultCamera(), settings);
 
         AssertPixel(Display(settings.SkyColor, 1f), Pixel(pixels, 2, 2));
         AssertPixel(Display(settings.SkyColor, 1f), Pixel(pixels, (int)Width - 3, 2));
 
+        // The sky is a display-referred color, not a luminance: the exposure does not change it (a lit surface it does, see ExposureTests).
         settings.Exposure = 0.5f;
-        AssertPixel(Display(settings.SkyColor, 0.5f), Pixel(rig.Render(scene, DefaultCamera(), settings), 2, 2));
+        AssertPixel(Display(settings.SkyColor, 1f), Pixel(rig.Render(scene, DefaultCamera(), settings), 2, 2));
     }
 
     [Fact]
@@ -307,7 +309,7 @@ public class ForwardPlusTests(GpuFixture gpu) : GpuTest(gpu)
             return rig.Renderer.CreateScene(model.ToModel());
         }
 
-        var settings = new RenderSettings { SkyColor = Vector3.Zero };
+        var settings = new RenderSettings { Tonemapper = Tonemapper.PbrNeutral, ExposureMode = ExposureMode.Fixed, Ev100 = Legacy.Ev100, SkyColor = Vector3.Zero };
         using RenderScene single = Build(false);
         using RenderScene @double = Build(true);
 
@@ -326,7 +328,7 @@ public class ForwardPlusTests(GpuFixture gpu) : GpuTest(gpu)
         Camera topDown = new() { Position = new Vector3(0, 12, 0) };
         topDown.LookAt(Vector3.Zero);
 
-        byte[] heat = rig.Render(scene, topDown, new RenderSettings { Debug = DebugView.ClusterLights });
+        byte[] heat = rig.Render(scene, topDown, new RenderSettings { Tonemapper = Tonemapper.PbrNeutral, ExposureMode = ExposureMode.Fixed, Ev100 = Legacy.Ev100, Debug = DebugView.ClusterLights });
 
         Vector3 near = Pixel(heat, 72, 54);       // under the light
         Vector3 far = Pixel(heat, 170, 54);       // no light reaches here
@@ -531,7 +533,7 @@ public class GoldenImageTests(GpuFixture gpu) : GpuTest(gpu)
         camera.LookAt(shift + new Vector3(0f, 0.8f, 0f));
 
         Frame frame = loop.BeginFrame()!;
-        renderer.Render(frame, scene, camera, RenderTarget.Offscreen(target), new RenderSettings { SkyColor = new Vector3(0.3f, 0.42f, 0.65f) });
+        renderer.Render(frame, scene, camera, RenderTarget.Offscreen(target), new RenderSettings { Tonemapper = Tonemapper.PbrNeutral, ExposureMode = ExposureMode.Fixed, Ev100 = Legacy.Ev100, SkyColor = new Vector3(0.3f, 0.42f, 0.65f) });
         loop.EndFrame(frame);
         loop.WaitIdle();
         return Device.ReadImage(target, ImageState.TransferSource);

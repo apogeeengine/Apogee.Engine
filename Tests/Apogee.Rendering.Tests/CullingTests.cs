@@ -95,7 +95,7 @@ public class CullingTests(GpuFixture gpu) : GpuTest(gpu)
         using var loop = Device.CreateFrameLoop();
         using GpuImage target = Device.CreateImage(new ImageDescription(PixelFormat.R8G8B8A8Unorm, Width, Height, ImageUsage.ColorAttachment), "culling target");
         Frame frame = loop.BeginFrame()!;
-        renderer.Render(frame, scene, camera, RenderTarget.Offscreen(target), new RenderSettings { CullDraws = cull });
+        renderer.Render(frame, scene, camera, RenderTarget.Offscreen(target), new RenderSettings { Tonemapper = Tonemapper.PbrNeutral, ExposureMode = ExposureMode.Fixed, Ev100 = Legacy.Ev100, CullDraws = cull });
         loop.EndFrame(frame);
         loop.WaitIdle();
         stats = renderer.LastStats!;

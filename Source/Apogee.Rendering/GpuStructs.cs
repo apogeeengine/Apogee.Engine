@@ -90,6 +90,13 @@ public struct GpuFrameData
     public ulong ClusterLights;
     public ulong Reserved0;
     public ulong Reserved1;
+
+    /// <summary>x: the exposure the CPU chose (the factor the scene's luminance is multiplied by); y: the compensation; z: 1 to use the auto-exposure's, in <see cref="ExposureState"/>, instead.</summary>
+    public Vector4 Exposure;
+
+    /// <summary>The persistent buffer <c>exposure.slang</c> writes: x the exposure (without compensation), y the adapted EV100, z the scene's average luminance.</summary>
+    public ulong ExposureState;
+    public ulong Reserved4;
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -128,8 +135,40 @@ public struct GpuTonemapPush
 {
     public uint Texture;
     public uint Sampler;
-    public float Exposure;
+
+    /// <summary>A <see cref="Tonemapper"/>.</summary>
+    public uint Tonemapper;
     public uint Unused;
+}
+
+/// <summary>The push constants of both auto-exposure passes (<c>exposure.slang</c>).</summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct GpuExposurePush
+{
+    public ulong Frame;
+
+    /// <summary>The 256 counters of the luminance histogram.</summary>
+    public ulong Histogram;
+    public uint Texture;
+
+    /// <summary>The depth image: pixels with depth 0 (nothing drawn: the sky) are not measured.</summary>
+    public uint Depth;
+    public uint Width;
+    public uint Height;
+
+    /// <summary>1 to start the adaptation at the target (the first frame), 0 to move towards it.</summary>
+    public uint Reset;
+    public float MinLog2Luminance;
+    public float Log2Range;
+    public float LowPercentile;
+    public float HighPercentile;
+    public float MinEv100;
+    public float MaxEv100;
+    public float SpeedBright;
+    public float SpeedDark;
+    public float DeltaTime;
+    public float Unused0;
+    public float Unused1;
 }
 
 [StructLayout(LayoutKind.Sequential)]
