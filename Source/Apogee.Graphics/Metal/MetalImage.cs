@@ -92,7 +92,8 @@ public sealed unsafe class MetalImage : GpuImage
     public override ImageView CreateView(uint baseMip, uint mipCount, uint baseLayer, uint layerCount)
     {
         int type = Description.Depth > 1 ? Mtl.Texture3d
-            : Description.Cube ? (layerCount == 6 ? Mtl.TextureCube : layerCount > 6 ? Mtl.TextureCubeArray : Mtl.Texture2dArray)
+            : Description.Cube && layerCount == 6 ? Mtl.TextureCube
+            : Description.Cube && layerCount > 6 && layerCount % 6 == 0 ? Mtl.TextureCubeArray
             : layerCount > 1 ? Mtl.Texture2dArray
             : Mtl.Texture2d;
         MtlTexture* view = Mtl.TextureView(_texture, 0, type, baseMip, mipCount, baseLayer, layerCount);

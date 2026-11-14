@@ -95,8 +95,10 @@ public sealed unsafe class VulkanImage : GpuImage
     /// <summary>Creates an extra view with the given aspect. The caller destroys it with <see cref="DestroyView(ImageView)"/>.</summary>
     public VkImageView CreateView(uint baseMip, uint mipCount, uint baseLayer, uint layerCount, VkImageAspectFlagBits aspect)
     {
+        // A view of a whole cube (six layers, or a multiple of six) is a cube; of one layer, a 2D texture (a face to render or store to); of anything else in between, a 2D array.
         VkImageViewType type = Description.Depth > 1 ? VkImageViewType._3D
-            : Description.Cube ? (Layers > 6 && layerCount > 6 ? VkImageViewType.CubeArray : VkImageViewType.Cube)
+            : Description.Cube && layerCount == 6 ? VkImageViewType.Cube
+            : Description.Cube && layerCount > 6 && layerCount % 6 == 0 ? VkImageViewType.CubeArray
             : Layers > 1 && layerCount > 1 ? VkImageViewType._2DArray
             : VkImageViewType._2D;
         var info = new VkImageViewCreateInfo

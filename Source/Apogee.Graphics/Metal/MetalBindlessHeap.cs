@@ -1,12 +1,15 @@
 using System;
+using System.Collections.Generic;
 using Apogee.Core.Graphics;
 
 namespace Apogee.Graphics.Metal;
 
 /// <summary>
-/// The bindless textures and samplers as one Metal argument buffer, buffer 1 of every shader that reads them (see <c>ParameterBlock&lt;BindlessResources&gt;</c> in common.slang). In an argument buffer of tier 2 each
-/// resource of an array takes one 8-byte slot, in order: the 16 384 textures, then the 256 samplers; a slot holds the resource's GPU resource id. The textures and samplers are made resident through the
-/// device's residency set. There are no storage images: no engine shader uses them.
+/// The bindless textures, samplers and storage images as one Metal argument buffer, buffer 1 of every shader that reads them (see <c>ParameterBlock&lt;BindlessResources&gt;</c> in common.slang). In an argument buffer of
+/// tier 2 each resource of an array takes one 8-byte slot and a struct's members follow one another, so the buffer is the runs of <see cref="Members"/> in the order the shader block declares them: the 16 384 2D textures,
+/// the 256 samplers, then the cube, 2D-array, 3D and unsigned-integer texture arrays (16 384 each) and the 256 storage images. A slot holds the resource's GPU resource id. Metal has no aliasing: on Vulkan all the
+/// sampled arrays are one descriptor binding, here each is a run of its own, so a sampled texture's id is written into the same index of every sampled run and the shader reads it through the array of its type.
+/// The textures and samplers are made resident through the device's residency set.
 /// </summary>
 public sealed unsafe class MetalBindlessHeap : BindlessHeap
 {
@@ -16,16 +19,47 @@ public sealed unsafe class MetalBindlessHeap : BindlessHeap
     private readonly object _lock = new();
     private readonly SlotAllocator _sampledImages = new(MaxSampledImages);
     private readonly SlotAllocator _samplers = new(MaxSamplers);
+    private readonly SlotAllocator _storageImages = new(MaxStorageImages);
     private readonly MetalBuffer _arguments;
     private readonly byte* _memory;
+    private static readonly string[] s_members = ["textures", "samplers", "cubes", "arrays", "volumes", "uintTextures", "storage"];
+    private static readonly uint[] s_counts = [MaxSampledImages, MaxSamplers, MaxSampledImages, MaxSampledImages, MaxSampledImages, MaxSampledImages, MaxStorageImages];
+    private static readonly ulong[] s_offsets = Offsets();
+    private static readonly int[] s_sampledRuns = [0, 2, 3, 4, 5];     // the runs a sampled texture's id goes into
+    private const int SamplersRun = 1;
+    private const int StorageRun = 6;
+
     private MetalImage? _whiteTexel;
     private MetalSampler? _defaultSampler;
 
     internal MetalBindlessHeap(MetalDevice device)
     {
         _device = device;
-        _arguments = new MetalBuffer(device, (MaxSampledImages + MaxSamplers) * SlotBytes, BufferUsage.Storage, MemoryKind.Upload, "Bindless argument buffer");
+        _arguments = new MetalBuffer(device, ArgumentBufferBytes, BufferUsage.Storage, MemoryKind.Upload, "Bindless argument buffer");
         _memory = _arguments.Mapped;
+    }
+
+    /// <summary>The members of <c>BindlessResources</c> in common.slang, in declaration order: the runs of the argument buffer (a test compares them with what Slang writes for Metal).</summary>
+    public static IReadOnlyList<string> Members => s_members;
+
+    /// <summary>The number of 8-byte slots in a member's run.</summary>
+    public static uint CountOf(string member) => s_counts[Array.IndexOf(s_members, member)];
+
+    /// <summary>Where a member's run starts in the argument buffer, in bytes.</summary>
+    public static ulong OffsetOf(string member) => s_offsets[Array.IndexOf(s_members, member)];
+
+    /// <summary>The size of the argument buffer in bytes.</summary>
+    public static ulong ArgumentBufferBytes { get; } = s_offsets[^1] + (s_counts[^1] * SlotBytes);
+
+    private static ulong[] Offsets()
+    {
+        ulong[] offsets = new ulong[s_counts.Length];
+        for (int i = 1; i < offsets.Length; i++)
+        {
+            offsets[i] = offsets[i - 1] + (s_counts[i - 1] * SlotBytes);
+        }
+
+        return offsets;
     }
 
     /// <summary>The argument buffer to bind at index 1.</summary>
@@ -39,6 +73,7 @@ public sealed unsafe class MetalBindlessHeap : BindlessHeap
         _defaultSampler = (MetalSampler)_device.CreateSampler(SamplerDescription.LinearRepeat, "Default sampler");
         WriteImage(_sampledImages.Reserve(0), _whiteTexel);
         WriteSampler(_samplers.Reserve(0), _defaultSampler);
+        _storageImages.Reserve(0);     // like the other arrays, index 0 means "none" (a storage image has no default to put there)
     }
 
     public override uint AddSampledImage(ImageView view)
@@ -77,17 +112,41 @@ public sealed unsafe class MetalBindlessHeap : BindlessHeap
         }
     }
 
-    public override uint AddStorageImage(ImageView view) => throw new NotSupportedException("The Metal backend has no storage images in its bindless heap yet: no engine shader uses them.");
+    public override uint AddStorageImage(ImageView view)
+    {
+        lock (_lock)
+        {
+            uint index = _storageImages.Allocate();
+            WriteSlot(StorageRun, index, Apogee.Native.Metal.Mtl.TextureResourceId(((MetalImageView)view).Handle));
+            return index;
+        }
+    }
 
-    public override void RemoveStorageImage(uint index) => throw new NotSupportedException("The Metal backend has no storage images in its bindless heap yet.");
+    public override void RemoveStorageImage(uint index)
+    {
+        lock (_lock)
+        {
+            _storageImages.Free(index);
+        }
+    }
 
     public override int SampledImageCount { get { lock (_lock) { return _sampledImages.Used; } } }
 
-    private void WriteImage(uint index, MetalImage image) => *(ulong*)(_memory + (index * SlotBytes)) = image.ResourceId;
+    private void WriteImage(uint index, MetalImage image) => WriteSampled(index, image.ResourceId);
 
-    private void WriteImage(uint index, MetalImageView view) => *(ulong*)(_memory + (index * SlotBytes)) = Apogee.Native.Metal.Mtl.TextureResourceId(view.Handle);
+    private void WriteImage(uint index, MetalImageView view) => WriteSampled(index, Apogee.Native.Metal.Mtl.TextureResourceId(view.Handle));
 
-    private void WriteSampler(uint index, MetalSampler sampler) => *(ulong*)(_memory + ((MaxSampledImages + index) * SlotBytes)) = sampler.ResourceId;
+    private void WriteSampled(uint index, ulong id)
+    {
+        foreach (int run in s_sampledRuns)
+        {
+            WriteSlot(run, index, id);
+        }
+    }
+
+    private void WriteSampler(uint index, MetalSampler sampler) => WriteSlot(SamplersRun, index, sampler.ResourceId);
+
+    private void WriteSlot(int run, uint index, ulong id) => *(ulong*)(_memory + s_offsets[run] + (index * SlotBytes)) = id;
 
     public override void Dispose()
     {

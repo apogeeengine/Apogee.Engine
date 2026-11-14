@@ -85,6 +85,7 @@ public sealed unsafe class VulkanBindlessHeap : BindlessHeap
         _defaultSampler = (VulkanSampler)_device.CreateSampler(SamplerDescription.LinearRepeat, "Default sampler");
         WriteSampledImage(_sampledImages.Reserve(0), ((VulkanImageView)_whiteTexel.View).Handle);
         WriteSampler(_samplers.Reserve(0), _defaultSampler.Handle);
+        _storageImages.Reserve(0);     // like the other arrays, index 0 means "none" (a storage image has no default to put there)
     }
 
     public override uint AddSampledImage(ImageView view)

@@ -57,7 +57,7 @@ handles, and completion is a shared event's value rather than a block.
 | --- | --- |
 | `GpuBuffer` | `MTLBuffer`: shared (mapped for life) for upload and readback; device-local is private, filled through a staging buffer. Its `Address` is `gpuAddress`, which is what the push constants carry |
 | `GpuImage`, `ImageView`, `GpuSampler` | `MTLTexture` and `MTLSamplerState`; `PixelFormat` is mapped by a table in the shim |
-| `BindlessHeap` | one **argument buffer**: 16 384 texture `gpuResourceID`s, then 256 sampler ids, 8 bytes each (slot 0 is a white texel and a linear-repeat sampler) |
+| `BindlessHeap` | one **argument buffer** of 8-byte `gpuResourceID`s in runs: 16 384 2D textures, 256 samplers (slot 0 is a white texel and a linear-repeat sampler), then 16 384 each of cube, 2D-array, 3D and unsigned-integer textures, and 256 storage images |
 | `CommandRecorder` | an `MTLCommandBuffer`; the render, compute or blit encoder a command needs is opened on demand and ended by the next kind of command or by a barrier |
 | `Pipeline` | `MTLRenderPipelineState` / `MTLComputePipelineState` from the bundle's MSL (compiled with `newLibraryWithSource` when loaded); a compute pipeline's thread-group size comes from Slang's reflection |
 | `Swapchain`, `FrameLoop` | a `CAMetalLayer` (SDL creates it for a `WindowOptions.Metal` window) and an `MTLSharedEvent` as the timeline, with the same frames in flight as Vulkan |
@@ -119,8 +119,25 @@ transitions as one synchronization2 `vkCmdPipelineBarrier2`; the render graph co
 
 Every pipeline has the same layout: descriptor set 0 is `device.Bindless`, three big arrays (sampled images, samplers, storage images,
 partially bound and update-after-bind) that shaders index with integers, plus 128 bytes of push constants. `AddSampledImage(image)` returns
-the index to read it with, `RemoveSampledImage` frees it for reuse. Slot 0 of the images and samplers is a white texel and a linear repeat
-sampler, so an unset index still reads something sane.
+the index to read it with, `RemoveSampledImage` frees it for reuse; `AddStorageImage(view)` does the same for a view a shader writes (any
+mip or layer: make the view with `GpuImage.CreateView`). Slot 0 of the images and samplers is a white texel and a linear repeat
+sampler, so an unset index still reads something sane; slot 0 of the storage images is never handed out, so 0 means "none".
+
+`common.slang` declares the arrays a shader can use. The sampled images are one binding whatever their dimension, so the shader declares **one array per type, all on that binding**, and a texture is read through
+the array of its own type at the index the heap gave it:
+
+| Slang | Reads |
+| --- | --- |
+| `gTextures[i]` (`Texture2D<float4>`) | a 2D view (also a depth image's) |
+| `gCubes[i]` (`TextureCube<float4>`) | a view of six layers of a cube image |
+| `gArrays[i]` (`Texture2DArray<float4>`) | a 2D-array view |
+| `gVolumes[i]` (`Texture3D<float4>`) | a 3D image |
+| `gUintTextures[i]` (`Texture2D<uint>`) | a view of an unsigned-integer format (`Load` only) |
+| `gStorage[i]` (`RWTexture2D<float4>`) | a 2D view added with `AddStorageImage` (a mip or a face of a cube is a 2D view) |
+| `gSamplers[i]` | a sampler from `AddSampler` |
+
+A view's type follows the image: the whole of a cube image is a cube, one layer of it a 2D view, a whole 2D-array image a 2D array, one layer a 2D view. Reading a texture through an array of another type is
+undefined, as reading an index nobody added; the validation layer does not complain about the unused aliases because the arrays are partially bound.
 
 ## Shaders
 
@@ -158,8 +175,11 @@ instead of crashing in the driver. That matters for mods, which may ship their o
 shader is loaded). It is the same Slang source for both backends, which is why the engine's shaders follow a few rules, checked by `MetalShaderTests`:
 
 - **Buffers are pointers** (`Foo*` in the push constants), which Slang writes as `device Foo*` in MSL: nothing to change.
-- **The push constants are Metal buffer 0** (`setBytes`), and **the bindless textures and samplers are one argument buffer, buffer 1**. In Slang they are `ParameterBlock<BindlessResources> gBindless` (arrays of
-  16 384 textures and 256 samplers, which on Vulkan come out as exactly the engine's bindless descriptor set 0, bindings 0 and 1), with `gTextures` and `gSamplers` as macros for its members. Metal has no
+- **The push constants are Metal buffer 0** (`setBytes`), and **the bindless textures, samplers and storage images are one argument buffer, buffer 1**. In Slang the Metal build declares them as
+  `ParameterBlock<BindlessResources> gBindless` with `gTextures`, `gSamplers`, `gCubes`, ... as macros for its members; the Vulkan build declares the same names as globals with explicit bindings (0 for every sampled array,
+  1 for the samplers, 2 for the storage images: Slang has no other way to alias several types on one binding, and a parameter block would give each its own). **Metal cannot alias**: each member of the block is its own
+  run of resource ids, in declaration order, so `MetalBindlessHeap` writes a sampled texture's id into the same index of every sampled run (the shader reads the run of its type) and keeps its table of runs
+  (`MetalBindlessHeap.Members`) in step with the block; `BindlessTests` compares that table with the Metal shading language Slang writes, so reordering the block without the heap fails a test. Metal has no
   descriptor sets and Slang numbers buffers in declaration order, so the compiler defines `APOGEE_METAL` for the Metal build only, and the shaders pin the indices with `: register(b0)` / `: register(b1)`
   (`PUSH_SLOT`, `BINDLESS_SLOT` in `common.slang`). The Vulkan build never sees those annotations: the same `register` annotations changed the SPIR-V's bindings and crashed lavapipe.
 - No other buffer, texture or sampler is bound directly: everything else is reached through an address or an index.

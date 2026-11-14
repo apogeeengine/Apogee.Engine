@@ -21,16 +21,46 @@ float4 clipPosition(float4 p) { return float4(p.x, -p.y, p.z, p.w); }
 float4 clipPosition(float4 p) { return p; }
 #endif
 
-// The bindless arrays, in a parameter block: on Vulkan that is descriptor set 0 (binding 0 the sampled images, 1 the samplers: the engine's one bindless set, see
-// BindlessHeap), on Metal an argument buffer at buffer 1 (push constants are buffer 0). The sizes are BindlessHeap.MaxSampledImages and MaxSamplers.
+// The bindless arrays: the engine's one descriptor set (see BindlessHeap). A texture's index comes from the heap's AddSampledImage. The sampled textures of every dimension share one index
+// space: a texture added to the heap is read through the array of its own type (a 2D view as gTextures, a cube view as gCubes, a 2D-array view as gArrays, a 3D view as gVolumes, a view of an
+// unsigned integer format as gUintTextures) and is not read through the others. gStorage holds the storage images, a separate index space (views added with AddStorageImage).
+// The sizes are BindlessHeap.MaxSampledImages, MaxSamplers and MaxStorageImages.
+//
+// On Vulkan these are globals with explicit bindings: binding 0 is the sampled images (every sampled array is aliased on it: the descriptor type is the same whatever the dimension), 1 the
+// samplers, 2 the storage images. On Metal they are the members of a parameter block, an argument buffer at buffer 1 (push constants are buffer 0), and there is no aliasing: each member
+// is its own run of 8-byte resource ids, in declaration order. Keep the order below in step with MetalBindlessHeap: textures, samplers, then the rest.
+#ifdef APOGEE_METAL
 struct BindlessResources
 {
     Texture2D<float4> textures[16384];
     SamplerState samplers[256];
+    TextureCube<float4> cubes[16384];
+    Texture2DArray<float4> arrays[16384];
+    Texture3D<float4> volumes[16384];
+    Texture2D<uint> uintTextures[16384];
+    RWTexture2D<float4> storage[256];
 };
 ParameterBlock<BindlessResources> gBindless BINDLESS_SLOT;
 #define gTextures gBindless.textures
 #define gSamplers gBindless.samplers
+#define gCubes gBindless.cubes
+#define gArrays gBindless.arrays
+#define gVolumes gBindless.volumes
+#define gUintTextures gBindless.uintTextures
+#define gStorage gBindless.storage
+#else
+[[vk::binding(0, 0)]] Texture2D<float4> gTextures[16384];
+[[vk::binding(1, 0)]] SamplerState gSamplers[256];
+// The aliasing below is on purpose.
+#pragma warning(push)
+#pragma warning(disable: 39001)
+[[vk::binding(0, 0)]] TextureCube<float4> gCubes[16384];
+[[vk::binding(0, 0)]] Texture2DArray<float4> gArrays[16384];
+[[vk::binding(0, 0)]] Texture3D<float4> gVolumes[16384];
+[[vk::binding(0, 0)]] Texture2D<uint> gUintTextures[16384];
+[[vk::binding(2, 0)]] RWTexture2D<float4> gStorage[256];
+#pragma warning(pop)
+#endif
 
 static const float PI = 3.14159265358979;
 static const uint CLUSTERS_X = 16;

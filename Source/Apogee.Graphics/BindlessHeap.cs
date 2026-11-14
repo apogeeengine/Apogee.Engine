@@ -4,7 +4,7 @@ namespace Apogee.Graphics;
 
 /// <summary>
 /// The one set of resources every pipeline sees: arrays of sampled images, samplers and storage images that shaders index with integers, plus the push
-/// constants. Slot 0 of the images and samplers is a white texel and a linear repeat sampler, so an unset index still reads something sane.
+/// constants. Slot 0 of the images and samplers is a white texel and a linear repeat sampler, so an unset index still reads something sane; slot 0 of the storage images is never handed out (0 means "none").
 /// </summary>
 public abstract class BindlessHeap : IDisposable
 {
