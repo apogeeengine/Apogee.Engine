@@ -15,6 +15,7 @@ Steamworks · Dear ImGui (dev tools and the editor) · RmlUi with Luau in its do
   edited by hand); `Native/` holds C shims over C++-only libraries; `ThirdParty/` holds vendored prebuilt binaries and
   headers, with how each was built in its README.
 - `Source/Apogee.Host/`: what runs a game (session, world view, undo history), shared by `Apogee.Runtime` and `Apogee.Editor` (the ImGui editor).
+- `Source/Apogee.Export/`: game export (the runtime of a platform, native libraries, packs, the embedded pack key).
 - `Tools/Apogee.Build/`: build orchestration and the bindings generator (ClangSharp, written from scratch).
 - `Tests/`: one xUnit project per library. `Samples/`, `Docs/` (MkDocs: Manual, API reference, contributor guides), `Legal/`, `Bin/` (build output).
 
@@ -34,6 +35,8 @@ Bin/publish/runtime/Apogee.Runtime --game <folder> [--user <dir>] [--watch]   # 
 Bin/publish/runtime/Apogee.Runtime --workshop-upload <mod folder> [--confirm]   # publish a mod to the Steam Workshop (only describes it without --confirm: it is outward-facing)
 Bin/publish/runtime/Apogee.Runtime --import <folder>         # import models and images into <folder>/imported (only what changed)
 ./build.sh pack <folder> <out.pack> [--cooked] [--base <pack>]   # Apogee.Runtime --pack, with .env loaded: APOGEE_PACK_KEY encrypts (no key = plain)
+./build.sh export <game folder> <out dir> --target <rid> [--cooked]   # Apogee.Runtime --export, with .env loaded (APOGEE_PACK_KEY encrypts the packs and is embedded in the executable); needs ./build.sh aot first
+Bin/publish/runtime/Apogee.Runtime --export <game folder> <out dir> --target <linux-x64|win-x64|osx-arm64|osx-x64> [--cooked] [--runtime <dir>]   # a folder that runs on its own
 ```
 
 `.env` (gitignored) holds secrets such as the pack-encryption key; the wrappers load it.
