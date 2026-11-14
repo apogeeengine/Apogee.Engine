@@ -69,6 +69,36 @@ The engine's default UI font, Inter (`Source/Apogee.UI/Fonts`: Regular, Bold and
 License, Version 1.1 (`Source/Apogee.UI/Fonts/Inter-LICENSE.txt`). The license allows bundling it in a game, closed source ones included, as long as the copyright notice and the license travel with the font; a game that
 ships `Apogee.UI` includes them in its credits or documentation, with the notices of the Courier Prime fonts of RmlUi's debugger (see RmlUi above).
 
+## GT7 tone mapping
+
+The Gran Turismo 7 tone mapping curve in `Source/Apogee.Rendering/Shaders/tonemap.slang` and its C# twin `Source/Apogee.Rendering/Gt7ToneMapping.cs` is a port of Polyphony Digital's sample implementation,
+`gt7_tone_mapping.cpp` (version 1.0, 2025-08-10, from the supplemental material of the SIGGRAPH 2025 course "Physically Based Shading in Theory and Practice":
+https://blog.selfshadow.com/publications/s2025-shading-course/pdi/supplemental/gt7_tone_mapping.cpp). It is MIT-licensed, and its notice travels with the port:
+
+> MIT License
+>
+> Copyright (c) 2025 Polyphony Digital Inc.
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
+
+A game that ships the renderer includes this notice in its credits or documentation.
+
 ## Sample assets
 
 `Samples/Viewer/Assets` holds six models from [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets), all
