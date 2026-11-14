@@ -115,6 +115,36 @@ renderers load those (`ShaderLibrary`, [Rendering](../graphics/rendering.md#wher
 engine's shader ABI, so a mod's old compiled shader is refused with "import it again" rather than crashing the driver; to make a mod's shaders, import the mod's folder with the engine's dev runtime. CI runs the published runtime
 with the compiler libraries and every `.slang` source deleted, running the fixture game, to prove it.
 
+## Cooked XML
+
+Authored XML (scenes, and later prefabs and materials) and definitions are small, but a shipped game still gains from not parsing text: a cooked file is the same document in a binary encoding, `APXB`, in
+`Apogee.Content.Xml.XmlBinary`. It is not typed by the reflection registry: it holds the `XmlNode` tree (names, attributes in their order, text, the line each element started on, children) with every
+distinct name and value stored once, so it works for any XML file, does not depend on which components the engine had when the file was cooked, and gives back exactly the tree that was written. A scene with
+a thousand entities is less than half the size of its text.
+
+| Part | What it is |
+| --- | --- |
+| Header, 16 bytes | the magic `APXB`, a format version (`1`), flags (none are defined), the number of strings and the number of elements; little-endian |
+| Strings | each one a length and its UTF-8 bytes, in the order the writer first used them, so the same tree always gives the same file |
+| Elements | in document order, root first: name, line, attributes (name and value), text, number of children; every number is a varint (7 bits per byte) |
+
+```csharp
+byte[] cooked = XmlBinary.Write(XmlNode.Parse(text));
+XmlNode again = XmlBinary.Read(cooked, "res://scenes/start.ascene");   // a ContentException if it is damaged
+XmlNode either = XmlFile.Read(files, "res://scenes/start.ascene");     // text or cooked, whichever the file is
+```
+
+`XmlFile.Read(files, path)` is the one way to read an authored or definition file: it takes a file that starts with the magic as cooked (no text XML file can: those begin with `<`, a byte order mark or white
+space) and anything else as UTF-8 text, so the same code runs on the sources in development and on the cooked files of a shipped pack. A cooked file keeps the path of its source, which is why a script that
+reads it as text (`fs.read_text`) gets bytes, and reading it with `XmlFile` is the way that works for both. `--pack --cooked` does not write cooked XML yet; the encoding and the reader come first.
+
+The origin of an element is not stored: the reader gives every element the path it was asked to read, so an error in a cooked file still names the file and the source line. The reader accepts the versions up to the
+one it knows; a file from a newer engine, or with a flag it does not know, is refused with "cook again". A file cut short or damaged is a `ContentException`, never anything else, and a count in it (strings,
+elements, attributes, children) is checked against the bytes that are left before the reader makes room for it, so a hostile file cannot make it allocate more than a small multiple of its own size. Nesting is
+limited as in the text parser (`XmlNode.MaxDepth`).
+
+`AuthoredAssets.ReadUid` also reads the `uid` of a cooked document, from its root only.
+
 ## What gets cooked, and what does not (the plan)
 
 **A rule first: source formats always load.** Mods are Luau and data, are never imported, and ship as folders or zips; the editor works on sources. So every loader keeps a source path
@@ -129,7 +159,7 @@ data that is transcoded at load). That leaves `.amodel` as the one engine-specif
 | Textures | PNG, JPEG | **yes, done**: Basis UASTC in KTX 2, transcoded to BC7/ASTC/RGBA8 at load | `.ktx2` |
 | Shaders | Slang | **yes, done**: SPIR-V and Metal shading language and reflection ahead of time, in one bundle (DXIL has a slot), so a shipped game does not carry the compiler | `.ashader` |
 | Materials | XML definition (a `Material` type with a schema: textures by path, factors, alpha mode) | **not for now.** They are small data, which mods must be able to author and patch like any definition; a model's built-in materials are already in `.amodel` | none (an `.amat` only if profiling asks) |
-| Scenes, prefabs | XML: entities and their components, written and read through the reflection registry | **not for now**, and the same for everything that is a definition. Later, one *generic* cook: the decoded tree of any XML file (`DefValue`) as a binary file, so that scenes, prefabs and definitions share one importer and one loader | generic binary, e.g. `.abin` |
+| Scenes, prefabs | XML: entities and their components, written and read through the reflection registry | **the encoding is done** ([Cooked XML](#cooked-xml)): the tree of any XML file as a binary file, in place of the source under the same path, so that scenes, prefabs and definitions share one format and one reader. Writing it into a pack is the next step | binary XML (`APXB`), same path |
 | Audio | WAV, FLAC, MP3 and Ogg Vorbis, decoded when loaded (streamed if asked) | already compressed by the formats; a cook would only trade load time for size | none |
 | Scripts | Luau | no (a bytecode cache could come later; it is not needed to ship) | none |
 
@@ -146,7 +176,7 @@ and `--pack --cooked` stay as they are.
 `Tests/Apogee.Content.Tests`: GPU compression (transcoding to BC7, ASTC and RGBA8 and how close it stays, the colour space read from the file, normal maps, determinism, the sidecar, a model's textures and the caps of the loader), the registry (order, an asset that is not one, what an earlier importer read, the fingerprint, a package's own artifacts, shader variants in the settings), the KTX 2 writer read back by libktx's reader (sRGB and linear, odd sizes, one level or a chain, the data format descriptor), the model file (every field bit for
 bit, deterministic, a mesh that is not a triangle list, damaged and foreign files), and the importer (artifacts and the index, nothing imported twice, a change to the source, a dependency or
 the settings, deleted sources, failures that keep the old artifact, hidden folders, a damaged index, settings checked against their schema) and `ContentLoader` (the artifact is the one
-used, a source otherwise, a mod's files). `Tests/Apogee.Graphics.Tests`: the shader bundle (variants, damaged files, another ABI, backends that are not written yet). `Tests/Apogee.Rendering.Tests`: the shader importer and `ShaderLibrary` (dependencies, variants, the compiler never started when an artifact exists, no compiler no artifact, a mod's artifacts). `Tests/Apogee.Runtime.Tests` runs `--import` and `--pack --cooked` end to end, for shaders too.
+used, a source otherwise, a mod's files). cooked XML (`XmlBinaryTests`: every field of a tree back, escapes and non-ASCII text, the same bytes every time, size against the text, text and cooked read alike, a newer version or a flag refused, every truncation and a thousand flipped bytes, counts that do not fit the file, nesting). `Tests/Apogee.Graphics.Tests`: the shader bundle (variants, damaged files, another ABI, backends that are not written yet). `Tests/Apogee.Rendering.Tests`: the shader importer and `ShaderLibrary` (dependencies, variants, the compiler never started when an artifact exists, no compiler no artifact, a mod's artifacts). `Tests/Apogee.Runtime.Tests` runs `--import` and `--pack --cooked` end to end, for shaders too.
 
 ## Status and re-importing one asset
 

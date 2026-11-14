@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Apogee.Content.Xml;
 using Apogee.Core.Logging;
 using Apogee.Ecs;
 using Apogee.Reflection;
@@ -53,5 +54,16 @@ internal static class EcsSmoke
         }
 
         Log.Info("Runtime", $"Scene: {scene.Length} characters, loaded back");
+
+        // Cooked XML is a plain byte format with no reflection: write a tree, read it back, compare the text of both.
+        XmlNode tree = XmlNode.Parse("<Scene version=\"1\"><Entity id=\"1\" name=\"smoke\">caf\u00e9</Entity><Empty/></Scene>", "smoke.ascene");
+        byte[] cooked = XmlBinary.Write(tree);
+        XmlNode back = XmlFile.Read(cooked, "smoke.ascene");
+        if (!XmlBinary.IsBinary(cooked) || back.ToXml() != tree.ToXml() || back.Children[0].Line != tree.Children[0].Line)
+        {
+            throw new InvalidOperationException("The cooked XML smoke test failed.");
+        }
+
+        Log.Info("Runtime", $"Cooked XML: {cooked.Length} bytes, read back");
     }
 }
