@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Apogee.Content.Assets;
 using Apogee.Content.Xml;
+using Apogee.Core.Assets;
 
 namespace Apogee.Content.Import;
 
@@ -21,6 +23,9 @@ public sealed record ImportSettings
         return set;
     });
 
+    /// <summary>The UID of the asset (the <c>uid</c> attribute), or <see cref="AssetUid.None"/> before one was minted. It says who the asset is, not how to import it, so it is not part of the import key (<see cref="KeyText"/>).</summary>
+    public AssetUid Uid { get; init; }
+
     /// <summary>Textures: the colors are sRGB.</summary>
     public bool Srgb { get; init; } = true;
 
@@ -38,6 +43,43 @@ public sealed record ImportSettings
 
     /// <summary>Shaders: the variants to compile besides the default one, which has no defines.</summary>
     public IReadOnlyList<ShaderVariant> Variants { get; init; } = [];
+
+    /// <summary>
+    /// The text of a sidecar as the import key sees it: the same text without the root's <c>uid</c> attribute, so that minting a UID into a sidecar (or into a new one) does not change the key and
+    /// make the asset import again, and every key made before UIDs existed is still the one a sidecar without a UID makes.
+    /// <list type="number">
+    /// <item>The empty text stays empty.</item>
+    /// <item>A sidecar that says nothing but a UID (<c>&lt;Import uid="…"/&gt;</c>, which is what minting makes when there was no sidecar) is the same as no sidecar: empty. (A sidecar that already existed with no settings at all,
+    /// <c>&lt;Import/&gt;</c>, keeps its own key, so adding a UID to it imports the asset once more: it says nothing, and nobody writes it.)</item>
+    /// <item>Otherwise the <c>uid</c> attribute and the white space before it are taken out <em>textually</em> (only that attribute changes), and everything else is returned byte for byte: it is the
+    /// text people wrote, and it was part of the key before UIDs existed.</item>
+    /// </list>
+    /// Text that is not valid XML is returned as it is (reading it as settings fails on its own).
+    /// </summary>
+    public static string KeyText(string sidecarText)
+    {
+        if (sidecarText.Length == 0)
+        {
+            return "";
+        }
+
+        XmlNode root;
+        try
+        {
+            root = XmlNode.Parse(sidecarText.TrimStart('\uFEFF'), "");
+        }
+        catch (XmlParseException)
+        {
+            return sidecarText;
+        }
+
+        if (root.Name == ImportSidecar.RootName && root.Children.Count == 0 && root.Text.Length == 0 && root.Attributes.Count > 0 && root.Attributes.TrueForAll(a => a.Name == "uid"))
+        {
+            return "";
+        }
+
+        return RootTag.TryFind(sidecarText, out RootTag.Tag? tag) ? RootTag.Remove(sidecarText, tag, "uid") : sidecarText;
+    }
 
     /// <summary>Reads settings from the text of a sidecar file; <paramref name="origin"/> names it in errors.</summary>
     /// <exception cref="ContentException">The file is not valid.</exception>
@@ -67,6 +109,7 @@ public sealed record ImportSettings
 
         return new ImportSettings
         {
+            Uid = AssetUid.TryParse((record["uid"] as DefText)?.Value ?? "", out AssetUid uid) ? uid : AssetUid.None,
             Variants = variants.Count > 0 ? (IReadOnlyList<ShaderVariant>)variants : [],
             Srgb = (record["srgb"] as DefBool)?.Value ?? true,
             Mips = (record["mips"] as DefBool)?.Value ?? true,

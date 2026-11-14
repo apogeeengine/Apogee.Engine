@@ -18,6 +18,14 @@
           </xs:complexType>
         </xs:element>
       </xs:sequence>
+      <xs:attribute name="uid">
+        <xs:annotation><xs:documentation>The identity of the asset, which stays the same when the file is renamed or moved with this file. The importer writes it the first time the asset is imported; do not change it. It is not part of the import settings: changing it does not import the asset again.</xs:documentation></xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:pattern value="uid://[0-9a-hjkmnp-tv-z]{13}"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
       <xs:attribute name="srgb" type="xs:boolean" default="true">
         <xs:annotation><xs:documentation>Textures: the colors are sRGB (color maps) or linear (normal maps, roughness, masks).</xs:documentation></xs:annotation>
       </xs:attribute>
