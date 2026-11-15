@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using Apogee.Content.Assets;
+using Apogee.Core.Assets;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
 using Apogee.Editor.Editing;
@@ -140,7 +142,7 @@ public sealed class ProjectTests
         Assert.Equal(["res://scenes/level.ascene"], project.SceneFiles());
         string text = File.ReadAllText(Path.Combine(rig.Root, "game/scenes/level.ascene"));
         Assert.StartsWith("<?xml", text, StringComparison.Ordinal);                // a scene file is XML
-        Assert.Contains("<Scene version=\"1\">", text, StringComparison.Ordinal);
+        Assert.Contains("<Scene version=\"1\" uid=\"uid://", text, StringComparison.Ordinal);       // and has an identity
         Assert.Contains("Model=\"res://models/box.glb\"", text, StringComparison.Ordinal);   // the model by its path, not by a number
 
         project.NewScene();
@@ -160,6 +162,36 @@ public sealed class ProjectTests
         Assert.True(project.Dirty);
         Assert.True(project.SaveScene());
         Assert.False(project.Dirty);
+    }
+
+    [Fact]
+    public void SaveAsThenSaveKeepsTheSceneUid()
+    {
+        using var rig = new ProjectRig();
+        EditorProject project = rig.Project;
+        project.CreateEmpty();
+
+        project.SaveSceneAs("res://scenes/level");
+        string file = Path.Combine(rig.Root, "game/scenes/level.ascene");
+        AssetUid uid = AuthoredAssets.ReadUid(File.ReadAllBytes(file));
+        Assert.False(uid.IsNone);
+
+        project.CreateEmpty();
+        Assert.True(project.SaveScene());
+        Assert.Equal(uid, AuthoredAssets.ReadUid(File.ReadAllBytes(file)));
+
+        // Open again, change, save: still the same asset, and it opens by its UID.
+        project.NewScene();
+        project.OpenScene("res://scenes/level.ascene");
+        project.CreateEmpty();
+        Assert.True(project.SaveScene());
+        Assert.Equal(uid, AuthoredAssets.ReadUid(File.ReadAllBytes(file)));
+
+        project.NewScene();
+        project.OpenScene(uid.ToString());
+        Assert.Equal(3, rig.World.Roots().Count);
+        Assert.Throws<FileNotFoundException>(() => project.OpenScene("res://scenes/none.ascene"));
+        Assert.Equal(3, rig.World.Roots().Count); // a scene that is not there leaves the open one alone
     }
 
     [Fact]

@@ -105,13 +105,17 @@ public sealed class EditorProject : IDisposable
     public void OpenScene(string path)
     {
         StopIfPlaying();
-        string text = Session.Files!.ReadAllText(path);
+        if (!Session.Files!.FileExists(World.Assets?.ResolvePath(path) ?? path))
+        {
+            throw new FileNotFoundException($"The scene {path} does not exist.", path); // before the scene being edited is cleared
+        }
+
         foreach (Entity root in World.Roots())
         {
             World.Destroy(root);
         }
 
-        World.LoadScene(text);
+        World.LoadSceneFile(path);
         ScenePath = path;
         Selection = null;
         History.Clear();
@@ -139,7 +143,7 @@ public sealed class EditorProject : IDisposable
         }
 
         StopIfPlaying();
-        Session.Files!.WriteAllText(path, World.SaveScene());
+        World.SaveSceneFile(path);
         ScenePath = path;
         Dirty = false;
         Log.Info("Editor", $"Saved {path}");
