@@ -125,7 +125,8 @@ public sealed class FileLogSink : ILogSink, IDisposable
             string path = System.IO.Path.Combine(directory, name + LogExtension);
             try
             {
-                var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                // Shared for reading, writing and deleting: whoever tails the log, reads it for a report or prunes it while the run goes on must not be locked out (Windows refuses otherwise).
+                var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
                 _writer = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
                 Path = path;
                 _markerPath = System.IO.Path.Combine(directory, name + MarkerExtension);

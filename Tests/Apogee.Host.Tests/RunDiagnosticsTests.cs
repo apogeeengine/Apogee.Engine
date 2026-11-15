@@ -44,7 +44,10 @@ public sealed class RunDiagnosticsTests : IDisposable
         using (FileLogSink sink = RunDiagnostics.Start(user, "Fixture", "1.2.3"))
         {
             Log.Info("Test", "during the run");
-            Assert.Contains("during the run", File.ReadAllText(sink.Path!), StringComparison.Ordinal);
+            // Read while the sink has the file open: shared with the writer, as a user tailing the log would.
+            using var stream = new FileStream(sink.Path!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            Assert.Contains("during the run", reader.ReadToEnd(), StringComparison.Ordinal);
             Assert.Equal(Path.Combine(user, "logs"), Path.GetDirectoryName(sink.Path));
         }
 

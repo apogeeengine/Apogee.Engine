@@ -17,6 +17,27 @@ public sealed class FileLogSinkTests : IDisposable
 
     private static LogEntry Entry(string message, LogLevel level = LogLevel.Information) => new(new DateTimeOffset(2026, 11, 15, 12, 30, 5, 42, TimeSpan.Zero), level, "Test", message);
 
+    // The file is read while the sink may still have it open: a reader has to share it with the writer (File.ReadAllText asks for FileShare.Read, which Windows refuses next to an open writer).
+    private static string ReadText(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    private static string[] ReadLines(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        var lines = new System.Collections.Generic.List<string>();
+        while (reader.ReadLine() is { } line)
+        {
+            lines.Add(line);
+        }
+
+        return [.. lines];
+    }
+
     private string[] Logs() => [.. Directory.GetFiles(_dir.FullName, "*.log").Order(StringComparer.Ordinal)];
 
     [Fact]
@@ -28,7 +49,7 @@ public sealed class FileLogSinkTests : IDisposable
         sink.Write(Entry("careful", LogLevel.Warning));
 
         // Flushed after each line: the file can be read while the sink is open.
-        string[] lines = File.ReadAllLines(sink.Path!);
+        string[] lines = ReadLines(sink.Path!);
         Assert.Contains("Fixture", lines[0], StringComparison.Ordinal);
         Assert.StartsWith("Command line: ", lines[1], StringComparison.Ordinal);
         Assert.Equal([entry.ToLine(), Entry("careful", LogLevel.Warning).ToLine()], lines[2..]);
@@ -86,7 +107,7 @@ public sealed class FileLogSinkTests : IDisposable
             sink.Write(Entry(new string('x', 1000)));
         }
 
-        string[] lines = File.ReadAllLines(sink.Path!);
+        string[] lines = ReadLines(sink.Path!);
         Assert.Single(lines, static l => l.StartsWith("Log truncated", StringComparison.Ordinal));
         Assert.StartsWith("Log truncated", lines[^1], StringComparison.Ordinal);
         Assert.True(new FileInfo(sink.Path!).Length < 20_000 + 1100 + 100); // the line that crossed the limit, and the last line
@@ -104,7 +125,7 @@ public sealed class FileLogSinkTests : IDisposable
             }
         });
 
-        string[] lines = File.ReadAllLines(sink.Path!);
+        string[] lines = ReadLines(sink.Path!);
         Assert.Equal(2000, lines.Count(static l => l.Contains("] thread ", StringComparison.Ordinal)));
         Assert.Equal(2000, lines.Distinct().Count(static l => l.Contains("] thread ", StringComparison.Ordinal)));
     }
@@ -118,7 +139,7 @@ public sealed class FileLogSinkTests : IDisposable
         sink.Dispose(); // safe again
         sink.Write(Entry("after")); // ignored
 
-        string[] lines = File.ReadAllLines(sink.Path!);
+        string[] lines = ReadLines(sink.Path!);
         Assert.Equal("End of run.", lines[^1]);
         Assert.DoesNotContain(lines, static l => l.EndsWith("after", StringComparison.Ordinal));
         Assert.Empty(Directory.GetFiles(_dir.FullName, "*" + FileLogSink.MarkerExtension));
@@ -158,6 +179,6 @@ public sealed class FileLogSinkTests : IDisposable
 
         // Logging after that must not reach (or throw from) the closed file.
         Log.Info("Test", "after the end");
-        Assert.DoesNotContain("after the end", File.ReadAllText(sink.Path!), StringComparison.Ordinal);
+        Assert.DoesNotContain("after the end", ReadText(sink.Path!), StringComparison.Ordinal);
     }
 }
