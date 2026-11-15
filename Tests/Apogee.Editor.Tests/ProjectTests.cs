@@ -139,7 +139,9 @@ public sealed class ProjectTests
         Assert.False(project.Dirty);
         Assert.Equal(["res://scenes/level.ascene"], project.SceneFiles());
         string text = File.ReadAllText(Path.Combine(rig.Root, "game/scenes/level.ascene"));
-        Assert.Contains("res://models/box.glb", text, StringComparison.Ordinal);   // the model by its path, not by a number
+        Assert.StartsWith("<?xml", text, StringComparison.Ordinal);                // a scene file is XML
+        Assert.Contains("<Scene version=\"1\">", text, StringComparison.Ordinal);
+        Assert.Contains("Model=\"res://models/box.glb\"", text, StringComparison.Ordinal);   // the model by its path, not by a number
 
         project.NewScene();
         Assert.Empty(rig.World.Roots());

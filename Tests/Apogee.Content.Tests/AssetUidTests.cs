@@ -323,7 +323,7 @@ public class AssetUidTests
     {
         using var project = new Project();
         project.Write("scenes/start.ascene", Scene);
-        project.Write("scenes/old.ascene", "{\"format\":\"apogee-scene\",\"version\":1}"); // not XML: nowhere to put a UID, left alone
+        project.Write("scenes/old.ascene", "not a scene {"); // not XML: nowhere to put a UID, left alone
 
         ImportReport report = project.Import();
 
@@ -332,7 +332,7 @@ public class AssetUidTests
         AssetUid uid = AuthoredAssets.ReadUid(Encoding.UTF8.GetBytes(text));
         Assert.False(uid.IsNone);
         Assert.Equal(Scene.Replace("<Scene version=\"1\">", $"<Scene version=\"1\" uid=\"{uid}\">", StringComparison.Ordinal), text);
-        Assert.Equal("{\"format\":\"apogee-scene\",\"version\":1}", project.Read("scenes/old.ascene"));
+        Assert.Equal("not a scene {", project.Read("scenes/old.ascene"));
 
         project.Import(); // and nothing changes after
         Assert.Equal(text, project.Read("scenes/start.ascene"));

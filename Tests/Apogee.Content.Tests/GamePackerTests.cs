@@ -274,7 +274,7 @@ public class GamePackerTests
         using var game = new Game();
         game.Populate();
         game.Import();
-        game.Write("scenes/broken.ascene", "{\"format\":\"apogee-scene\"}");
+        game.Write("scenes/broken.ascene", "<Scene version=\"1\"><Entity id=\"1\">");
 
         ContentException error = Assert.ThrowsAny<ContentException>(() => GamePacker.Pack(game.Request(cooked: true)));
         Assert.Contains("broken.ascene", error.Message, StringComparison.Ordinal);

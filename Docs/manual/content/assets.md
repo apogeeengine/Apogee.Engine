@@ -27,7 +27,7 @@ writes the new path).
 | An authored file (`.ascene`) | the `uid` attribute of the document's root | `<Scene version="1" uid="uid://…">` |
 | The whole project | `imported/assets.xml`, a list written by the import | `<Asset uid="uid://…" path="res://models/car.glb"/>` |
 
-`AuthoredAssets.Extensions` lists the authored kinds. The sidecar and the document are the truth; `assets.xml` is a copy that makes lookups fast. It is rewritten by every import (only when its text changes),
+`AuthoredAssets.Extensions` lists the authored kinds; [scenes](scenes.md) are the first. The sidecar and the document are the truth; `assets.xml` is a copy that makes lookups fast. It is rewritten by every import (only when its text changes),
 sorted by path, and a pack carries it, so a shipped game finds a UID without scanning. The paths in it are written as the folder looked when it was imported (`res://…`); a package that was imported on its
 own and is mounted at `mod://id/` is read with its paths under `mod://id/`. In a `--pack --cooked` pack the list is [cooked XML](import.md#cooked-xml) and is the only record of the imported assets' UIDs
 (their sidecars and sources are left out), so `AssetDatabase` believes a cooked list without looking for the files.
@@ -38,7 +38,7 @@ own and is mounted at `mod://id/` is read with its paths under `mod://id/`. In a
   Only those two attributes are written: comments, indentation, quote style, line endings and a byte order mark in the file stay as they were, and an attribute that is already there is never changed.
   The editor's single-asset `Reimport` does the same for its asset.
 - **Never at run time.** A game, a mod, a pack or a read-only folder is never written to. Their assets without a UID simply have none, and a reference to them is by path.
-- A file that is not XML (a JSON scene, a damaged document) has nowhere to hold a UID and is left alone.
+- A file that is not XML (a damaged document) has nowhere to hold a UID and is left alone.
 
 Something that rewrites a `.import.xml` (a settings panel) must keep the UID: `ImportSidecar.SetUid(newText, ImportSidecar.ReadUid(oldText))`. Likewise `AuthoredAssets.SetUid` for a document that is saved
 over an existing one.

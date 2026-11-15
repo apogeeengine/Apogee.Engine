@@ -97,8 +97,8 @@ public sealed class SceneAssetTests : IDisposable
 
         string text = world.SaveScene();
 
-        Assert.Contains($"\"res://models/car.glb|{_carUid}\"", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"Model\": 1", text, StringComparison.Ordinal); // not the number of this run
+        Assert.Contains($"Model=\"res://models/car.glb|{_carUid}\"", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Model=\"1\"", text, StringComparison.Ordinal); // not the number of this run
     }
 
     [Fact]
@@ -106,14 +106,17 @@ public sealed class SceneAssetTests : IDisposable
     {
         using World world = NewWorld();
         List<Entity> loaded = world.LoadScene("""
-            { "format": "apogee-scene", "version": 1, "components": {},
-              "entities": [ { "id": 1, "name": "old", "components": { "Furnished": { "Count": 1, "Model": "res://models/car.glb" } } },
-                            { "id": 2, "name": "none", "components": { "Furnished": { "Count": 2, "Model": null } } } ] }
+            <Scene version="1">
+              <Entity id="1" name="old"><Furnished Count="1" Model="res://models/car.glb"/></Entity>
+              <Entity id="2" name="none"><Furnished Count="2" Model=""/></Entity>
+              <Entity id="3" name="absent"><Furnished Count="3"/></Entity>
+            </Scene>
             """);
 
         Assert.Equal("res://models/car.glb", PathOf(world.Get<Furnished>(loaded[0]).Model)); // a scene from before UIDs: the path alone
         Assert.Equal(0u, world.Get<Furnished>(loaded[1]).Model);
         Assert.Equal(2, world.Get<Furnished>(loaded[1]).Count);
+        Assert.Equal(0u, world.Get<Furnished>(loaded[2]).Model);
 
         // Saved again, it holds the UID too.
         Assert.Contains($"res://models/car.glb|{_carUid}", world.SaveScene(), StringComparison.Ordinal);
@@ -153,8 +156,9 @@ public sealed class SceneAssetTests : IDisposable
         {
             using World world = NewWorld();
             List<Entity> loaded = world.LoadScene("""
-                { "format": "apogee-scene", "version": 1, "components": {},
-                  "entities": [ { "id": 1, "name": "lost", "components": { "Furnished": { "Count": 7, "Model": "res://models/gone.glb|uid://0000000000zzz" } } } ] }
+                <Scene version="1">
+                  <Entity id="1" name="lost"><Furnished Count="7" Model="res://models/gone.glb|uid://0000000000zzz"/></Entity>
+                </Scene>
                 """);
 
             Assert.Equal(0u, world.Get<Furnished>(loaded[0]).Model);
@@ -182,8 +186,8 @@ public sealed class SceneAssetTests : IDisposable
 
             string text = world.SaveScene();
 
-            Assert.Equal(2, text.Split("\"Model\": null").Length - 1);
-            Assert.Contains("\"Count\": 3", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Model=", text, StringComparison.Ordinal); // left out, not the number of this run
+            Assert.Contains("Count=\"3\"", text, StringComparison.Ordinal);
             string[] warnings = [.. sink.Warnings.Where(w => w.Contains("Furnished.Model", StringComparison.Ordinal))];
             Assert.Single(warnings); // once, however many entities
             Assert.Contains("'model'", warnings[0], StringComparison.Ordinal);
@@ -191,8 +195,9 @@ public sealed class SceneAssetTests : IDisposable
             // Loading leaves the field empty too.
             using World fresh = NewWorld(registered: false);
             List<Entity> loaded = fresh.LoadScene("""
-                { "format": "apogee-scene", "version": 1, "components": {},
-                  "entities": [ { "id": 1, "name": "x", "components": { "Furnished": { "Count": 5, "Model": "res://models/car.glb" } } } ] }
+                <Scene version="1">
+                  <Entity id="1" name="x"><Furnished Count="5" Model="res://models/car.glb"/></Entity>
+                </Scene>
                 """);
             Assert.Equal(0u, fresh.Get<Furnished>(loaded[0]).Model);
             Assert.Equal(5, fresh.Get<Furnished>(loaded[0]).Count);
@@ -204,7 +209,7 @@ public sealed class SceneAssetTests : IDisposable
     }
 
     [Fact]
-    public void AScriptComponentsAssetFieldWithoutATypeIsSavedAsNull()
+    public void AScriptComponentsAssetFieldWithoutATypeIsLeftOut()
     {
         using World world = NewWorld();
         Entity decorated = world.DefineComponent("Decorated", [("look", FieldKind.AssetRef)]);
@@ -215,6 +220,6 @@ public sealed class SceneAssetTests : IDisposable
             *(uint*)data = 5;
         }
 
-        Assert.Contains("\"look\": null", world.SaveScene(), StringComparison.Ordinal);
+        Assert.DoesNotContain("look=\"", world.SaveScene(), StringComparison.Ordinal);
     }
 }

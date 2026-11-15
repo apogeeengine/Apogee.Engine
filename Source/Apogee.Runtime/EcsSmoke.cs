@@ -44,11 +44,11 @@ internal static class EcsSmoke
             throw new InvalidOperationException("The ECS smoke test failed.");
         }
 
-        // Scenes are read and written from the registry's field descriptions with Utf8JsonWriter and JsonDocument, which must work with no reflection: save, load into a new world, compare.
+        // Scenes are XML, read and written from the registry's field descriptions through XmlNode and FieldText, which must work with no reflection: save, load into a new world, compare.
         string scene = world.SaveScene();
         using var loaded = new World();
         Entity restored = loaded.LoadScene(scene).Single();
-        if (loaded.GetName(restored) != "smoke" || loaded.Get<Ticks>(restored).Count != 3 || !world.IsUserEntity(entity) || world.Roots().Count != 1)
+        if (!scene.StartsWith("<?xml", StringComparison.Ordinal) || loaded.GetName(restored) != "smoke" || loaded.Get<Ticks>(restored).Count != 3 || !world.IsUserEntity(entity) || world.Roots().Count != 1)
         {
             throw new InvalidOperationException("The scene smoke test failed.");
         }

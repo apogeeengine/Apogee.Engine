@@ -269,7 +269,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
         files.WriteAllText(path, ImportSidecar.SetUid(text, uids.Make("res://" + source)));
     }
 
-    /// <summary>Gives an authored file (a scene) a UID in its root element if it has none. A file that is not XML (a JSON scene, until scenes are XML) has nowhere to put one and is left alone.</summary>
+    /// <summary>Gives an authored file (a scene) a UID in its root element if it has none. A file that is not XML (a damaged document) has nowhere to put one and is left alone.</summary>
     private void MintAuthoredUid(string source, UidRun uids, List<(string, string)> failed)
     {
         string path = "res://" + source;

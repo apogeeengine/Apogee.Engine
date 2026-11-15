@@ -1,32 +1,36 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Numerics;
-using System.Text;
-using System.Text.Json;
 using Apogee.Content;
+using Apogee.Content.Xml;
 using Apogee.Core.Assets;
 using Apogee.Core.Logging;
-using Apogee.Core.Numerics;
 using Apogee.Reflection;
 
 namespace Apogee.Ecs;
 
-// Scenes: the user entities of a world as JSON text (a `.ascene` file). Written and read field by field from the registry's descriptions with Utf8JsonWriter and JsonDocument, so no reflection is
+// Scenes: the user entities of a world as XML text (a `.ascene` file), read and written through the engine's XmlNode and field by field from the registry's descriptions, so no reflection is
 // involved and it works in a NativeAOT program. The format is ours, not Flecs': Flecs' own JSON would carry the entities of the types and systems the engine registers.
 //
-//   { "format": "apogee-scene", "version": 1,
-//     "components": { "Ticker": [ { "name": "count", "kind": "Int32" } ] },             // only the ones a script defined: the file defines them again when it is loaded
-//     "entities": [ { "id": 1, "name": "ground", "parent": null,
-//                     "components": { "Transform": { "Position": [0, -0.5, 0], "Rotation": [0, 0, 0, 1], "Scale": [1, 1, 1] }, "MainCamera": {} } } ] }
+//   <?xml version="1.0" encoding="utf-8"?>
+//   <Scene version="1">
+//     <Components>                                                          <!-- only the ones a script defined: the file defines them again when it is loaded -->
+//       <Component name="Ticker"><Field name="count" kind="Int32"/><Field name="look" kind="AssetRef" assetType="model"/></Component>
+//     </Components>
+//     <Entity id="1" name="ground">                                          <!-- one element per component, one attribute per field; a child <Entity> is a child entity -->
+//       <Transform Position="0 -0.5 0" Rotation="0 0 0 1" Scale="1 1 1"/>
+//       <MainCamera/>
+//       <Entity id="2" name="crate"><Ticker count="3" target="1"/></Entity>
+//     </Entity>
+//   </Scene>
 //
-// "id" is the entity's number in the file (what "parent" and Entity-typed fields refer to), not its id in a world.
+// "id" is the entity's number in the file (what Entity-typed fields refer to, and what a patch matches on: DefDatabase.Merge pairs children by name and id), not its id in a world.
+// docs/manual/content/scenes.md is the reference; Scene/scene.xsd describes the structure.
 public sealed unsafe partial class World
 {
-    private const string SceneFormat = "apogee-scene";
+    private const string SceneRoot = "Scene";
+    private const string SceneEntity = "Entity";
     private const int SceneVersion = 1;
 
     private readonly Dictionary<string, (Func<uint, AssetRef?> ToRef, Func<AssetRef, uint> FromRef)> _assetTypes = new(StringComparer.Ordinal);
@@ -51,15 +55,25 @@ public sealed unsafe partial class World
     /// <summary>Leaves a component out of scenes: what is derived (<c>WorldTransform</c>, which is always left out) or only means something in this run (physics bodies).</summary>
     public void IgnoreInScenes(string component) => _sceneIgnored.Add(component);
 
-    /// <summary>The user entities (<see cref="IsUserEntity"/>) as scene text.</summary>
+    /// <summary>The user entities (<see cref="IsUserEntity"/>) as scene text (XML). It has no <c>uid</c>: text is a copy, and a copy must not carry the identity of a file.</summary>
     [Method]
-    public string SaveScene() => WriteScene(Roots());
+    public string SaveScene() => SceneText(SaveSceneDocument(Roots()));
 
     /// <summary>One entity and everything below it as scene text: a prefab, a copy for the clipboard.</summary>
-    public string SaveScene(Entity root) => WriteScene([root]);
+    public string SaveScene(Entity root) => SceneText(SaveSceneDocument([root]));
 
-    private string WriteScene(IReadOnlyList<Entity> roots)
+    private static string SceneText(XmlNode document) => "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" + document.ToXml();
+
+    /// <summary>
+    /// The entities in <paramref name="roots"/>, each with everything below it, as a <c>Scene</c> element: what <see cref="SaveScene()"/> writes as text, for code that wants the tree (to add
+    /// a <c>uid</c> to, to patch with <c>DefDatabase.Merge</c>, to cook).
+    /// </summary>
+    public XmlNode SaveSceneDocument(IReadOnlyList<Entity> roots)
     {
+        ArgumentNullException.ThrowIfNull(roots);
+
+        // The entity's number in the file is its place in this order, parents before children. A tree is written by one pass over the order: a node is added to its parent's node when the parent is in the
+        // scene, and to the document otherwise, so the nesting follows the order and the order is what a loaded scene is created in: a saved scene saves again to the same text.
         var order = new List<Entity>();
         foreach (Entity root in roots)
         {
@@ -73,141 +87,102 @@ public sealed unsafe partial class World
         }
 
         var scriptComponents = new SortedDictionary<string, ComponentInfo>(StringComparer.Ordinal);
-        var buffer = new ArrayBufferWriter<byte>(4096);
-        using (var json = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
+        var nodes = new Dictionary<ulong, XmlNode>();
+        var top = new List<XmlNode>();
+        foreach (Entity entity in order)
         {
-            json.WriteStartObject();
-            json.WriteString("format", SceneFormat);
-            json.WriteNumber("version", SceneVersion);
-
-            // The entities first into a buffer of their own, so the schemas of the components they use can be written before them.
-            var entitiesBuffer = new ArrayBufferWriter<byte>(4096);
-            using (var entities = new Utf8JsonWriter(entitiesBuffer, new JsonWriterOptions { Indented = true }))
+            var node = new XmlNode(SceneEntity);
+            node.SetAttribute("id", local[entity.Id].ToString(CultureInfo.InvariantCulture));
+            if (GetName(entity) is { } name)
             {
-                entities.WriteStartArray();
-                foreach (Entity entity in order)
-                {
-                    entities.WriteStartObject();
-                    entities.WriteNumber("id", local[entity.Id]);
-                    if (GetName(entity) is { } name)
-                    {
-                        entities.WriteString("name", name);
-                    }
-
-                    Entity parent = GetParent(entity);
-                    if (local.TryGetValue(parent.Id, out int parentLocal))
-                    {
-                        entities.WriteNumber("parent", parentLocal);
-                    }
-
-                    entities.WriteStartObject("components");
-                    foreach ((Entity id, ComponentInfo info) in ComponentsOf(entity))
-                    {
-                        if (_sceneIgnored.Contains(info.Name))
-                        {
-                            continue;
-                        }
-
-                        if (info.ClrType is null)
-                        {
-                            scriptComponents[info.Name] = info;
-                        }
-
-                        entities.WriteStartObject(info.Name);
-                        if (!info.IsTag)
-                        {
-                            byte* data = GetPointer(entity, id);
-                            foreach (FieldDef field in info.Fields)
-                            {
-                                entities.WritePropertyName(field.Name);
-                                WriteField(entities, info, field, data + field.Offset, local);
-                            }
-                        }
-
-                        entities.WriteEndObject();
-                    }
-
-                    entities.WriteEndObject();
-                    entities.WriteEndObject();
-                }
-
-                entities.WriteEndArray();
+                node.SetAttribute("name", name);
             }
 
-            json.WriteStartObject("components");
-            foreach ((string name, ComponentInfo info) in scriptComponents)
+            foreach ((Entity id, ComponentInfo info) in ComponentsOf(entity))
             {
-                json.WriteStartArray(name);
-                foreach (FieldDef field in info.Fields)
+                if (_sceneIgnored.Contains(info.Name))
                 {
-                    json.WriteStartObject();
-                    json.WriteString("name", field.Name);
-                    json.WriteString("kind", field.Kind.ToString());
-                    json.WriteEndObject();
+                    continue;
                 }
 
-                json.WriteEndArray();
+                if (info.ClrType is null)
+                {
+                    scriptComponents[info.Name] = info;
+                }
+
+                // A tag, or a component with no fields, is an empty element.
+                var component = new XmlNode(info.Name);
+                if (!info.IsTag)
+                {
+                    byte* data = GetPointer(entity, id);
+                    foreach (FieldDef field in info.Fields)
+                    {
+                        if (FieldTextOf(info, field, data + field.Offset, local) is { } text)
+                        {
+                            component.SetAttribute(field.Name, text);
+                        }
+                    }
+                }
+
+                node.Children.Add(component);
             }
 
-            json.WriteEndObject();
-            json.WritePropertyName("entities");
-            json.WriteRawValue(entitiesBuffer.WrittenSpan, skipInputValidation: true);
-            json.WriteEndObject();
+            nodes[entity.Id] = node;
+            if (nodes.TryGetValue(GetParent(entity).Id, out XmlNode? parentNode))
+            {
+                parentNode.Children.Add(node);
+            }
+            else
+            {
+                top.Add(node);
+            }
         }
 
-        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+        var scene = new XmlNode(SceneRoot);
+        scene.SetAttribute("version", SceneVersion.ToString(CultureInfo.InvariantCulture));
+        if (scriptComponents.Count > 0)
+        {
+            var schemas = new XmlNode("Components");
+            foreach ((string name, ComponentInfo info) in scriptComponents)
+            {
+                var schema = new XmlNode("Component");
+                schema.SetAttribute("name", name);
+                foreach (FieldDef field in info.Fields)
+                {
+                    var entry = new XmlNode("Field");
+                    entry.SetAttribute("name", field.Name);
+                    entry.SetAttribute("kind", field.Kind.ToString());
+                    if (field.Kind == FieldKind.AssetRef && field.AssetType is not null)
+                    {
+                        entry.SetAttribute("assetType", field.AssetType);
+                    }
+
+                    schema.Children.Add(entry);
+                }
+
+                schemas.Children.Add(schema);
+            }
+
+            scene.Children.Add(schemas);
+        }
+
+        scene.Children.AddRange(top);
+        return scene;
     }
 
-    private void WriteField(Utf8JsonWriter json, ComponentInfo info, FieldDef field, byte* at, Dictionary<ulong, int> local)
+    // The text of a field, or null when the attribute is left out: an Entity outside the scene, a handle of 0, an asset the type cannot name.
+    private string? FieldTextOf(ComponentInfo info, FieldDef field, byte* at, Dictionary<ulong, int> local)
     {
         switch (field.Kind)
         {
-            case FieldKind.Bool: json.WriteBooleanValue(*at != 0); break;
-            case FieldKind.Int8: json.WriteNumberValue(*(sbyte*)at); break;
-            case FieldKind.UInt8: json.WriteNumberValue(*at); break;
-            case FieldKind.Int16: json.WriteNumberValue(*(short*)at); break;
-            case FieldKind.UInt16: json.WriteNumberValue(*(ushort*)at); break;
-            case FieldKind.Int32: json.WriteNumberValue(*(int*)at); break;
-            case FieldKind.UInt32: json.WriteNumberValue(*(uint*)at); break;
-            case FieldKind.AssetRef:
-                // The handle means nothing in another run: what it names goes instead, as "path|uid" (null for none, and for what cannot be saved).
-                if (AssetRefOf(info, field, *(uint*)at) is { } named)
-                {
-                    json.WriteStringValue(named.ToString());
-                }
-                else
-                {
-                    json.WriteNullValue();
-                }
-
-                break;
-            case FieldKind.Int64: WriteLong(json, *(long*)at); break;
-            case FieldKind.UInt64: WriteULong(json, *(ulong*)at); break;
-            case FieldKind.Float32: WriteDouble(json, *(float*)at); break;
-            case FieldKind.Float64: WriteDouble(json, *(double*)at); break;
-            case FieldKind.Vector3: WriteFloats(json, (float*)at, 3); break;
-            case FieldKind.Quaternion: WriteFloats(json, (float*)at, 4); break;
-            case FieldKind.Double3:
-                json.WriteStartArray();
-                for (int i = 0; i < 3; i++)
-                {
-                    WriteDouble(json, ((double*)at)[i]);
-                }
-
-                json.WriteEndArray();
-                break;
             case FieldKind.Entity:
                 // A reference to another entity of the scene is its number in the file; to anything else, nothing.
-                if (local.TryGetValue(*(ulong*)at, out int target))
-                {
-                    json.WriteNumberValue(target);
-                }
-                else
-                {
-                    json.WriteNullValue();
-                }
-
-                break;
+                return local.TryGetValue(*(ulong*)at, out int target) ? target.ToString(CultureInfo.InvariantCulture) : null;
+            case FieldKind.AssetRef:
+                // The handle means nothing in another run: what it names goes instead, as "path|uid".
+                return AssetRefOf(info, field, *(uint*)at)?.ToString();
+            default:
+                return FieldText.Format(field, at);
         }
     }
 
@@ -275,143 +250,129 @@ public sealed unsafe partial class World
         }
     }
 
-    private static void WriteDouble(Utf8JsonWriter json, double value)
-    {
-        if (double.IsFinite(value))
-        {
-            json.WriteNumberValue(value);
-        }
-        else
-        {
-            json.WriteStringValue(double.IsNaN(value) ? "NaN" : value > 0 ? "Infinity" : "-Infinity");
-        }
-    }
-
-    private static void WriteLong(Utf8JsonWriter json, long value)
-    {
-        // A number in JSON is a double to most readers: what it cannot hold exactly goes as text.
-        if (value is >= -9007199254740992 and <= 9007199254740992)
-        {
-            json.WriteNumberValue(value);
-        }
-        else
-        {
-            json.WriteStringValue(value.ToString(CultureInfo.InvariantCulture));
-        }
-    }
-
-    private static void WriteULong(Utf8JsonWriter json, ulong value)
-    {
-        if (value <= 9007199254740992)
-        {
-            json.WriteNumberValue(value);
-        }
-        else
-        {
-            json.WriteStringValue(value.ToString(CultureInfo.InvariantCulture));
-        }
-    }
-
-    private static void WriteFloats(Utf8JsonWriter json, float* values, int count)
-    {
-        json.WriteStartArray();
-        for (int i = 0; i < count; i++)
-        {
-            WriteDouble(json, values[i]);
-        }
-
-        json.WriteEndArray();
-    }
-
     /// <summary>
     /// Creates the entities of scene text, under <paramref name="parent"/> when given, and returns them in the order of the file (parents first). A component the file names that this world cannot
-    /// find, and a field it does not have, are logged and skipped; components that scripts defined are defined again from the file. Throws <see cref="FormatException"/> when the text is not a scene.
+    /// find, and a field it does not have, are logged and skipped; components that scripts defined are defined again from the file. Throws <see cref="FormatException"/> when the text is not a scene
+    /// (including JSON text from before scenes were XML).
     /// </summary>
     [Method]
     public List<Entity> LoadScene(string text, Entity parent = default)
     {
-        JsonDocument document;
+        ArgumentNullException.ThrowIfNull(text);
+
+        // A BOM or blank lines may come before the first character; a scene written before the format was XML starts with a brace.
+        if (text.AsSpan().TrimStart("\uFEFF \t\r\n").StartsWith("{", StringComparison.Ordinal))
+        {
+            throw new FormatException("the scene is JSON text from before scenes were XML; convert it with 'Apogee.Runtime --migrate-scenes <folder>'");
+        }
+
+        XmlNode root;
         try
         {
-            document = JsonDocument.Parse(text);
+            root = XmlNode.Parse(text, "scene");
         }
-        catch (JsonException e)
+        catch (XmlParseException e)
         {
-            throw new FormatException($"the scene is not valid JSON: {e.Message}", e);
+            // XmlNode reports a ContentException; a scene text that cannot be read is a FormatException, as it always was, for the callers that tell the two apart.
+            throw new FormatException($"the scene is not valid XML: {e.Message}", e);
         }
 
-        using (document)
+        return LoadScene(root, parent);
+    }
+
+    /// <summary>
+    /// Creates the entities of a <c>Scene</c> element (<see cref="SaveSceneDocument"/>, or a file read with <see cref="XmlNode.Parse"/>, possibly patched), under <paramref name="parent"/> when given.
+    /// See <see cref="LoadScene(string, Entity)"/>.
+    /// </summary>
+    public List<Entity> LoadScene(XmlNode root, Entity parent = default)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        if (root.Name != SceneRoot)
         {
-            JsonElement root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("format", out JsonElement format) || format.GetString() != SceneFormat)
+            throw new FormatException($"the document is not a scene: its root is <{root.Name}>, not <{SceneRoot}>");
+        }
+
+        if (root.Attribute("version") is { } versionText)
+        {
+            if (!int.TryParse(versionText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int version))
             {
-                throw new FormatException($"the text is not an {SceneFormat} scene");
+                throw new FormatException($"the scene has the version '{versionText}', which is not a number");
             }
 
-            if (root.TryGetProperty("version", out JsonElement version) && version.TryGetInt32(out int number) && number > SceneVersion)
+            if (version > SceneVersion)
             {
-                throw new FormatException($"the scene is version {number}; this engine reads up to {SceneVersion}");
+                throw new FormatException($"the scene is version {version}; this engine reads up to {SceneVersion}");
+            }
+        }
+
+        if (root.Child("Components") is { } schemas)
+        {
+            DefineSceneComponents(schemas);
+        }
+
+        // Every entity first, in the order of the file, so that entity-typed fields can refer to the ones that come later in it; the parents next (they decide whether a name is free), then the names and components.
+        var created = new List<Entity>();
+        var nodes = new List<XmlNode>();
+        var under = new List<Entity>();
+        var byLocal = new Dictionary<int, Entity>();
+        CreateSceneEntities(root, parent, created, nodes, under, byLocal);
+
+        for (int i = 0; i < created.Count; i++)
+        {
+            if (!under[i].IsNull)
+            {
+                SetParent(created[i], under[i]);
+            }
+        }
+
+        for (int i = 0; i < created.Count; i++)
+        {
+            Entity entity = created[i];
+            if (nodes[i].Attribute("name") is { Length: > 0 } entityName)
+            {
+                TrySetName(entity, entityName);
             }
 
-            if (root.TryGetProperty("components", out JsonElement schemas) && schemas.ValueKind == JsonValueKind.Object)
+            foreach (XmlNode component in nodes[i].Children)
             {
-                DefineSceneComponents(schemas);
-            }
-
-            var created = new List<Entity>();
-            if (!root.TryGetProperty("entities", out JsonElement entities) || entities.ValueKind != JsonValueKind.Array)
-            {
-                return created;
-            }
-
-            // Every entity first, so that parents and entity-typed fields can refer to the ones that come later in the file.
-            var byLocal = new Dictionary<int, Entity>();
-            foreach (JsonElement entry in entities.EnumerateArray())
-            {
-                Entity entity = CreateEntity();
-                if (entry.TryGetProperty("id", out JsonElement id) && id.TryGetInt32(out int localId))
+                if (component.Name != SceneEntity)
                 {
+                    ReadComponent(entity, component, byLocal);
+                }
+            }
+        }
+
+        return created;
+    }
+
+    // The <Entity> children of a node, depth first and in order (the order the ids of a scene count in). Recursion is bounded by XmlNode.MaxDepth, which the parser and the cooked reader enforce.
+    private void CreateSceneEntities(XmlNode container, Entity parent, List<Entity> created, List<XmlNode> nodes, List<Entity> under, Dictionary<int, Entity> byLocal)
+    {
+        foreach (XmlNode node in container.Children)
+        {
+            if (node.Name != SceneEntity)
+            {
+                continue;
+            }
+
+            Entity entity = CreateEntity();
+            if (node.Attribute("id") is { } idText)
+            {
+                if (!int.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int localId))
+                {
+                    Log.Warn("Scene", $"{node.Origin}:{node.Line}: the entity id '{idText}' is not a number: nothing can refer to it");
+                }
+                else if (!byLocal.TryAdd(localId, entity))
+                {
+                    Log.Warn("Scene", $"{node.Origin}:{node.Line}: the entity id {localId} is used twice: references to it go to the later one");
                     byLocal[localId] = entity;
                 }
-
-                created.Add(entity);
             }
 
-            int index = 0;
-            foreach (JsonElement entry in entities.EnumerateArray())
-            {
-                Entity entity = created[index++];
-                Entity under = parent;
-                if (entry.TryGetProperty("parent", out JsonElement parentEntry) && parentEntry.TryGetInt32(out int parentLocal) && byLocal.TryGetValue(parentLocal, out Entity found))
-                {
-                    under = found;
-                }
-
-                if (!under.IsNull)
-                {
-                    SetParent(entity, under);
-                }
-            }
-
-            index = 0;
-            foreach (JsonElement entry in entities.EnumerateArray())
-            {
-                Entity entity = created[index++];
-                if (entry.TryGetProperty("name", out JsonElement name) && name.GetString() is { Length: > 0 } entityName)
-                {
-                    TrySetName(entity, entityName);
-                }
-
-                if (entry.TryGetProperty("components", out JsonElement components) && components.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (JsonProperty component in components.EnumerateObject())
-                    {
-                        ReadComponent(entity, component.Name, component.Value, byLocal);
-                    }
-                }
-            }
-
-            return created;
+            created.Add(entity);
+            nodes.Add(node);
+            under.Add(parent);
+            CreateSceneEntities(node, entity, created, nodes, under, byLocal);
         }
     }
 
@@ -435,41 +396,53 @@ public sealed unsafe partial class World
         SetName(entity, name);
     }
 
-    private void DefineSceneComponents(JsonElement schemas)
+    private void DefineSceneComponents(XmlNode schemas)
     {
-        foreach (JsonProperty schema in schemas.EnumerateObject())
+        foreach (XmlNode schema in schemas.Children)
         {
-            if (!_componentsByName.ContainsKey(schema.Name) && TypeRegistry.FindComponent(schema.Name) is not null)
+            if (schema.Name != "Component" || schema.Attribute("name") is not { Length: > 0 } name)
+            {
+                Log.Warn("Scene", $"{schema.Origin}:{schema.Line}: <{schema.Name}> in <Components> is not a <Component name=\"…\">: skipped");
+                continue;
+            }
+
+            if (!_componentsByName.ContainsKey(name) && TypeRegistry.FindComponent(name) is not null)
             {
                 continue; // a struct of the engine or the game: its layout is the code's
             }
 
             var fields = new List<(string Name, FieldKind Kind)>();
-            foreach (JsonElement field in schema.Value.EnumerateArray())
+            Dictionary<string, string>? assetTypes = null;
+            foreach (XmlNode field in schema.Children)
             {
-                string? fieldName = field.GetProperty("name").GetString();
-                if (fieldName is null || !Enum.TryParse(field.GetProperty("kind").GetString(), out FieldKind kind))
+                string? fieldName = field.Attribute("name");
+                if (field.Name != "Field" || fieldName is null || !Enum.TryParse(field.Attribute("kind"), out FieldKind kind) || !Enum.IsDefined(kind))
                 {
-                    Log.Warn("Scene", $"component {schema.Name} has a field the engine does not know: {field}");
+                    Log.Warn("Scene", $"{field.Origin}:{field.Line}: component {name} has a field the engine does not know: skipped");
                     continue;
                 }
 
                 fields.Add((fieldName, kind));
+                if (kind == FieldKind.AssetRef && field.Attribute("assetType") is { Length: > 0 } assetType)
+                {
+                    (assetTypes ??= new Dictionary<string, string>(StringComparer.Ordinal))[fieldName] = assetType;
+                }
             }
 
             try
             {
-                DefineComponent(schema.Name, fields);
+                DefineComponent(name, fields, assetTypes: assetTypes);
             }
-            catch (InvalidOperationException e)
+            catch (Exception e) when (e is InvalidOperationException or NotSupportedException)
             {
-                Log.Warn("Scene", $"component {schema.Name} in the scene does not match the one in this world: {e.Message}");
+                Log.Warn("Scene", $"{schema.Origin}:{schema.Line}: component {name} in the scene does not match the one in this world: {e.Message}");
             }
         }
     }
 
-    private void ReadComponent(Entity entity, string name, JsonElement value, Dictionary<int, Entity> byLocal)
+    private void ReadComponent(Entity entity, XmlNode node, Dictionary<int, Entity> byLocal)
     {
+        string name = node.Name;
         Entity id = FindComponent(name);
         if (id.IsNull && TypeRegistry.FindComponent(name) is { } known)
         {
@@ -478,7 +451,7 @@ public sealed unsafe partial class World
 
         if (id.IsNull || !_infoById.TryGetValue(id, out ComponentInfo? info))
         {
-            Log.Warn("Scene", $"the scene has a component '{name}' that this world does not have: skipped");
+            Log.Warn("Scene", $"{node.Origin}:{node.Line}: the scene has a component '{name}' that this world does not have: skipped");
             return;
         }
 
@@ -488,28 +461,26 @@ public sealed unsafe partial class World
             return;
         }
 
+        // A field the element does not name stays zero.
         byte[] data = new byte[info.Size];
         fixed (byte* bytes = data)
         {
-            if (value.ValueKind == JsonValueKind.Object)
+            foreach (XmlProperty attribute in node.Attributes)
             {
-                foreach (JsonProperty field in value.EnumerateObject())
+                FieldDef? def = info.FindField(attribute.Name);
+                if (def is null)
                 {
-                    FieldDef? def = info.FindField(field.Name);
-                    if (def is null)
-                    {
-                        Log.Warn("Scene", $"component {name} has no field '{field.Name}': skipped");
-                        continue;
-                    }
+                    Log.Warn("Scene", $"{node.Origin}:{node.Line}: component {name} has no field '{attribute.Name}': skipped");
+                    continue;
+                }
 
-                    try
-                    {
-                        ReadField(info, def, field.Value, bytes + def.Offset, byLocal);
-                    }
-                    catch (Exception e) when (e is FormatException or InvalidOperationException or OverflowException or KeyNotFoundException)
-                    {
-                        Log.Warn("Scene", $"{name}.{field.Name} in the scene is not a {def.Kind}: {e.Message}");
-                    }
+                try
+                {
+                    ReadField(info, def, attribute.Value, bytes + def.Offset, byLocal);
+                }
+                catch (Exception e) when (e is FormatException or InvalidOperationException)
+                {
+                    Log.Warn("Scene", $"{node.Origin}:{node.Line}: {name}.{attribute.Name} in the scene is not a {def.Kind}: {e.Message}");
                 }
             }
 
@@ -517,68 +488,21 @@ public sealed unsafe partial class World
         }
     }
 
-    private void ReadField(ComponentInfo info, FieldDef field, JsonElement value, byte* at, Dictionary<int, Entity> byLocal)
+    private void ReadField(ComponentInfo info, FieldDef field, string text, byte* at, Dictionary<int, Entity> byLocal)
     {
         switch (field.Kind)
         {
-            case FieldKind.Bool: *at = (byte)(value.ValueKind == JsonValueKind.True ? 1 : 0); break;
-            case FieldKind.Int8: *(sbyte*)at = value.GetSByte(); break;
-            case FieldKind.UInt8: *at = value.GetByte(); break;
-            case FieldKind.Int16: *(short*)at = value.GetInt16(); break;
-            case FieldKind.UInt16: *(ushort*)at = value.GetUInt16(); break;
-            case FieldKind.Int32: *(int*)at = value.GetInt32(); break;
-            case FieldKind.UInt32: *(uint*)at = value.GetUInt32(); break;
-            case FieldKind.AssetRef:
-                // null, or any other JSON than a string, is no reference. A path alone is one too, which is how scenes before UIDs hold a model.
-                *(uint*)at = value.ValueKind == JsonValueKind.String ? HandleOf(info, field, value.GetString()!) : 0;
-                break;
-            case FieldKind.Int64: *(long*)at = value.ValueKind == JsonValueKind.String ? long.Parse(value.GetString()!, CultureInfo.InvariantCulture) : value.GetInt64(); break;
-            case FieldKind.UInt64: *(ulong*)at = value.ValueKind == JsonValueKind.String ? ulong.Parse(value.GetString()!, CultureInfo.InvariantCulture) : value.GetUInt64(); break;
-            case FieldKind.Float32: *(float*)at = (float)ReadDouble(value); break;
-            case FieldKind.Float64: *(double*)at = ReadDouble(value); break;
-            case FieldKind.Vector3: ReadFloats(value, (float*)at, 3); break;
-            case FieldKind.Quaternion: ReadFloats(value, (float*)at, 4); break;
-            case FieldKind.Double3:
-                if (value.GetArrayLength() != 3)
-                {
-                    throw new FormatException("expected 3 numbers");
-                }
-
-                int i = 0;
-                foreach (JsonElement item in value.EnumerateArray())
-                {
-                    ((double*)at)[i++] = ReadDouble(item);
-                }
-
-                break;
             case FieldKind.Entity:
-                *(ulong*)at = value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int local) && byLocal.TryGetValue(local, out Entity target) ? target.Id : 0;
+                // The number of an entity of the file; one that is not there is no reference (the same as the attribute left out).
+                *(ulong*)at = int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int local) && byLocal.TryGetValue(local, out Entity target) ? target.Id : 0;
                 break;
-        }
-    }
-
-    private static double ReadDouble(JsonElement value) => value.ValueKind == JsonValueKind.String
-        ? value.GetString() switch
-        {
-            "NaN" => double.NaN,
-            "Infinity" => double.PositiveInfinity,
-            "-Infinity" => double.NegativeInfinity,
-            { } other => throw new FormatException($"'{other}' is not a number"),
-            _ => throw new FormatException("expected a number"),
-        }
-        : value.GetDouble();
-
-    private static void ReadFloats(JsonElement value, float* into, int count)
-    {
-        if (value.GetArrayLength() != count)
-        {
-            throw new FormatException($"expected {count} numbers");
-        }
-
-        int i = 0;
-        foreach (JsonElement item in value.EnumerateArray())
-        {
-            into[i++] = (float)ReadDouble(item);
+            case FieldKind.AssetRef:
+                // A path alone is a reference too, which is how a scene written before UIDs holds a model.
+                *(uint*)at = HandleOf(info, field, text);
+                break;
+            default:
+                FieldText.Parse(field, text, at);
+                break;
         }
     }
 }

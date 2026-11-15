@@ -21,7 +21,7 @@ public static class AuthoredAssets
     public static bool IsAuthored(string path) => Extensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// The UID in the root of the document, or <see cref="AssetUid.None"/> when there is none, it is not valid, or the bytes are not an XML document (a JSON scene, a damaged file). It reads as far
+    /// The UID in the root of the document, or <see cref="AssetUid.None"/> when there is none, it is not valid, or the bytes are not an XML document (a damaged file). It reads as far
     /// as the root's start tag and no further, so it is cheap on a big scene, and it never throws for bad content. A cooked document (<see cref="XmlBinary"/>) is read the same way.
     /// </summary>
     public static AssetUid ReadUid(ReadOnlySpan<byte> document)

@@ -33,7 +33,7 @@ The layout (a dock space: hierarchy on the left, inspector on the right, the vie
 
 ## Scenes and undo
 
-*File* creates, opens and saves scenes (`.ascene` text, see [ecs](../core/ecs.md)); *Save as* takes a virtual path (`res://scenes/level`), and the scenes of the game are listed by *Open*. Every edit is a command on an `EditHistory`
+*File* creates, opens and saves scenes (`.ascene` XML, see [scenes](../content/scenes.md)); *Save as* takes a virtual path (`res://scenes/level`), and the scenes of the game are listed by *Open*. Every edit is a command on an `EditHistory`
 (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z): component values (a drag is one step), adding and removing components, creating, duplicating and deleting entities (a deleted branch comes back under the same ids), renaming and
 reparenting. Opening or creating a scene clears the history.
 

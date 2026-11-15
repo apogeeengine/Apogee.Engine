@@ -152,6 +152,7 @@ test.describe("scenes", function()
 
 	test.it("reject text that is not a scene", function()
 		local world = test.world()
-		test.expect(function() world:load_scene("not a scene") end).toThrow("not valid JSON")
+		test.expect(function() world:load_scene("not a scene") end).toThrow("not valid XML")
+		test.expect(function() world:load_scene("{ \"entities\": [] }") end).toThrow("migrate-scenes")
 	end)
 end)

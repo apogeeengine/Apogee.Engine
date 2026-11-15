@@ -96,6 +96,7 @@ nav:
           - Packs: manual/content/packs.md
           - Asset import: manual/content/import.md
           - Asset identity: manual/content/assets.md
+          - Scenes: manual/content/scenes.md
           - Hot reload: manual/content/hot-reload.md
       - User interface: manual/ui/index.md
       - Tools:

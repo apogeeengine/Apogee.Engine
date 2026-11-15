@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A .ascene file: the entities of a scene, with their components. The structure is described here; what the components and their fields are comes from the engine's registry when the scene is loaded. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:simpleType name="Uid">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="uid://[0-9a-hjkmnp-tv-z]{13}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="EntityType">
+    <xs:annotation><xs:documentation>An entity. Its children are its components (an element named after the component, a field per attribute, empty for a tag) and its child entities (more Entity elements).</xs:documentation></xs:annotation>
+    <xs:sequence>
+      <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:positiveInteger" use="required">
+      <xs:annotation><xs:documentation>The entity's number in this file: what Entity fields refer to, and what a patch matches on. Not its id in a world.</xs:documentation></xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="name" type="xs:string"/>
+  </xs:complexType>
+
+  <xs:element name="Scene">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Components" minOccurs="0">
+          <xs:annotation><xs:documentation>The components a script defined, with their fields. The scene defines them again when it is loaded. Components of the engine and the game are not listed: their layout is the code's.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Component" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Field" minOccurs="0" maxOccurs="unbounded">
+                      <xs:complexType>
+                        <xs:attribute name="name" type="xs:string" use="required"/>
+                        <xs:attribute name="kind" type="xs:string" use="required">
+                          <xs:annotation><xs:documentation>A field kind: Bool, Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, Float32, Float64, Vector3, Double3, Quaternion, Entity or AssetRef.</xs:documentation></xs:annotation>
+                        </xs:attribute>
+                        <xs:attribute name="assetType" type="xs:string">
+                          <xs:annotation><xs:documentation>kind="AssetRef" only: the kind of asset the field names, such as model.</xs:documentation></xs:annotation>
+                        </xs:attribute>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                  <xs:attribute name="name" type="xs:string" use="required"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Entity" type="EntityType" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="version" type="xs:positiveInteger" use="required"/>
+      <xs:attribute name="uid" type="Uid">
+        <xs:annotation><xs:documentation>The identity of the scene file, which stays the same when it is renamed or moved. A saved file has one; scene text from SaveScene does not.</xs:documentation></xs:annotation>
+      </xs:attribute>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

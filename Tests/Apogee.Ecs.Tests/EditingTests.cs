@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Apogee.Core.Assets;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
 using Apogee.Native.Tests;
@@ -12,7 +11,7 @@ using Flecs = Apogee.Native.Flecs.Ecs;
 
 namespace Apogee.Ecs.Tests;
 
-/// <summary>What an editor needs of a world: the hierarchy, components of an entity, copies, snapshots, and scenes as text.</summary>
+/// <summary>What an editor needs of a world: the hierarchy, components of an entity, copies and snapshots (scenes are in SceneXmlTests).</summary>
 public sealed class EditingTests : IDisposable
 {
     private readonly World _world;
@@ -220,145 +219,5 @@ public sealed class EditingTests : IDisposable
         Assert.True(fresh.Has<Frozen>(b));
         Assert.True(fresh.Has(b, fresh.FindComponent("Stamina")));    // the component a script defined came with it
         Assert.Equal([a], fresh.Roots());
-    }
-
-    // ---- Scenes ----
-
-    [Fact]
-    public void ASceneRoundTripsEntitiesComponentsHierarchyAndReferences()
-    {
-        Entity a = Make("root");
-        _world.Set(a, new Health { Current = 7, Max = 9, Regen = 0.25f });
-        Entity child = Make("child", a);
-        Entity target = Make("target");
-        _world.Set(child, new Marks { Alive = true, Level = 3, Target = target, Mass = 12.5 });
-        _world.Add<Frozen>(child);
-        _world.Set(child, new Transform(new Double3(1e12 + 0.5, -2, 3), new Quaternion(0.1f, 0.2f, 0.3f, 0.9f), new Vector3(2, 3, 4)));
-
-        string text = _world.SaveScene();
-
-        using var other = new World();
-        List<Entity> loaded = other.LoadScene(text);
-
-        Assert.Equal(3, loaded.Count);
-        Entity root2 = other.Lookup("root");
-        Entity child2 = other.Lookup("root.child");
-        Entity target2 = other.Lookup("target");
-        Assert.Equal(7, other.Get<Health>(root2).Current);
-        Assert.Equal(0.25f, other.Get<Health>(root2).Regen);
-        Assert.Equal(root2, other.GetParent(child2));
-        Marks marks = other.Get<Marks>(child2);
-        Assert.True(marks.Alive);
-        Assert.Equal(3, marks.Level);
-        Assert.Equal(12.5, marks.Mass);
-        Assert.Equal(target2, marks.Target);                         // the reference follows the entity to its new id
-        Assert.True(other.Has<Frozen>(child2));
-        Transform t = other.Get<Transform>(child2);
-        Assert.Equal(new Double3(1e12 + 0.5, -2, 3), t.Position);    // a double position keeps its precision
-        Assert.Equal(new Quaternion(0.1f, 0.2f, 0.3f, 0.9f), t.Rotation);
-        Assert.Equal(new Vector3(2, 3, 4), t.Scale);
-
-        // Saved again from the new world, the same text: nothing was lost or invented (WorldTransform is derived, so it is not in it).
-        Assert.DoesNotContain("WorldTransform", text, StringComparison.Ordinal);
-        Assert.Equal(text, other.SaveScene());
-    }
-
-    [Fact]
-    public void ASceneDefinesTheComponentsAScriptMadeAndLoadsUnderAParent()
-    {
-        Entity script = _world.DefineComponent("Stamina", [("max", FieldKind.Float32), ("count", FieldKind.Int32), ("big", FieldKind.UInt64), ("ok", FieldKind.Bool)]);
-        Entity e = Make("runner");
-        unsafe
-        {
-            byte* data = _world.EnsurePointer(e, script, 24);
-            *(float*)(data + _world.GetComponentInfo(script)!.FindField("max")!.Offset) = 1.5f;
-            *(int*)(data + _world.GetComponentInfo(script)!.FindField("count")!.Offset) = 4;
-            *(ulong*)(data + _world.GetComponentInfo(script)!.FindField("big")!.Offset) = ulong.MaxValue;   // too big for a JSON number
-            *(data + _world.GetComponentInfo(script)!.FindField("ok")!.Offset) = 1;
-        }
-
-        string text = _world.SaveScene();
-        Assert.Contains("\"Stamina\"", text, StringComparison.Ordinal);
-
-        using var fresh = new World();                // a world that has never heard of Stamina
-        Entity holder = fresh.CreateEntity("holder");
-        List<Entity> loaded = fresh.LoadScene(text, holder);
-
-        Entity runner = Assert.Single(loaded);
-        Assert.Equal(holder, fresh.GetParent(runner));
-        Entity stamina = fresh.FindComponent("Stamina");
-        Assert.False(stamina.IsNull);
-        ComponentInfo info = fresh.GetComponentInfo(stamina)!;
-        unsafe
-        {
-            byte* data = fresh.GetPointer(runner, stamina);
-            Assert.Equal(1.5f, *(float*)(data + info.FindField("max")!.Offset));
-            Assert.Equal(4, *(int*)(data + info.FindField("count")!.Offset));
-            Assert.Equal(ulong.MaxValue, *(ulong*)(data + info.FindField("big")!.Offset));
-            Assert.Equal(1, *(data + info.FindField("ok")!.Offset));
-        }
-    }
-
-    [Fact]
-    public void ARuntimeHandleIsSavedAsWhatItNamesThroughAnAssetTypeAndIgnoredComponentsAreLeftOut()
-    {
-        _world.RegisterAssetType("model", handle => handle == 0 ? null : AssetRef.FromPath($"res://m{handle}.glb"), reference => uint.Parse(reference.Path.AsSpan(7, reference.Path.Length - 11), System.Globalization.CultureInfo.InvariantCulture));
-        _world.IgnoreInScenes("Velocity");
-        Entity e = Make("e");
-        _world.Set(e, new Furnished { Count = 5, Model = 42 });
-        _world.Set(e, new Velocity { Value = new Vector3(1, 1, 1) });
-
-        string text = _world.SaveScene();
-        Assert.Contains("\"res://m42.glb\"", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("Velocity", text, StringComparison.Ordinal);
-
-        using var fresh = new World();
-        fresh.RegisterAssetType("model", handle => AssetRef.FromPath($"res://m{handle}.glb"), reference => uint.Parse(reference.Path.AsSpan(7, reference.Path.Length - 11), System.Globalization.CultureInfo.InvariantCulture));
-        fresh.LoadScene(text);
-        Assert.Equal(42u, fresh.Get<Furnished>(fresh.Lookup("e")).Model);
-        Assert.Equal(5, fresh.Get<Furnished>(fresh.Lookup("e")).Count);
-        Assert.False(fresh.Has<Velocity>(fresh.Lookup("e")));
-    }
-
-    [Fact]
-    public void ASceneWithUnknownThingsLoadsWhatItCanAndABadFileIsAnError()
-    {
-        const string text = """
-            { "format": "apogee-scene", "version": 1, "components": {},
-              "entities": [
-                { "id": 1, "name": "x", "components": { "NoSuchThing": { "a": 1 }, "Health": { "Current": 3, "Nope": 1, "Max": "not a number" } } },
-                { "id": 2, "name": "x", "parent": 99, "components": { "Frozen": {} } }
-              ] }
-            """;
-        List<Entity> loaded = _world.LoadScene(text);
-
-        Assert.Equal(2, loaded.Count);
-        Assert.Equal(3, _world.Get<Health>(loaded[0]).Current);   // the known field of a known component was read
-        Assert.Equal(0, _world.Get<Health>(loaded[0]).Max);       // the one that was not a number stayed zero
-        Assert.True(_world.Has<Frozen>(loaded[1]));
-        Assert.Equal("x", _world.GetName(loaded[0]));
-        Assert.Equal("x 2", _world.GetName(loaded[1]));            // the name was taken: a free one
-
-        Assert.Throws<FormatException>(() => _world.LoadScene("not json"));
-        Assert.Throws<FormatException>(() => _world.LoadScene("{ \"format\": \"something else\" }"));
-        Assert.Throws<FormatException>(() => _world.LoadScene("{ \"format\": \"apogee-scene\", \"version\": 99, \"entities\": [] }"));
-    }
-
-    [Fact]
-    public void OneEntityAndItsBranchCanBeSavedAndLoadedAlone()
-    {
-        Entity a = Make("a");
-        Entity b = Make("b", a);
-        Make("unrelated");
-
-        string text = _world.SaveScene(a);
-        using var other = new World();
-        List<Entity> loaded = other.LoadScene(text);
-
-        Assert.Equal(2, loaded.Count);
-        Assert.False(other.Lookup("a").IsNull);
-        Assert.False(other.Lookup("a.b").IsNull);
-        Assert.True(other.Lookup("unrelated").IsNull);
-        Assert.Equal(b, _world.Children(a).Single());
     }
 }

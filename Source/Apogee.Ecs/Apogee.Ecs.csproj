@@ -13,6 +13,10 @@
     <ProjectReference Include="../Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The schema of a .ascene file. -->
+    <EmbeddedResource Include="Scene/scene.xsd" LogicalName="Scene/scene.xsd" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Apogee.Ecs.Tests" />
   </ItemGroup>
 </Project>

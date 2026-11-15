@@ -38,13 +38,13 @@ The pointer API (`GetPointer`, `EnsurePointer`, `SetPointer`) works on any compo
 
 A `uint` field marked `[Property(Asset = "model")]` has the kind `FieldKind.AssetRef` and `FieldDef.AssetType = "model"` (see [reflection](reflection.md#asset-fields)). In memory it is four bytes, a `uint` handle
 into the host's library of that asset type; Flecs describes it as a 32-bit number, `FieldAccess` reads and writes it as a number, and scripts see a number. The kind is what tells a scene file
-or an inspector that the number names an asset. `DefineComponent` takes the kind too (`("model", FieldKind.AssetRef)`), though a script-defined component cannot name its asset type yet.
+or an inspector that the number names an asset. `DefineComponent` takes the kind too (`("model", FieldKind.AssetRef)`) and, in its `assetTypes` argument, the asset type of each such field by name (`new Dictionary<string, string> { ["model"] = "model" }`); a scene carries it as `assetType="model"` in the component's schema, so a script-defined component saves its asset fields too. Luau's `world:component` cannot name an asset type yet.
 
 A scene does not store the handle, which only means something in the run that made it. The host says what each asset type's handles name with
 `RegisterAssetType(type, toRef, fromRef)`: `toRef` turns a handle into the `AssetRef` it names (null for a model made in code, which has no path), `fromRef` turns a reference into this run's handle,
 loading the asset when needed. The host registers `model` (`ModelRenderer.Model`) with the model library and the [asset database](../content/assets.md), so a scene holds
-`"Model": "res://models/car.glb|uid://4k2m9x7q1w3ze"`: the path is tried first, and when its file is gone the UID finds it where it moved. A scene written before UIDs holds the path alone, which loads as well. A reference that
-leads to no asset leaves the field 0 with a warning, and the scene loads on. A field of a type nobody registered (and a script-defined field, which has no type yet) is saved as `null`, with one warning per field.
+`Model="res://models/car.glb|uid://4k2m9x7q1w3ze"`: the path is tried first, and when its file is gone the UID finds it where it moved. A scene written before UIDs holds the path alone, which loads as well. A reference that
+leads to no asset leaves the field 0 with a warning, and the scene loads on. A field of a type nobody registered (and a script-defined field with no `assetType`) is left out of the scene, with one warning per field.
 
 `Entity` is not a component name: `RegisterComponent` and `DefineComponent` refuse it (`InvalidOperationException`), because a scene file writes a child entity as `<Entity>`.
 
@@ -61,13 +61,13 @@ not the entities of registered components and the reflection data under them, no
   that are not in it are destroyed, the ones that are come back *under the same ids* (made alive again with `ecs_make_alive` when they were destroyed) with their components, names and parents as they
   were; `RestoreEntities(snapshot)` only brings back and overwrites, destroying nothing (an undo of a deletion). The same ids are what keep a selection and an undo history valid across a play session.
   A snapshot is bytes: a component that holds a handle of the run (a physics body's id) comes back with the old value, so such components are left to the code that made them.
-- **Scenes** (`.ascene`): `SaveScene()` writes the user entities as JSON text, `SaveScene(entity)` one branch, and `LoadScene(text, parent?)` creates the entities (under `parent` when given) and returns them in the
-  order of the file. The format is ours, written field by field from the registry's descriptions with `Utf8JsonWriter` and read with `JsonDocument`: no reflection, so it works in NativeAOT. Flecs' own
-  JSON was not used: it would carry the entities the engine registers for its types and systems. An entity has a number in the file, its `parent` and entity-typed fields refer to those numbers (a reference to
-  an entity that is not in the scene is saved as `null`), and 64-bit values that a JSON number cannot hold go as text. Components a script defined are written with their schema (`"components"`) and defined
-  again when the scene is loaded into a world that has not heard of them. On loading, a component or a field the world does not have is logged and skipped, a name that is taken gets a free one (`name 2`), and
-  text that is not a scene is a `FormatException`. `WorldTransform` is derived and never saved; `IgnoreInScenes(name)` leaves others out (the host does it for physics `Body`), and
-  `RegisterAssetType` (see [asset fields](#asset-fields)) is how a field that holds a handle is saved as the asset it names: `ModelRenderer.Model`, a number in this run's model library, is saved as the model's path and UID.
+- **Scenes** (`.ascene`): `SaveScene()` writes the user entities as XML text, `SaveScene(entity)` one branch, and `LoadScene(text, parent?)` creates the entities (under `parent` when given) and returns them in the
+  order of the file. `SaveSceneDocument(roots)` and `LoadScene(node, parent?)` do the same with an `XmlNode` tree, for code that patches or inspects it. Each component is an element and each field an attribute
+  (`<Transform Position="0 -0.5 0" Rotation="0 0 0 1" Scale="1 1 1"/>`), a child `<Entity>` is a child entity, and the format needs no reflection, so it works in NativeAOT. Flecs' own JSON was not used: it would
+  carry the entities the engine registers for its types and systems. Components a script defined are written with their schema and defined again when the scene is loaded into a world that has not heard of them.
+  On loading, a component or a field the world does not have is logged and skipped, a name that is taken gets a free one (`name 2`), and text that is not a scene is a `FormatException`.
+  `WorldTransform` is derived and never saved; `IgnoreInScenes(name)` leaves others out (the host does it for physics `Body`), and `RegisterAssetType` (see [asset fields](#asset-fields)) is how a field that holds
+  a handle is saved as the asset it names: `ModelRenderer.Model`, a number in this run's model library, is saved as the model's path and UID. The format, the schema and how to patch a scene are in [Scenes](../content/scenes.md).
 - **From scripts:** `world:save_scene()` returns the text, `world:load_scene(text, parent?)` the list of entities it made, `world:roots()` and `world:children(entity)` the hierarchy. A script reads and writes the file
   itself with `fs.read_text` and `fs.write_text`, which keeps the confinement of a mod's files.
 

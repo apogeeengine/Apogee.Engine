@@ -336,7 +336,11 @@ public sealed unsafe partial class World : EngineObject, IDisposable
     /// Defines a component at run time (what a script does): the fields are laid out in name order, so a schema always gives the same
     /// layout. The same name and fields again return the same component; other fields under a known name fail.
     /// </summary>
-    public Entity DefineComponent(string name, IReadOnlyList<(string Name, FieldKind Kind)> fields, IReadOnlyDictionary<string, InspectorMeta>? meta = null)
+    /// <param name="name">The component's name (not <c>Entity</c>, which a scene file uses for a child entity).</param>
+    /// <param name="fields">The fields and their kinds.</param>
+    /// <param name="meta">Inspector hints per field name, or null.</param>
+    /// <param name="assetTypes">For the <see cref="FieldKind.AssetRef"/> fields, the asset type each names (<c>model</c>), by field name, or null. It is not part of the layout: a component defined again keeps the types it was first given.</param>
+    public Entity DefineComponent(string name, IReadOnlyList<(string Name, FieldKind Kind)> fields, IReadOnlyDictionary<string, InspectorMeta>? meta = null, IReadOnlyDictionary<string, string>? assetTypes = null)
     {
         var sorted = new List<(string Name, FieldKind Kind)>(fields);
         sorted.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
@@ -348,7 +352,8 @@ public sealed unsafe partial class World : EngineObject, IDisposable
         {
             int fieldAlignment = kind.AlignmentOf();
             offset = (offset + fieldAlignment - 1) / fieldAlignment * fieldAlignment;
-            layout.Add(new FieldDef(fieldName, kind, offset, null, meta is not null && meta.TryGetValue(fieldName, out InspectorMeta? hints) ? hints : null));
+            string? assetType = kind == FieldKind.AssetRef && assetTypes is not null && assetTypes.TryGetValue(fieldName, out string? named) ? named : null;
+            layout.Add(new FieldDef(fieldName, kind, offset, null, meta is not null && meta.TryGetValue(fieldName, out InspectorMeta? hints) ? hints : null, assetType));
             offset += kind.SizeOf();
             alignment = Math.Max(alignment, fieldAlignment);
         }
