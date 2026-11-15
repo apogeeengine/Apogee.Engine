@@ -741,6 +741,41 @@ public class CommandTests
     }
 
     [Fact]
+    public void AGameKeepsItsSettingsInItsUserFolder()
+    {
+        using var scratch = new Scratch();
+        scratch.Write("game/game.xml", "<Game name=\"Settled\" organization=\"Test\" version=\"1.0.0\"><Window width=\"1024\" height=\"600\"/></Game>");
+        Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", """
+            settings:define("game.difficulty", { type = "choice", default = "normal", choices = { "easy", "normal", "hard" } })
+            input.map:add_action("jump", { "world" }, { "Space" })
+            local report = `{settings:get("game.difficulty")} {settings:get("window.width")} {input.map:get_bindings("jump")[1]}`
+            fs.write_text("user://report.txt", report)
+            settings:set("game.difficulty", "hard")
+            settings:set("audio.volume", 0.4)
+            input.map:set_bindings("jump", { "Hold J" })
+            """));
+        string game = System.IO.Path.Combine(scratch.Root, "game");
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+
+        using (ScriptSession first = ScriptSession.StartGame(game, user))
+        {
+            Assert.Equal("normal 1024 Space", File.ReadAllText(System.IO.Path.Combine(user, "report.txt"))); // game.xml's window is the default
+            Assert.Equal(0.4f, first.Audio.Volume);
+            Assert.True(first.Settings.IsDirty);
+        }
+
+        // The session wrote the file when it ended: what differs from the defaults, and the rebinding.
+        Assert.Equal(
+            "<settings version=\"1\">\n  <value key=\"audio.volume\">0.4</value>\n  <value key=\"game.difficulty\">hard</value>\n  <bindings>\n    <action id=\"jump\">Hold J</action>\n  </bindings>\n</settings>\n",
+            File.ReadAllText(System.IO.Path.Combine(user, "settings.xml")));
+
+        using ScriptSession second = ScriptSession.StartGame(game, user);
+        Assert.Equal("hard 1024 Hold J", File.ReadAllText(System.IO.Path.Combine(user, "report.txt")));
+        Assert.Equal(0.4f, second.Audio.Volume);
+        Assert.Equal(0.4, second.Settings.GetNumber("audio.volume"));
+    }
+
+    [Fact]
     public void ABasePackageThatFailsIsAnErrorOfTheGame()
     {
         using var scratch = new Scratch();

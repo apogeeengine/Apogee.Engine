@@ -72,9 +72,10 @@ public sealed class ScriptSession : IDisposable
     /// <summary>Everything a session can import: models, images and shaders.</summary>
     public static IReadOnlyList<IAssetImporter> Importers { get; } = [.. AssetImporter.Defaults, new ShaderImporter()];
 
-    private ScriptSession(World world, LuauVm vm, InputActionRouter input, PhysicsWorld physics, AudioSystem audio, SteamSystem steam, NetSystem net, ModelLibrary models, UiSystem ui, AssetLibrary assets, IDisposable? owned = null)
+    private ScriptSession(World world, LuauVm vm, InputActionRouter input, PhysicsWorld physics, AudioSystem audio, SteamSystem steam, NetSystem net, ModelLibrary models, UiSystem ui, AssetLibrary assets, SettingsStore settings, IDisposable? owned = null)
     {
         World = world;
+        Settings = settings;
         Ui = ui;
         Models = models;
         Assets = assets;
@@ -94,6 +95,26 @@ public sealed class ScriptSession : IDisposable
     /// <see cref="EndFrame"/> clears it.
     /// </summary>
     public DebugDraw DebugDraw { get; } = new();
+
+    /// <summary>
+    /// The player's settings, the scripts' <c>settings</c> global: <c>user://settings.xml</c> of a game, in memory for a single script. The engine's keys (window, graphics, audio) are defined, and the
+    /// volumes and the input bindings follow them. It is saved a second after a change, and when the session ends.
+    /// </summary>
+    public SettingsStore Settings { get; }
+
+    /// <summary>
+    /// Makes the settings scripts see as <c>settings</c> (the engine owns them: they live until the session ends): the engine's keys defined with the window <paramref name="defaults"/>, the input map's
+    /// rebindings kept in them, and the audio volumes following them.
+    /// </summary>
+    private static SettingsStore InstallSettings(LuauVm vm, SettingsStore settings, InputActionRouter input, AudioSystem audio, EngineSettingDefaults defaults)
+    {
+        settings.Adopt();
+        EngineSettings.Register(settings, defaults);
+        settings.Bindings = input.Map;
+        EngineSettings.ConnectAudio(settings, audio);
+        vm.SetGlobal("settings", settings);
+        return settings;
+    }
 
     /// <summary>The game's user interface, the scripts' <c>ui</c> global. The loops size it to the screen, feed it input, step it with the world and draw it over the picture.</summary>
     public UiSystem Ui { get; }
@@ -232,6 +253,7 @@ public sealed class ScriptSession : IDisposable
         NetSystem? net = null;
         ModelLibrary? models = null;
         UiSystem? ui = null;
+        SettingsStore? settings = null;
         try
         {
             vm.AddRoot(Path.GetDirectoryName(path)!.Replace('\\', '/'));
@@ -247,12 +269,14 @@ public sealed class ScriptSession : IDisposable
             ui = InstallUi(vm, nothing, nothingContent);
             RegisterSceneSupport(world, nothing, models, nothingContent);
             AssetLibrary assets = InstallAssets(vm, nothingContent);
+            settings = InstallSettings(vm, new SettingsStore(), input, audio, new EngineSettingDefaults()); // a single script keeps no settings between runs
             vm.Execute(vm.BaseOwner, "@" + path, File.ReadAllText(path, Encoding.UTF8));
-            return new ScriptSession(world, vm, input, physics, audio, steam, net, models, ui, assets);
+            return new ScriptSession(world, vm, input, physics, audio, steam, net, models, ui, assets, settings);
         }
         catch
         {
             vm.Dispose();
+            settings?.Destroy();
             ui?.Dispose();
             models?.Dispose();
             net?.Dispose();
@@ -377,6 +401,7 @@ public sealed class ScriptSession : IDisposable
         ModelLibrary? models = null;
         UiSystem? uiSystem = null;
         AssetLibrary? assets = null;
+        SettingsStore? settings = null;
         HotReloader? reloader = null;
         try
         {
@@ -427,6 +452,10 @@ public sealed class ScriptSession : IDisposable
             uiSystem = InstallUi(vm, files, content);
             RegisterSceneSupport(world, files, models, content);
             assets = InstallAssets(vm, content, packages);
+
+            // The player's settings before any script runs: scripts define their keys at load and find the saved values waiting. The window of game.xml is what the engine's window keys default to.
+            GameWindow window = manifest?.Window ?? GameWindow.Default;
+            settings = InstallSettings(vm, SettingsStore.Open(files), input, audio, new EngineSettingDefaults(window.Width, window.Height, window.Fullscreen));
             if (start.Scene is not null)
             {
                 world.LoadScene(start.Scene);
@@ -481,11 +510,12 @@ public sealed class ScriptSession : IDisposable
                 Log.Info("Runtime", "Watching for changes: scripts that were required, definitions and assets are reloaded when their files change.");
             }
 
-            return new ScriptSession(world, vm, input, physics, audio, steamSystem, net, models, uiSystem, assets, owned) { Reloader = reloader, Files = files };
+            return new ScriptSession(world, vm, input, physics, audio, steamSystem, net, models, uiSystem, assets, settings, owned) { Reloader = reloader, Files = files };
         }
         catch
         {
             vm?.Dispose();
+            settings?.Destroy();
             uiSystem?.Dispose();
             models?.Dispose();
             assets?.Destroy();
@@ -587,7 +617,11 @@ public sealed class ScriptSession : IDisposable
         Input.EndFrame(); // the mouse's motion of the frame has been read
         _vm.RunDeferred(); // what GUI functions, UI handlers and signals deferred after the step
         _vm.ProcessPending();
+        Settings.SaveIfDirty(SettingsSaveInterval); // after the scripts: what they changed this frame is written soon, and a slider that is dragged is written once a second
     }
+
+    /// <summary>The least time between two writes of <c>user://settings.xml</c> while the game runs.</summary>
+    private static readonly TimeSpan SettingsSaveInterval = TimeSpan.FromSeconds(1);
 
     public void Dispose()
     {
@@ -596,7 +630,9 @@ public sealed class ScriptSession : IDisposable
             DebugDrawLibrary.Target = null;
         }
 
+        Settings.Flush(); // what changed in the last second is not lost
         _vm.Dispose();
+        Settings.Destroy();
         Input.Map?.Destroy();
         Input.Destroy();
         Net.Dispose();

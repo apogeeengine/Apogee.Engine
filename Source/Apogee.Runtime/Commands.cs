@@ -396,6 +396,7 @@ internal static class Commands
                 new HostGlobal("models", "ModelLibrary", "The models entities draw: `models:load(path)` returns the id to put in a `ModelRenderer` component (the same id for the same path, 0 means none). A game with an entity that has the `MainCamera` component is drawn through it; `Light` entities light it."),
                 new HostGlobal("ui", "UiSystem", "The game's user interface: `ui:load_document(path)` loads RML from a file, `ui:create_document()` makes an empty one; documents can carry `<script>`s, `on*` attributes and data models (`ui:open_data_model`); elements are `UiElement`s you make, move and listen to. It is sized to the screen, fed the player's input, and drawn over the picture."),
                 new HostGlobal("input", "InputActionRouter", "The player's input as actions: define them on `input.map`, set `input.contexts` each frame, read `input:get_strength(action)` and connect `input.action_fired`."),
+                new HostGlobal("settings", "Settings", "The player's settings, kept in `user://settings.xml`: `settings:define(key, spec)` the ones your game or mod needs, `settings:get` and `settings:set` them, and connect `settings.changed`. The engine's own (`window.*`, `graphics.vsync`, `audio.volume`) are defined; a mod can change only `mod.<its id>.*`."),
             ],
             HiddenClasses = [nameof(SmokeActor)],
         };
