@@ -61,6 +61,7 @@ nav:
   - Manual:
       - Core:
           - Core: manual/core/core.md
+          - Logs and crash reports: manual/core/crashes.md
           - Interop: manual/core/interop.md
           - Math and the world: manual/core/math.md
           - Reflection: manual/core/reflection.md

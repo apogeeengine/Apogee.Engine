@@ -6,12 +6,20 @@
 
 `Log.Info("Category", "message")` (also `Trace`, `Debug`, `Warn`, `Error`) writes a `LogEntry` to every registered
 `ILogSink`. Sinks can be called from any thread. `Log.MinimumLevel` filters, `Log.IsEnabled(level)` avoids building a
-message that would be dropped. `ConsoleSink` is the stock sink.
+message that would be dropped. The sinks that ship:
+
+- `ConsoleSink`: stderr for warnings and errors, stdout for the rest.
+- `FileLogSink`: one file per run in a folder that keeps the newest ten, flushed line by line.
+- `RecentLogSink`: the last N lines in memory, which a crash report quotes.
+
+`LogEntry.ToLine()` is the one line format they share: `HH:mm:ss.fff LVL [Category] message`.
 
 ```csharp
 Log.AddSink(new ConsoleSink());
 Log.Info("Runtime", "started");
 ```
+
+The runtime and the editor write each run's log and, when an exception ends the program, a crash report: see [Logs and crash reports](crashes.md).
 
 ## Arena
 
