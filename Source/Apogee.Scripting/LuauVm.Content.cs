@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using XmlConvert = System.Xml.XmlConvert;
 using XmlException = System.Xml.XmlException;
+using Apogee.Content;
+using Apogee.Content.FileSystem;
 using Apogee.Content.Xml;
 using Apogee.Interop;
 using Apogee.Native.Luau;
@@ -53,6 +56,8 @@ public sealed unsafe partial class LuauVm
 
         ScriptNatives.RegisterLibrary("xml", "decode", &XmlDecodeBody, "(text: string) -> XmlElement",
             "Reads XML text into an element: its name, attrs (by name), order (the attribute names as written), children, text and line. Raises an error with the line when the text is not well-formed.");
+        ScriptNatives.RegisterLibrary("xml", "load", &XmlLoadBody, "(path: string) -> (XmlElement?, string?)",
+            "Reads an XML file into the element xml.decode gives, or returns nil and a message (not found, not allowed, not well-formed). It reads a file in a shipped pack as well, where authored XML and definitions are cooked in place and fs.read_text would give binary.");
         ScriptNatives.RegisterLibrary("xml", "encode", &XmlEncodeBody, "(element: XmlElement) -> string",
             "Writes an element as XML text, with two spaces of indent. Attributes come in the order of `order`, then the rest sorted by name.");
 
@@ -110,6 +115,31 @@ public sealed unsafe partial class LuauVm
         catch (XmlParseException e)
         {
             throw new ValueException(e.Message);
+        }
+
+        PushXmlElement(L, node);
+        return 1;
+    }
+
+    private static int XmlLoadBody(State* L)
+    {
+        if (!VmOf(L).TryAccess(L, 1, write: false, out VirtualFileSystem files, out string path, out string error))
+        {
+            return Failure(L, error);
+        }
+
+        XmlNode node;
+        try
+        {
+            node = XmlFile.Read(files, path);
+        }
+        catch (ContentException e) // not well-formed, or a cooked file that is damaged: the message names the path
+        {
+            return Failure(L, e.Message);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return Failure(L, Describe(path, e, "read"));
         }
 
         PushXmlElement(L, node);

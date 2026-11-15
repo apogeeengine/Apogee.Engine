@@ -110,10 +110,23 @@ defs.types()                                       -- {"Barrel", "Crate"}
 for _, s in defs.sources("Crate", "wooden") do print(s.package, s.path, s.line, s.role) end   -- "definition", "replacement", "patch"
 for _, p in defs.problems() do print(p.severity, p.file, p.line, p.message) end
 
--- xml: plain XML text to and from tables
+-- xml: XML text or files to and from tables
 local node = xml.decode('<Crate id="a"><Tag>x</Tag></Crate>')   -- { name, attrs, order, children, text, line }
 local text = xml.encode(node)
+local file, err = xml.load("mod://core/data/crates.xml")         -- the same table from a file, or nil and a message
 ```
+
+`xml.load(path)` reads a file as `xml.decode` reads text, with the same table and the same lines, and the path rules of `fs` (a mod sees what `fs.read_text` lets it see). It takes a text file and a
+[cooked](import.md#cooked-xml) one alike, which `fs.read_text` and `xml.decode` do not: a shipped pack holds its definitions as binary, at the same paths (below), and reading one as text gives bytes. A file that
+is missing, not allowed, not well-formed or a damaged cooked file gives `nil` and a message that names the path (and the line); `xml.decode` raises an error instead, since it has no file to name.
+Use `defs` for definitions, and `xml.load` for XML you read yourself.
+
+## Cooked definitions
+
+`./build.sh pack … --cooked` ([Packs](packs.md)) writes the definition files of the base packages (the `.xml` files in the `Content` folders of each `packages/<id>/mod.xml`) in the binary form of
+[cooked XML](import.md#cooked-xml), at the paths they have in the folder, so a shipped game parses no text for them. `DefDatabase` reads every file with `XmlFile.Read`, so cooked and text definitions load,
+merge, patch and report problems alike (a cooked file keeps the lines of its source, so a problem still points at the line you wrote). The folder in development is unchanged and a mod's files are never cooked, so
+a mod can patch a cooked definition of the base game as it patches a text one. The manifests `mod.xml` and schemas `.xsd` stay text.
 
 A definition's table is made the first time it is asked for and is **read-only all the way down** (assigning to it is an error), and it is the same table for every script, so scripts
 cannot change each other's view of the game; copy what you need to change. Setting `LuauVm.Defs` again (a reload) makes later calls see the new definitions, and tables that scripts
@@ -125,4 +138,5 @@ so the text is the same every time; elements nest at most 128 deep, both ways.
 
 `Tests/Apogee.Content.Tests`: the XML reader and writer (lines, entities, a DTD refused), each schema feature with the exact problem messages, the merge rules including place counting
 and removal, and the database (load order, replace, patch, remove, sources, problems with file and line, kinds without a schema). `Tests/Apogee.Scripting.Tests` runs `xml` and `defs` from scripts
-(read-only tables, identity, sources and problems, reloads), and `Tests/Luau/xml.test.luau` runs them in the NativeAOT binary.
+(read-only tables, identity, sources and problems, reloads, `xml.load` of a text and a cooked file), and `Tests/Luau/xml.test.luau` runs them in the NativeAOT binary. Cooked definitions load and merge like
+text ones (`CookedDefsLoadAndMergeLikeText`), `GamePackerTests` checks which files a cooked pack cooks, and `Tests/Apogee.Runtime.Tests` packs the shipped-game fixture `--cooked` and encrypted and runs it from the pack.

@@ -26,6 +26,16 @@ test.describe("xml", function()
 	end)
 end)
 
+test.describe("xml.load", function()
+	test.it("returns nil and a message when it cannot read a file (this runner has no file system; the C# tests read text and cooked files)", function()
+		local node, err = xml.load("res://crates.xml")
+
+		test.expect(node).toBeNil()
+		test.expect(err).toBe("there is no file system")
+		test.expect(pcall(xml.load, 5)).toBe(false)
+	end)
+end)
+
 test.describe("defs", function()
 	test.it("finds nothing when the game loaded no definitions", function()
 		test.expect(defs.get("Crate", "a")).toBeNil()

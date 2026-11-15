@@ -104,7 +104,7 @@ world.LoadSceneFile("uid://4k2m9x7q1w3ze");                    // the file that 
 
 - **`SaveSceneFile`** keeps the UID of the file it overwrites: the old file's `uid` is read and written again, so a reference to the scene keeps meaning the same asset after every save. A new file gets a
   new UID. `SaveScene()` makes text with no `uid`, because a copy must not carry the identity of a file.
-- **`LoadSceneFile`** takes a path or `uid://…`. It reads the file as [`XmlFile`](defs.md) does, so a scene cooked into a pack (`--pack --cooked` keeps its path) loads the same as the text one. A `uid://` that no
+- **`LoadSceneFile`** takes a path or `uid://…`. It reads the file with `XmlFile.Read` ([cooked XML](import.md#cooked-xml)), so a scene cooked into a pack (`--pack --cooked` keeps its path) loads the same as the text one. A `uid://` that no
   file has is a `ContentException`, a missing file a `FileNotFoundException` and a file that is not a scene a `FormatException`.
 - A scene that is renamed or moved keeps its UID, so `LoadSceneFile` and `SaveSceneFile` find it by `uid://…`; the [asset database](assets.md) is read again with `Refresh()` after files move on disk (an import does it).
 
@@ -122,8 +122,16 @@ local made = world:load_scene_file("res://scenes/level.ascene", parent)   -- or 
 ```
 
 `save_scene` returns the text and `load_scene` the list of entities it made; text that is not a scene is an error. `load_scene_file` returns the same list from a file. It reads without the per-mod confinement check of `fs.read_text`, as `models.load` and `ui:load_document` do:
-a script can load a scene of any package or of the game by its path or UID. There is no Luau call that writes a scene file; a script saves text with `fs.write_text`, which
+a script can load a scene of any package or of the game by its path or UID. It loads a scene cooked into a shipped pack as well as the text file, at the same path.
+`fs.read_text` of a cooked scene gives binary, so a script that wants the scene's XML itself reads it with [`xml.load`](defs.md#from-luau). There is no Luau call that writes a scene file; a script saves text with `fs.write_text`, which
 keeps the confinement of a mod's files (and a file written that way has no UID until the next import gives it one).
+
+## Cooked scenes
+
+`--pack --cooked` stores each `.ascene` as [cooked XML](import.md#cooked-xml) at the path of its source: the same tree (names, attributes, text, the lines of the source) in a binary encoding, which is not tied to the
+components the engine had when it was cooked, and keeps the `uid` of the root. `LoadSceneFile` and `world:load_scene_file` read both forms, and so does the asset database that finds a scene by `uid://…`, so a game
+needs no change to ship its scenes cooked. The fixture game of the tests (`Tests/Fixtures/ShippedGame`) loads `mod://core/scenes/start.ascene` this way from an encrypted cooked pack. A scene in a mod is never
+cooked (mods are Luau and data, shipped as folders and zips), and `LoadScene(text)`, which takes text, is for text.
 
 ## Patching a scene
 
