@@ -114,7 +114,7 @@ the other systems still run.
 ## Tasks and time
 
 The `task` global library (`task.spawn`, `task.wait`, `task.delay`, `task.every`, `task.defer`, `task.cancel`) runs functions over several frames on one scheduler per VM, stepped by
-`LuauVm.AdvanceTime` with the game's time; each resume has its owner's budget and memory category. See [Tasks and game time](tasks.md).
+`LuauVm.AdvanceTime` with the game's time; each resume has its owner's budget and memory category. See [Tasks and game time](tasks.md). The `tween` library animates numbers, vectors, colours, rotations, engine-object properties and component fields over time, on the same clocks: see [Tweens](tweens.md).
 
 ## Definitions for the editor
 

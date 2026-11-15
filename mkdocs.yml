@@ -87,6 +87,7 @@ nav:
       - Scripting:
           - Scripting: manual/scripting/scripting.md
           - Tasks and game time: manual/scripting/tasks.md
+          - Tweens: manual/scripting/tweens.md
           - Runtime and Luau tests: manual/scripting/runtime.md
       - Content:
           - Content: manual/content/content.md

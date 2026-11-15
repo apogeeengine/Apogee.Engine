@@ -101,6 +101,6 @@ vm.RunDeferred();                                                // the end of a
 ScriptScheduler tasks = vm.Scheduler;                            // Time, RealTime, Count, CountOf(owner), TaskFailed, CancelOwner, CancelAll
 ```
 
-Disposing the VM cancels every task. `LuauTestRunner` calls `AdvanceTime(1/60, 1/60)` after each frame of a Luau test, so the tests of `Tests/Luau/task.test.luau` count frames with `test.frames(n)`.
+Disposing the VM cancels every task (and tween). Tweens ([Tweens](tweens.md)) are stepped by the same `AdvanceTime`, after the due tasks, and a task can wait for one with `Tween:wait()`. `LuauTestRunner` calls `AdvanceTime(1/60, 1/60)` after each frame of a Luau test, so the tests of `Tests/Luau/task.test.luau` count frames with `test.frames(n)`.
 
 The yield is made by a function in the native library (`APOGEE_LUAU_YIELD` in `Native/luau/apogee_luau.h`): run `./build.sh native` after updating, or `Apogee.Native.Tests` will say that the library is old.
