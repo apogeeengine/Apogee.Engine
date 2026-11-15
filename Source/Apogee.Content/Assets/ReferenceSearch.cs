@@ -28,19 +28,45 @@ internal static class ReferenceSearch
 
     /// <summary>
     /// Decides whether an attribute is the asset. <paramref name="paths"/> are all the canonical spellings of the paths that mean it. A reference matches by its path when that is one of them, and
-    /// by its UID when it is the asset's and the reference's path does not lead to another existing file (the path wins, as in <see cref="AssetDatabase.Resolve"/>).
+    /// by its UID when the UID is the asset's and the reference's path does not lead to another existing file (the path wins, as in <see cref="AssetDatabase.Resolve"/>).
+    /// <para>
+    /// A UID that is on two files (a copy that was not imported yet) belongs, as far as the engine is concerned, to the one <see cref="AssetDatabase.PathOf"/> names. When the asset being renamed is
+    /// the other one, a reference that carries that UID and a stale path is the other file's, and is not matched; only references that spell the asset's own path are.
+    /// </para>
     /// </summary>
-    internal sealed class Matcher(VirtualFileSystem files, AssetUid uid, IReadOnlyList<string> paths)
+    internal sealed class Matcher
     {
-        private readonly HashSet<string> _paths = new(paths, StringComparer.Ordinal);
-        private readonly List<string> _names = [.. paths.Select(VfsPath.FileName).Distinct(StringComparer.Ordinal)];
+        private readonly VirtualFileSystem _files;
+        private readonly AssetUid _uid;
+        private readonly IReadOnlyList<string> _spellings;
+        private readonly HashSet<string> _paths;
+        private readonly List<string> _names;
+        private readonly bool _uidIsTheAssets;
 
-        public AssetUid Uid => uid;
+        public Matcher(AssetDatabase assets, AssetUid uid, IReadOnlyList<string> paths)
+        {
+            _files = assets.Files;
+            _uid = uid;
+            _spellings = paths;
+            _paths = new HashSet<string>(paths, StringComparer.Ordinal);
+            _names = [.. paths.Select(VfsPath.FileName).Distinct(StringComparer.Ordinal)];
+            _uidIsTheAssets = !uid.IsNone && UidBelongsToPaths(assets, uid, paths);
+        }
 
-        public IReadOnlyList<string> Paths => paths;
+        // The UID names the asset when no file has it, when only the UID was asked for, when the file it names is one of the asset's paths, or when the asset's own paths have no file (it has moved,
+        // and the UID names it where it went). It does not when the asset exists and another file is the one the UID names: then the asset is a copy.
+        private bool UidBelongsToPaths(AssetDatabase assets, AssetUid uid, IReadOnlyList<string> paths)
+        {
+            string? named = assets.PathOf(uid);
+            return named is null || paths.Count == 0 || _paths.Contains(named) || !paths.Any(_files.FileExists);
+        }
+
+        public AssetUid Uid => _uid;
+
+        public IReadOnlyList<string> Paths => _spellings;
 
         /// <summary>Nothing to look for: no UID and no path.</summary>
-        public bool IsEmpty => uid.IsNone && paths.Count == 0;
+        public bool IsEmpty => _uid.IsNone && _spellings.Count == 0;
 
         public bool Matches(AssetRef value)
         {
@@ -51,12 +77,12 @@ internal static class ReferenceSearch
                 return true;
             }
 
-            if (uid.IsNone || value.Uid != uid)
+            if (!_uidIsTheAssets || value.Uid != _uid)
             {
                 return false;
             }
 
-            return !valid || !files.FileExists(canonical);
+            return !valid || !_files.FileExists(canonical);
         }
 
         /// <summary>
@@ -65,7 +91,7 @@ internal static class ReferenceSearch
         /// </summary>
         public bool MightMention(string text)
         {
-            if (!uid.IsNone && text.Contains(uid.ToString(), StringComparison.OrdinalIgnoreCase))
+            if (!_uid.IsNone && text.Contains(_uid.ToString(), StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }

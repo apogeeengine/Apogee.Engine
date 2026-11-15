@@ -80,7 +80,7 @@ public static class AssetReferences
         return Guard("Looking for the references", () =>
         {
             List<string> paths = target.HasPath && VfsPath.TryParse(target.Path, out string canonical, out _) ? AssetDatabase.SpellingsOf(canonical) : [];
-            var matcher = new ReferenceSearch.Matcher(assets.Files, target.Uid, paths);
+            var matcher = new ReferenceSearch.Matcher(assets, target.Uid, paths);
             return (IReadOnlyList<AssetReferenceSite>)[.. ReferenceSearch.Search(assets, matcher, defFolders, includeScripts).Where(d => d.Problem is null).SelectMany(d => d.Hits).Select(h => h.Site)];
         });
     }
@@ -201,7 +201,7 @@ public static class AssetReferences
     /// </summary>
     internal static ReferencePlan Plan(AssetDatabase assets, AssetUid uid, string from, string to, IReadOnlyList<string>? defFolders, bool includeScripts, long maxPlannedBytes = MaxPlannedBytes)
     {
-        var matcher = new ReferenceSearch.Matcher(assets.Files, uid, [.. AssetDatabase.SpellingsOf(from), .. AssetDatabase.SpellingsOf(to)]);
+        var matcher = new ReferenceSearch.Matcher(assets, uid, [.. AssetDatabase.SpellingsOf(from), .. AssetDatabase.SpellingsOf(to)]);
         var plan = new PlanBuilder(assets.Files, to, maxPlannedBytes);
         List<string> newSpellings = AssetDatabase.SpellingsOf(to);
         foreach (ReferenceSearch.DocumentResult document in ReferenceSearch.Search(assets, matcher, defFolders, includeScripts))

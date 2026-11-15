@@ -145,6 +145,39 @@ public class AssetReferencesTests
     }
 
     [Fact]
+    public void TwoFilesWithTheSameUidOnlyTheOneTheEngineResolvesToOwnsAStaleReference()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        AssetUid shared = project.Imported("models/car.dat");
+        // A copy that was not imported yet: the same file and the same sidecar, so the UID is on two files, and the project's list says the original is the one the UID names.
+        project.Write("models/copy.dat", "car");
+        project.Write("models/copy.dat.import.xml", project.Read("models/car.dat.import.xml"));
+        Assert.Equal("res://models/car.dat", project.Assets.PathOf(shared));
+        string scene = SceneOf(
+            AssetUid.New(),
+            Model($"res://gone/car.dat|{shared}"), // stale: the engine resolves it to the original
+            Model($"res://models/copy.dat|{shared}"), // the copy's own path
+            Model($"res://models/car.dat|{shared}"));
+        project.Write("scenes/a.ascene", scene);
+
+        // Renaming the copy touches only the reference that spells its path.
+        RewriteReport copy = AssetReferences.Rewrite(project.Assets, "res://models/copy.dat", "res://x/copy2.dat", dryRun: true);
+
+        Assert.Equal([4], copy.Changes.Select(c => c.Site.Line));
+        Assert.Equal(new AssetRef("res://x/copy2.dat", shared), Assert.Single(copy.Changes).NewValue);
+
+        // Renaming the original takes the stale reference with it, and leaves the copy's.
+        RewriteReport original = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://x/truck.dat");
+
+        Assert.Equal([3, 5], original.Changes.Select(c => c.Site.Line).Order());
+        string after = project.Read("scenes/a.ascene");
+        Assert.Contains($"Model=\"res://x/truck.dat|{shared}\"", after, StringComparison.Ordinal);
+        Assert.Contains($"Model=\"res://models/copy.dat|{shared}\"", after, StringComparison.Ordinal);
+        Assert.DoesNotContain("res://gone/car.dat", after, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FindIsEmptyForNothingToLookFor()
     {
         using var project = new Project();
