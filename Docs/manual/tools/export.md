@@ -188,7 +188,7 @@ Fixture Game.app/                      the bundle, named after the game's name
 ```
 
 - **`Info.plist`** is written as an XML property list (the text of `game.xml` is escaped, so a name with `&` or `<` is fine). It holds `CFBundleName` and `CFBundleDisplayName` (the game's name),
-  `CFBundleIdentifier` (its `identifier`), `CFBundleExecutable`, `CFBundleVersion` and `CFBundleShortVersionString` (its version), `CFBundlePackageType` `APPL`, `CFBundleIconFile` `game.icns` (when the
+  `CFBundleIdentifier` (its `identifier`), `CFBundleExecutable`, `CFBundleVersion` and `CFBundleShortVersionString` (its version, `major.minor.patch`: `game.xml` accepts no suffix such as `-beta`, which `CFBundleVersion` could not hold, since it takes only integers separated by dots), `CFBundlePackageType` `APPL`, `CFBundleIconFile` `game.icns` (when the
   game has an icon), `CFBundleInfoDictionaryVersion` `6.0`, `LSMinimumSystemVersion`, `NSHighResolutionCapable`, `LSApplicationCategoryType` `public.app-category.games` and
   `NSHumanReadableCopyright` (its copyright, when it has one). `LSMinimumSystemVersion` is the newest minimum system version (`LC_BUILD_VERSION`) among the program and the `.dylib` files beside it, for
   the target's processor, and never below 11.0, the first macOS for Apple silicon (also what it is when none of them says).
@@ -200,7 +200,7 @@ Fixture Game.app/                      the bundle, named after the game's name
 
 #### The code signature
 
-An Apple-silicon Mac only runs a program that is signed, and the NativeAOT runtime comes with an *ad-hoc* signature: the linker signs it with no certificate, only hashes. The signature is a table at the end of the
+An Apple-silicon Mac only runs a program that is signed, and the NativeAOT runtime comes with an *ad-hoc* signature: the linker signs it with no certificate, only hashes (`codesign -s -` makes the same kind, with an empty signature slot, and is accepted too). The signature is a table at the end of the
 file (the CodeDirectory) with the hash of every 16 KiB page of the program; the kernel checks a page's hash when it is loaded and kills the program if it does not match (`Killed: 9`). The export
 changes a page of the program, for it writes the [pack key](#the-pack-key) into it, so it has to make the hashes right again. `MachOSignature.Rehash` does that, after the key is written and as the last
 change to the program:
@@ -211,15 +211,16 @@ change to the program:
    SHA-384) and page size, and writes the hashes over the old ones in place.
 
 Nothing else is touched: not the length of the file, the header, the position of the signature, the identifier, or the other blobs. All of it is checked first: a file that is not a thin 64-bit Mach-O, or whose lengths
-and offsets do not fit it, fails the export and is not written (the program is untrusted input to this code, so every length is checked against the file with 64-bit arithmetic, and nothing is allocated or looped over by what the file
+and offsets do not fit it (or whose CodeDirectory is shorter than its version needs, or uses a scatter vector, or does not have the pack key slot inside the hashed code), fails the export and is not written (the program is untrusted input to this code, so every length is checked against the file with 64-bit arithmetic, and nothing is allocated or looped over by what the file
 claims).
 
 What it does **not** do:
 
 - **It does not sign.** A program without a signature (an x86-64 build the linker did not sign) is left as it is, which macOS runs; for an arm64 one the export warns that it will not run until it is signed
   (`codesign --force --sign - <executable>`, on a Mac).
-- **It does not repair a signature made with a certificate.** Such a signature also signs the CodeDirectory, so changing the CodeDirectory breaks it, and only the private key can make it again. The export stops
-  with that message: publish the runtime unsigned, and sign the bundle after the export.
+- **It does not repair a signature made with a certificate.** Such a signature (a CodeDirectory without the ad-hoc flag, or a signature slot with a CMS message in it; an *empty* slot is what `codesign -s -`
+  writes) also signs the CodeDirectory, so changing the CodeDirectory breaks it, and only the private key can make it again. The export stops with that message: publish the runtime unsigned, and sign the
+  bundle after the export.
 - **There is no Developer ID signing and no notarization.** The bundle is not *sealed* either: no signature covers `Info.plist` or the files in `Resources`; only the program (and each library, by the signature it
   came with) is signed.
 
@@ -228,15 +229,21 @@ What it does **not** do:
 - **Downloaded builds** (a browser, a message, a mail attachment) get the quarantine attribute, and Gatekeeper refuses to open an application that is not notarized: the player has to open it with Control-click
   and *Open*, or allow it in System Settings, Privacy & Security, or remove the attribute (`xattr -dr com.apple.quarantine "Fixture Game.app"`). Files that Steam installs are not quarantined, so a game
   distributed through Steam opens without any of this.
-- **Developer ID signing and notarization** are done after the export, with Apple's tools and your own certificate: `codesign --force --deep --options runtime --sign "Developer ID Application: …"
-  "Fixture Game.app"`, then `xcrun notarytool submit` and `xcrun stapler staple`. A bundle exported by this step is **not ready for that**: the compiled shaders are data files in `Contents/MacOS`, which
-  holds code, and `codesign` wants such files in `Contents/Resources`; the engine looks for them next to the program (`AppContext.BaseDirectory`), so moving them is a change to the engine's shader loading that
-  has not been made. Re-signing the whole bundle also replaces the ad-hoc signature this step repairs, so do it after the export, never before.
+- **Developer ID signing and notarization** are outside the export, and an exported bundle is **not ready for them**: the compiled shaders are data files in `Contents/MacOS`, which is for code only, and
+  `codesign --strict` and notarization reject data there. The engine looks for them next to the program (`AppContext.BaseDirectory`), so moving them to `Contents/Resources` is a change to the engine's shader
+  loading that has not been made. When it has, signing is done after the export, with Apple's tools and your own certificate, from the inside out as Apple advises (`--deep` is discouraged): sign each
+  `.dylib`, then the executable with `--options runtime`, then the bundle, and then submit it (`xcrun notarytool submit`) and staple the ticket (`xcrun stapler staple`). Signing again replaces the ad-hoc
+  signature this step repairs, so it comes after the export, never before.
+- **Checking an export on a Mac.** `codesign` judges an executable inside a bundle as part of the bundle, which is not sealed and may fail `--strict` for reasons that have nothing to do with the program. To
+  check only the program's own signature, copy it out of the bundle: `cp "Fixture Game.app/Contents/MacOS/FixtureGame" /tmp/exe && codesign --verify --strict --verbose=4 /tmp/exe` (exit status 0), and
+  `codesign -dvvv /tmp/exe` shows its flags (`adhoc`) and CDHash. `codesign --verify --strict --verbose=4 "Fixture Game.app"` is informational. `plutil -lint "Fixture Game.app/Contents/Info.plist"` checks the
+  plist, and starting the game with its encrypted pack and no key in the environment is a check of the page that holds the key slot, since the game reads it. The unit tests cannot run these tools; the macOS job
+  of the continuous integration is to.
 - **Metal.** Whether an exported game draws on a Mac depends on the engine's Metal backend, which is written but not tested yet (see [help wanted](../../contributing/help-wanted.md)), not on the export.
 
 !!! note "Not run on a Mac"
     The bundle step was written and tested without a Mac. The tests build Mach-O programs and signatures by hand and check the hashes against an independent computation (the SHA-1 and SHA-256 of each
-    page), and they rehash the real signatures of the libraries in `ThirdParty` to see that the result is byte for byte what the linker made; `codesign --verify` and `plutil -lint` have not been run on an
+    page), and they rehash the real signatures of the libraries in `ThirdParty` to see that the result is byte for byte what the linker and `codesign -s -` made; `codesign --verify` and `plutil -lint` have not been run on an
     export. The macOS job of the continuous integration is where they will be.
 
 ## From code

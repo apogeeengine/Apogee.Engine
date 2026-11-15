@@ -126,6 +126,18 @@ public class InfoPlistTests
     }
 
     [Fact]
+    public void TheBundleVersionIsThreeIntegersBecauseTheManifestAcceptsNothingElse()
+    {
+        // CFBundleVersion is one to three integers separated by dots. game.xml's version only is major.minor.patch (a suffix such as -beta is a problem in the manifest), so the plist never has one.
+        const string Suffix = """<Game name="Fixture Game" organization="Test Studio" version="1.2.3-beta" executable="FixtureGame" identifier="org.test.fixturegame"/>""";
+        Assert.False(GameManifest.TryParse(Suffix, "game.xml", out _, out _));
+
+        Dictionary<string, object> values = Read(InfoPlist.Build(Manifest(), hasIcon: false, "11.0"));
+
+        Assert.Matches(@"^\d+\.\d+\.\d+$", (string)values["CFBundleVersion"]);
+    }
+
+    [Fact]
     public void ThePackageInfoIsAnApplicationWithNoCreatorCode()
     {
         Assert.Equal("APPL????", InfoPlist.PackageInfo);
