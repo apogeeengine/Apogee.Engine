@@ -1,6 +1,6 @@
 # Shipped game fixture
 
-A tiny game for CI: the NativeAOT runtime runs it from its folder, packs it, runs it from the pack, and runs it again with the Slang compiler deleted (a shipped game never loads it). It uses what a shipped game uses: Luau,
+A tiny game for CI: the NativeAOT runtime runs it from its folder, packs it, runs it from the pack, and runs it again with the Slang compiler deleted (a shipped game never loads it). The `aot` jobs also export it (`--export --cooked`, encrypted with a public test key) and run the export headless from another folder, with the key out of the environment and the mod installed in the user folder ([Testing an export](../../../Docs/manual/tools/export.md#testing-an-export)). It uses what a shipped game uses: Luau,
 a RmlUi document with a script and a data model, ImGui, the shaders, a mod. It is a *test* fixture, not a sample: samples (`Samples/`) are demos that people run by hand and CI never runs them.
 
 `game.xml` is the game's manifest (name, version 1.0.0, the icon `icon.png`, the window): it sets the folder of the player's files and the game version that the mod's `gameVersion="^1.0"` is checked against.

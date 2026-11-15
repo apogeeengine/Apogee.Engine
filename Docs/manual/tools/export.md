@@ -38,6 +38,9 @@ So exporting for the machine you are on needs nothing but `./build.sh aot`; expo
 be a thin binary for one processor, not a universal one. Left out of the copy: debug files (`*.pdb`, `*.dbg`, `*.dSYM`), import libraries (`*.lib`, `*.exp`), the Slang compiler's libraries and the shader
 sources (`Shaders/*.slang`; the compiled `Shaders/imported` stays: a shipped game never loads the compiler), `steam_appid.txt`, and the runtime folder's own `game.xml` and `data/`.
 
+The continuous integration publishes the runtime of each platform it builds (`apogee-linux-x64`, `apogee-win-x64`, `apogee-osx-arm64`, `apogee-osx-x64`) as a workflow artifact for 14 days: download one,
+unzip it (an archive does not keep the executable bit; the export sets it on the program it writes), and pass the folder with `--runtime`. This is how to export for Windows or macOS without a computer of that kind.
+
 ## The layout
 
 | | Linux and Windows | macOS |
@@ -245,6 +248,23 @@ What it does **not** do:
     The bundle step was written and tested without a Mac. The tests build Mach-O programs and signatures by hand and check the hashes against an independent computation (the SHA-1 and SHA-256 of each
     page), and they rehash the real signatures of the libraries in `ThirdParty` to see that the result is byte for byte what the linker and `codesign -s -` made; `codesign --verify` and `plutil -lint` have not been run on an
     export. The macOS job of the continuous integration is where they will be.
+
+## Testing an export
+
+The three `aot` jobs of the continuous integration (`.github/workflows/*_builds.yml`) export `Tests/Fixtures/ShippedGame` for their own platform with the runtime they just published, `--cooked`, and then
+check and run the result:
+
+1. The export step sets `APOGEE_PACK_KEY` to a fixed test key, `000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f`, on that step only. **The key is public and worthless**: it is made
+   up, nothing is protected by it, and an exported game carries its key anyway. Never ship a game with it.
+2. The result is checked: the pack does not start with the plain magic (it is encrypted), no debug file, Slang library, shader source or `steam_appid.txt` was copied, and the game folder in the
+   repository has no changed or new file. On Windows the version information says `Fixture Game`; on macOS the program's signature is verified (`codesign --verify --strict --verbose=4` on a copy
+   outside the bundle, then `codesign -dvvv`) and `Info.plist` and `game.icns` are read by `plutil -lint` and `iconutil`.
+3. The exported game is run headless **from another folder**, with `APOGEE_PACK_KEY` not in the environment (so the key can only come out of the executable's slot), a player's mod copied to the user
+   folder, and `+connect_lobby 1` on the command line, which a shipped game ignores. The files that the fixture leaves in the user folder (`ran.txt`, `scene.txt`, `def.txt`, `document.txt` and the mod's
+   `moddata/patcher/ran.txt`) must exist. On Linux it is run once more, rendered, on the software rasterizer.
+4. The export is uploaded as the artifact `export-<rid>`.
+
+This is the test that runs an export on each operating system: the unit tests build the files for all platforms from any computer, but only these jobs start the result.
 
 ## From code
 

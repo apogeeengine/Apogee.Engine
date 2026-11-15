@@ -67,8 +67,8 @@ is streamed without being read whole (and without its hash checked).
 
 ## Encryption and the key
 
-If `APOGEE_PACK_KEY` is set (64 hexadecimal digits: 32 bytes) the pack is encrypted; if it is not, it is not. **No key is set up yet**: nothing in the repository or the CI has one, so packs
-are plain. When you want one, put it in `.env` (which git ignores and the `./build.sh` wrapper loads), make the same key available to everything that makes or opens packs (the editor, the
+If `APOGEE_PACK_KEY` is set (64 hexadecimal digits: 32 bytes) the pack is encrypted; if it is not, it is not. **No key is set up for your game**: the repository has none, so packs
+are plain. (The continuous integration uses a *public* test key for its export test only, see [Testing an export](../tools/export.md#testing-an-export); never ship a game with it.) When you want one, put it in `.env` (which git ignores and the `./build.sh` wrapper loads), make the same key available to everything that makes or opens packs (the editor, the
 tools, a CI secret), and never commit it or print it (a `PackKey` writes itself as `PackKey(…)`). A pack made with one key cannot be read with another, and changing the
 key means making the packs again.
 
