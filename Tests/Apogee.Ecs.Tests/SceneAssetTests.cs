@@ -1,0 +1,220 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Apogee.Content.Assets;
+using Apogee.Content.FileSystem;
+using Apogee.Core.Assets;
+using Apogee.Core.Logging;
+using Apogee.Native.Tests;
+using Apogee.Reflection;
+using Xunit;
+using Flecs = Apogee.Native.Flecs.Ecs;
+
+namespace Apogee.Ecs.Tests;
+
+/// <summary>Asset fields in scenes: saved as the path and the UID of what they name, and loaded by path, then by UID.</summary>
+public sealed class SceneAssetTests : IDisposable
+{
+    private sealed class Sink : ILogSink
+    {
+        public List<string> Warnings { get; } = [];
+
+        public void Write(in LogEntry entry)
+        {
+            if (entry.Level == LogLevel.Warning && entry.Category == "Scene")
+            {
+                lock (Warnings)
+                {
+                    Warnings.Add(entry.Message);
+                }
+            }
+        }
+    }
+
+    private readonly string _folder = Directory.CreateTempSubdirectory("apogee-scene-assets").FullName;
+    private readonly VirtualFileSystem _files = new();
+    private readonly AssetDatabase _assets;
+    private readonly AssetUid _carUid = AssetUid.New();
+
+    // A fake "model" library: handles are numbers in this run, handed out per path.
+    private readonly Dictionary<string, uint> _handles = new(StringComparer.Ordinal);
+
+    public SceneAssetTests()
+    {
+        NativeRequirements.Require(typeof(Flecs).Assembly, "flecs");
+        _files.Mount("res://", new DirectorySource(_folder, writable: true));
+        _assets = new AssetDatabase(_files);
+        Write("models/car.glb", "not really a model");
+        Write("models/car.glb.import.xml", $"<Import uid=\"{_carUid}\"/>");
+    }
+
+    public void Dispose()
+    {
+        Directory.Delete(_folder, recursive: true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Write(string path, string text)
+    {
+        string full = Path.Combine(_folder, path);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        File.WriteAllText(full, text);
+    }
+
+    private uint Handle(string path)
+    {
+        if (!_handles.TryGetValue(path, out uint handle))
+        {
+            _handles[path] = handle = (uint)_handles.Count + 1;
+        }
+
+        return handle;
+    }
+
+    private World NewWorld(bool registered = true)
+    {
+        var world = new World();
+        if (registered)
+        {
+            world.RegisterAssetType(
+                "model",
+                handle => _handles.Where(h => h.Value == handle).Select(h => (AssetRef?)_assets.RefOf(h.Key)).FirstOrDefault(),
+                reference => _assets.Resolve(reference) is { } path ? Handle(path) : 0);
+        }
+
+        return world;
+    }
+
+    private string PathOf(uint handle) => _handles.First(h => h.Value == handle).Key;
+
+    [Fact]
+    public void AnAssetFieldIsSavedAsPathAndUid()
+    {
+        using World world = NewWorld();
+        Entity e = world.CreateEntity("car");
+        world.Set(e, new Furnished { Count = 2, Model = Handle("res://models/car.glb") });
+
+        string text = world.SaveScene();
+
+        Assert.Contains($"\"res://models/car.glb|{_carUid}\"", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Model\": 1", text, StringComparison.Ordinal); // not the number of this run
+    }
+
+    [Fact]
+    public void AnAssetFieldLoadsFromItsPath()
+    {
+        using World world = NewWorld();
+        List<Entity> loaded = world.LoadScene("""
+            { "format": "apogee-scene", "version": 1, "components": {},
+              "entities": [ { "id": 1, "name": "old", "components": { "Furnished": { "Count": 1, "Model": "res://models/car.glb" } } },
+                            { "id": 2, "name": "none", "components": { "Furnished": { "Count": 2, "Model": null } } } ] }
+            """);
+
+        Assert.Equal("res://models/car.glb", PathOf(world.Get<Furnished>(loaded[0]).Model)); // a scene from before UIDs: the path alone
+        Assert.Equal(0u, world.Get<Furnished>(loaded[1]).Model);
+        Assert.Equal(2, world.Get<Furnished>(loaded[1]).Count);
+
+        // Saved again, it holds the UID too.
+        Assert.Contains($"res://models/car.glb|{_carUid}", world.SaveScene(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AMovedAssetLoadsThroughItsUid()
+    {
+        string text;
+        using (World saving = NewWorld())
+        {
+            Entity e = saving.CreateEntity("car");
+            saving.Set(e, new Furnished { Model = Handle("res://models/car.glb") });
+            text = saving.SaveScene();
+        }
+
+        // The model and its settings are renamed and moved together: the path in the scene leads nowhere, the UID leads to the file.
+        Directory.CreateDirectory(Path.Combine(_folder, "props"));
+        File.Move(Path.Combine(_folder, "models", "car.glb"), Path.Combine(_folder, "props", "vehicle.glb"));
+        File.Move(Path.Combine(_folder, "models", "car.glb.import.xml"), Path.Combine(_folder, "props", "vehicle.glb.import.xml"));
+        _assets.Refresh();
+
+        using World loading = NewWorld();
+        Entity car = Assert.Single(loading.LoadScene(text));
+        Assert.Equal("res://props/vehicle.glb", PathOf(loading.Get<Furnished>(car).Model));
+
+        // Saving it again writes the new path beside the same UID.
+        Assert.Contains($"res://props/vehicle.glb|{_carUid}", loading.SaveScene(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnAssetThatCannotBeFoundLeavesTheFieldEmptyAndTheSceneLoads()
+    {
+        var sink = new Sink();
+        Log.AddSink(sink);
+        try
+        {
+            using World world = NewWorld();
+            List<Entity> loaded = world.LoadScene("""
+                { "format": "apogee-scene", "version": 1, "components": {},
+                  "entities": [ { "id": 1, "name": "lost", "components": { "Furnished": { "Count": 7, "Model": "res://models/gone.glb|uid://0000000000zzz" } } } ] }
+                """);
+
+            Assert.Equal(0u, world.Get<Furnished>(loaded[0]).Model);
+            Assert.Equal(7, world.Get<Furnished>(loaded[0]).Count);
+            Assert.Contains(sink.Warnings, w => w.Contains("gone.glb", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Log.RemoveSink(sink);
+        }
+    }
+
+    [Fact]
+    public void AnUnregisteredAssetTypeIsSkippedWithAWarning()
+    {
+        var sink = new Sink();
+        Log.AddSink(sink);
+        try
+        {
+            using World world = NewWorld(registered: false);
+            Entity a = world.CreateEntity("a");
+            world.Set(a, new Furnished { Count = 3, Model = 9 });
+            Entity b = world.CreateEntity("b");
+            world.Set(b, new Furnished { Count = 4, Model = 10 });
+
+            string text = world.SaveScene();
+
+            Assert.Equal(2, text.Split("\"Model\": null").Length - 1);
+            Assert.Contains("\"Count\": 3", text, StringComparison.Ordinal);
+            string[] warnings = [.. sink.Warnings.Where(w => w.Contains("Furnished.Model", StringComparison.Ordinal))];
+            Assert.Single(warnings); // once, however many entities
+            Assert.Contains("'model'", warnings[0], StringComparison.Ordinal);
+
+            // Loading leaves the field empty too.
+            using World fresh = NewWorld(registered: false);
+            List<Entity> loaded = fresh.LoadScene("""
+                { "format": "apogee-scene", "version": 1, "components": {},
+                  "entities": [ { "id": 1, "name": "x", "components": { "Furnished": { "Count": 5, "Model": "res://models/car.glb" } } } ] }
+                """);
+            Assert.Equal(0u, fresh.Get<Furnished>(loaded[0]).Model);
+            Assert.Equal(5, fresh.Get<Furnished>(loaded[0]).Count);
+        }
+        finally
+        {
+            Log.RemoveSink(sink);
+        }
+    }
+
+    [Fact]
+    public void AScriptComponentsAssetFieldWithoutATypeIsSavedAsNull()
+    {
+        using World world = NewWorld();
+        Entity decorated = world.DefineComponent("Decorated", [("look", FieldKind.AssetRef)]);
+        Entity e = world.CreateEntity("e");
+        unsafe
+        {
+            byte* data = world.EnsurePointer(e, decorated, 4);
+            *(uint*)data = 5;
+        }
+
+        Assert.Contains("\"look\": null", world.SaveScene(), StringComparison.Ordinal);
+    }
+}

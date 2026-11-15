@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Apogee.Core.Assets;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
 using Apogee.Native.Tests;
@@ -224,21 +225,6 @@ public sealed class EditingTests : IDisposable
     // ---- Scenes ----
 
     [Fact]
-    public void AnAssetRefFieldIsASceneNumberUntilScenesKnowAssets()
-    {
-        // A1.4 saves the field as a path and a UID; until then it is saved like any uint, and must not leave the JSON writer without a value.
-        Entity a = Make("lamp");
-        _world.Set(a, new Furnished { Count = 2, Model = 41 });
-
-        string text = _world.SaveScene();
-        Assert.Matches("\"Model\": 41", text);
-
-        using var other = new World();
-        other.LoadScene(text);
-        Assert.Equal(new Furnished { Count = 2, Model = 41 }, other.Get<Furnished>(other.Lookup("lamp")));
-    }
-
-    [Fact]
     public void ASceneRoundTripsEntitiesComponentsHierarchyAndReferences()
     {
         Entity a = Make("root");
@@ -314,22 +300,23 @@ public sealed class EditingTests : IDisposable
     }
 
     [Fact]
-    public void ARuntimeHandleIsSavedAsWhatItNamesThroughAConverterAndIgnoredComponentsAreLeftOut()
+    public void ARuntimeHandleIsSavedAsWhatItNamesThroughAnAssetTypeAndIgnoredComponentsAreLeftOut()
     {
-        _world.RegisterSceneConverter("Health", "Current", value => value == 0 ? null : $"hp#{value}", text => ulong.Parse(text.AsSpan(3), System.Globalization.CultureInfo.InvariantCulture));
+        _world.RegisterAssetType("model", handle => handle == 0 ? null : AssetRef.FromPath($"res://m{handle}.glb"), reference => uint.Parse(reference.Path.AsSpan(7, reference.Path.Length - 11), System.Globalization.CultureInfo.InvariantCulture));
         _world.IgnoreInScenes("Velocity");
         Entity e = Make("e");
-        _world.Set(e, new Health { Current = 42, Max = 5 });
+        _world.Set(e, new Furnished { Count = 5, Model = 42 });
         _world.Set(e, new Velocity { Value = new Vector3(1, 1, 1) });
 
         string text = _world.SaveScene();
-        Assert.Contains("\"hp#42\"", text, StringComparison.Ordinal);
+        Assert.Contains("\"res://m42.glb\"", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Velocity", text, StringComparison.Ordinal);
 
         using var fresh = new World();
-        fresh.RegisterSceneConverter("Health", "Current", value => $"hp#{value}", text => ulong.Parse(text.AsSpan(3), System.Globalization.CultureInfo.InvariantCulture));
+        fresh.RegisterAssetType("model", handle => AssetRef.FromPath($"res://m{handle}.glb"), reference => uint.Parse(reference.Path.AsSpan(7, reference.Path.Length - 11), System.Globalization.CultureInfo.InvariantCulture));
         fresh.LoadScene(text);
-        Assert.Equal(42, fresh.Get<Health>(fresh.Lookup("e")).Current);
+        Assert.Equal(42u, fresh.Get<Furnished>(fresh.Lookup("e")).Model);
+        Assert.Equal(5, fresh.Get<Furnished>(fresh.Lookup("e")).Count);
         Assert.False(fresh.Has<Velocity>(fresh.Lookup("e")));
     }
 

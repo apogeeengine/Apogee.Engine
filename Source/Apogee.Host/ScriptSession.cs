@@ -46,23 +46,37 @@ public sealed class ScriptSession : IDisposable
         System.Runtime.CompilerServices.RuntimeHelpers.RunModuleConstructor(typeof(GameLibrary).Module.ModuleHandle);
     }
 
-    /// <summary>A scene holds a model's path, not its number in this run's library; and a physics body only exists in the run that made it (scripts make them again).</summary>
-    private static void RegisterSceneSupport(World world, ModelLibrary models)
+    /// <summary>A scene holds a model's path and UID, not its number in this run's library; and a physics body only exists in the run that made it (scripts make them again).</summary>
+    private static void RegisterSceneSupport(World world, ModelLibrary models, ContentLoader content)
     {
-        world.RegisterSceneConverter("ModelRenderer", "Model", id => models.PathOf((uint)id), path => models.Load(path));
+        world.RegisterAssetType("model", id => models.PathOf(id) is { } path ? content.Assets.RefOf(path) : null, reference => content.Assets.Resolve(reference) is { } path ? models.Load(path) : 0);
         world.IgnoreInScenes("Body");
+    }
+
+    /// <summary>Makes the <c>assets</c> global (the engine owns it). The packages that load (in load order, after <c>res://</c>) are where a UID is looked for.</summary>
+    private static AssetLibrary InstallAssets(LuauVm vm, ContentLoader content, PackageSet? packages = null)
+    {
+        foreach (SolvedPackage package in packages?.LoadOrder ?? [])
+        {
+            content.Assets.Roots.Add($"mod://{package.Id}/");
+        }
+
+        var assets = new AssetLibrary(content.Assets);
+        assets.Adopt();
+        vm.SetGlobal("assets", assets);
+        return assets;
     }
 
     /// <summary>Everything a session can import: models, images and shaders.</summary>
     public static IReadOnlyList<IAssetImporter> Importers { get; } = [.. AssetImporter.Defaults, new ShaderImporter()];
 
-    private ScriptSession(World world, LuauVm vm, InputActionRouter input, PhysicsWorld physics, AudioSystem audio, SteamSystem steam, NetSystem net, ModelLibrary models, UiSystem ui, IDisposable? owned = null)
+    private ScriptSession(World world, LuauVm vm, InputActionRouter input, PhysicsWorld physics, AudioSystem audio, SteamSystem steam, NetSystem net, ModelLibrary models, UiSystem ui, AssetLibrary assets, IDisposable? owned = null)
     {
         World = world;
         Ui = ui;
         Models = models;
+        Assets = assets;
 
-        RegisterSceneSupport(world, models);
         DebugDrawLibrary.Target = DebugDraw;
         _vm = vm;
         Input = input;
@@ -94,6 +108,9 @@ public sealed class ScriptSession : IDisposable
 
     /// <summary>The models entities draw, the scripts' <c>models</c> global. The loops attach a renderer to it when there is a GPU.</summary>
     public ModelLibrary Models { get; }
+
+    /// <summary>Asset paths and UIDs, the scripts' <c>assets</c> global.</summary>
+    public AssetLibrary Assets { get; }
 
     /// <summary>Makes the model library scripts see as <c>models</c> (the engine owns it: it lives until the session ends). Its ids exist before there is a GPU.</summary>
     private static ModelLibrary InstallModels(LuauVm vm, VirtualFileSystem files, ContentLoader content)
@@ -226,8 +243,10 @@ public sealed class ScriptSession : IDisposable
             var nothingContent = new ContentLoader(nothing);
             models = InstallModels(vm, nothing, nothingContent);
             ui = InstallUi(vm, nothing, nothingContent);
+            RegisterSceneSupport(world, models, nothingContent);
+            AssetLibrary assets = InstallAssets(vm, nothingContent);
             vm.Execute(vm.BaseOwner, "@" + path, File.ReadAllText(path, Encoding.UTF8));
-            return new ScriptSession(world, vm, input, physics, audio, steam, net, models, ui);
+            return new ScriptSession(world, vm, input, physics, audio, steam, net, models, ui, assets);
         }
         catch
         {
@@ -347,6 +366,7 @@ public sealed class ScriptSession : IDisposable
         NetSystem? net = null;
         ModelLibrary? models = null;
         UiSystem? uiSystem = null;
+        AssetLibrary? assets = null;
         HotReloader? reloader = null;
         try
         {
@@ -395,7 +415,8 @@ public sealed class ScriptSession : IDisposable
             var content = new ContentLoader(files);
             models = InstallModels(vm, files, content);
             uiSystem = InstallUi(vm, files, content);
-            RegisterSceneSupport(world, models);
+            RegisterSceneSupport(world, models, content);
+            assets = InstallAssets(vm, content, packages);
             if (start.Scene is not null)
             {
                 world.LoadScene(start.Scene);
@@ -450,13 +471,14 @@ public sealed class ScriptSession : IDisposable
                 Log.Info("Runtime", "Watching for changes: scripts that were required, definitions and assets are reloaded when their files change.");
             }
 
-            return new ScriptSession(world, vm, input, physics, audio, steamSystem, net, models, uiSystem, owned) { Reloader = reloader, Files = files };
+            return new ScriptSession(world, vm, input, physics, audio, steamSystem, net, models, uiSystem, assets, owned) { Reloader = reloader, Files = files };
         }
         catch
         {
             vm?.Dispose();
             uiSystem?.Dispose();
             models?.Dispose();
+            assets?.Destroy();
             net?.Dispose();
             steamSystem.Dispose();
             audio?.Dispose();
@@ -571,6 +593,7 @@ public sealed class ScriptSession : IDisposable
         Steam.Dispose();
         Ui.Dispose();      // after the scripts (their elements are handles into it), before RmlUi's files go
         Models.Dispose();
+        Assets.Destroy();
         Audio.Dispose();   // before the world: it holds queries on it
         Physics.Dispose(); // before the world: it has an observer in it
         World.Dispose();

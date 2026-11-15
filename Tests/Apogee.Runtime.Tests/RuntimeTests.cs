@@ -246,6 +246,53 @@ public class CommandTests
     }
 
     [Fact]
+    public void AModelLoadsByUidAndASavedSceneFindsAModelThatWasMoved()
+    {
+        using var scratch = new Scratch();
+        var uid = Apogee.Core.Assets.AssetUid.New();
+        scratch.Write("game/models/thing.glb", "stands in for a model: loading one only needs the file");
+        scratch.Write("game/models/thing.glb.import.xml", $"<Import uid=\"{uid}\"/>");
+        Game(scratch, "scene", "<Script path=\"main.luau\"/>", user: false, ("main.luau", $$"""
+            local ModelRenderer = world:component("ModelRenderer")
+            local id = models:load("res://models/thing.glb")
+            assert(id ~= 0 and models:load("{{uid}}") == id, "the uid and the path share one id")
+            assert(not pcall(function() models:load("{{Apogee.Core.Assets.AssetUid.New()}}") end), "an unknown uid is an error")
+
+            assert(assets:uid_of("res://models/thing.glb") == "{{uid}}")
+            assert(assets:uid_of("res://models/none.glb") == nil)
+            assert(assets:resolve("{{uid}}") == "res://models/thing.glb")
+            assert(assets:resolve("res://gone.glb|{{uid}}") == "res://models/thing.glb", "the uid follows a stale path")
+            assert(assets:resolve("res://models/thing.glb") == "res://models/thing.glb")
+            assert(assets:resolve("res://nothing.glb") == nil)
+            assert(assets:ref_of("res://models/thing.glb") == "res://models/thing.glb|{{uid}}")
+            assert(not pcall(function() assets:resolve("uid://nonsense") end), "text that is not a reference is an error")
+
+            local thing = world:create_entity("thing")
+            world:set(thing, ModelRenderer, { Model = id })
+            fs.write_text("user://scene.txt", world:save_scene())
+            """));
+        string game = System.IO.Path.Combine(scratch.Root, "game");
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+
+        // The first run saves a scene with the model; the model is then renamed and moved with its settings, and the second run loads that scene.
+        Assert.Equal(0, Commands.Run(Options("--game", game, "--user", user, "--headless", "--frames", "1")));
+        Assert.Contains($"res://models/thing.glb|{uid}", File.ReadAllText(System.IO.Path.Combine(user, "scene.txt")));
+
+        Directory.CreateDirectory(System.IO.Path.Combine(game, "props"));
+        File.Move(System.IO.Path.Combine(game, "models", "thing.glb"), System.IO.Path.Combine(game, "props", "vehicle.glb"));
+        File.Move(System.IO.Path.Combine(game, "models", "thing.glb.import.xml"), System.IO.Path.Combine(game, "props", "vehicle.glb.import.xml"));
+        Directory.Delete(System.IO.Path.Combine(game, "packages", "scene"), recursive: true);
+        Game(scratch, "check", "<Script path=\"main.luau\"/>", user: false, ("main.luau", """
+            local ModelRenderer = world:component("ModelRenderer")
+            world:load_scene(fs.read_text("user://scene.txt"))
+            local model = world:get(world:lookup("thing"), ModelRenderer).Model
+            fs.write_text("user://loaded.txt", tostring(model == models:load("res://props/vehicle.glb")) .. " " .. tostring(model ~= 0))
+            """));
+        Assert.Equal(0, Commands.Run(Options("--game", game, "--user", user, "--headless", "--frames", "1")));
+        Assert.Equal("true true", File.ReadAllText(System.IO.Path.Combine(user, "loaded.txt")));
+    }
+
+    [Fact]
     public void AGameCanEndTheRunAndIsToldBySetEscapeQuitsWhatEscapeDoes()
     {
         using var scratch = new Scratch();

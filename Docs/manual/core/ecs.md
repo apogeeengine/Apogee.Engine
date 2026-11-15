@@ -39,7 +39,12 @@ The pointer API (`GetPointer`, `EnsurePointer`, `SetPointer`) works on any compo
 A `uint` field marked `[Property(Asset = "model")]` has the kind `FieldKind.AssetRef` and `FieldDef.AssetType = "model"` (see [reflection](reflection.md#asset-fields)). In memory it is four bytes, a `uint` handle
 into the host's library of that asset type; Flecs describes it as a 32-bit number, `FieldAccess` reads and writes it as a number, and scripts see a number. The kind is what tells a scene file
 or an inspector that the number names an asset. `DefineComponent` takes the kind too (`("model", FieldKind.AssetRef)`), though a script-defined component cannot name its asset type yet.
-Until scenes learn to save a reference by path and UID, a scene stores the handle as a plain number, as for any `uint`.
+
+A scene does not store the handle, which only means something in the run that made it. The host says what each asset type's handles name with
+`RegisterAssetType(type, toRef, fromRef)`: `toRef` turns a handle into the `AssetRef` it names (null for a model made in code, which has no path), `fromRef` turns a reference into this run's handle,
+loading the asset when needed. The host registers `model` (`ModelRenderer.Model`) with the model library and the [asset database](../content/assets.md), so a scene holds
+`"Model": "res://models/car.glb|uid://4k2m9x7q1w3ze"`: the path is tried first, and when its file is gone the UID finds it where it moved. A scene written before UIDs holds the path alone, which loads as well. A reference that
+leads to no asset leaves the field 0 with a warning, and the scene loads on. A field of a type nobody registered (and a script-defined field, which has no type yet) is saved as `null`, with one warning per field.
 
 `Entity` is not a component name: `RegisterComponent` and `DefineComponent` refuse it (`InvalidOperationException`), because a scene file writes a child entity as `<Entity>`.
 
@@ -62,7 +67,7 @@ not the entities of registered components and the reflection data under them, no
   an entity that is not in the scene is saved as `null`), and 64-bit values that a JSON number cannot hold go as text. Components a script defined are written with their schema (`"components"`) and defined
   again when the scene is loaded into a world that has not heard of them. On loading, a component or a field the world does not have is logged and skipped, a name that is taken gets a free one (`name 2`), and
   text that is not a scene is a `FormatException`. `WorldTransform` is derived and never saved; `IgnoreInScenes(name)` leaves others out (the host does it for physics `Body`), and
-  `RegisterSceneConverter(component, field, write, read)` saves a handle as what it names (the host saves `ModelRenderer.Model`, a number in this run's model library, as the model's path).
+  `RegisterAssetType` (see [asset fields](#asset-fields)) is how a field that holds a handle is saved as the asset it names: `ModelRenderer.Model`, a number in this run's model library, is saved as the model's path and UID.
 - **From scripts:** `world:save_scene()` returns the text, `world:load_scene(text, parent?)` the list of entities it made, `world:roots()` and `world:children(entity)` the hierarchy. A script reads and writes the file
   itself with `fs.read_text` and `fs.write_text`, which keeps the confinement of a mod's files.
 

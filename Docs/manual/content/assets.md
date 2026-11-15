@@ -76,8 +76,29 @@ AssetUid uid = assets.UidOf("res://textures/ground.png");
   of the engine uses, and the scan does not count the files twice.
 - `ContentLoader.ResolveAssetPath(text)` is what a loader that takes "a path or a `uid://`" calls first.
 
+## From Luau
+
+Everything that loads an asset by path takes a `uid://` as well: `models:load("uid://4k2m9x7q1w3ze")` gives the same id as `models:load("res://models/car.glb")` when that UID names that file, and it follows the file
+if it was moved. A `uid://` that no file has is an error. The global `assets` (`AssetLibrary`) is for asking about identity:
+
+```lua
+assets:uid_of("res://models/car.glb")            -- "uid://4k2m9x7q1w3ze", or nil when the file does not exist or has none
+assets:ref_of("res://models/car.glb")            -- "res://models/car.glb|uid://4k2m9x7q1w3ze": what to store to find it again
+assets:resolve("uid://4k2m9x7q1w3ze")            -- "res://models/car.glb"
+assets:resolve("res://old/car.glb|uid://4k2m9x7q1w3ze")  -- the path if its file is there, otherwise where the UID's file is; nil if neither
+```
+
+`resolve` takes a path, a `uid://` or a `path|uid://…` reference and returns a path or nil; text that is none of these is an error. The UIDs are looked for under `res://` and in each package that loads, in load order.
+`ModelRenderer.Model` is a number in scripts (`models:load`'s id) and is saved in scenes as such a reference: see [asset fields](../core/ecs.md#asset-fields).
+
+A game cooked with `--pack --cooked` has the artifacts of its imported assets and not their sources. A path that names an imported source still resolves (the pack's index says it was imported), and
+`models:load` accepts it, so scenes and scripts written with source paths run the same shipped.
+
 ## Tests
 
 `Tests/Apogee.Core.Tests/AssetRefTests.cs` covers the text forms. `Tests/Apogee.Content.Tests/AssetUidTests.cs` covers the UID in sidecars (made, kept, edited in place with comments, quotes, CRLF and a byte order mark), the key that ignores it
 (nothing is imported again; a real setting still does), a deleted sidecar, copies and the file that moved with its UID, authored files, `assets.xml`, read-only roots, packages, and an asset that is renamed and
 still resolves.
+
+`Tests/Apogee.Ecs.Tests/SceneAssetTests.cs` covers asset fields in scenes (saved as path and UID, loaded from either, a moved asset found through its UID, an unregistered type), `GamePackerTests` the path-only reference in a cooked pack,
+`Tests/Apogee.Rendering.Tests/ModelLibraryPathTests.cs` `uid://` in `ModelLibrary.Load`, and `RuntimeTests.AModelLoadsByUidAndASavedSceneFindsAModelThatWasMoved` the `assets` global and a scene saved by a script that loads after the model moved.

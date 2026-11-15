@@ -2,10 +2,13 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using Apogee.Content;
+using Apogee.Core.Assets;
 using Apogee.Core.Logging;
 using Apogee.Core.Numerics;
 using Apogee.Reflection;
@@ -26,14 +29,24 @@ public sealed unsafe partial class World
     private const string SceneFormat = "apogee-scene";
     private const int SceneVersion = 1;
 
-    private readonly Dictionary<(string Component, string Field), (Func<ulong, string?> Write, Func<string, ulong> Read)> _sceneConverters = [];
+    private readonly Dictionary<string, (Func<uint, AssetRef?> ToRef, Func<AssetRef, uint> FromRef)> _assetTypes = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _assetTypesWarned = new(StringComparer.Ordinal);
     private readonly HashSet<string> _sceneIgnored = new(StringComparer.Ordinal) { "WorldTransform" };
 
     /// <summary>
-    /// Saves a field that holds a runtime handle in another form: <paramref name="write"/> turns the value into text (null: not saved), <paramref name="read"/> turns the text back into a value in
-    /// this run. <c>ModelRenderer.Model</c> is a model's number in the library of this run, so the scene holds its path.
+    /// Says how the fields of an asset type (<see cref="FieldDef.AssetType"/>, such as <c>model</c> for <c>ModelRenderer.Model</c>) are saved. Such a field is a number in memory, a handle that only means
+    /// something in this run (a model's number in the library); a scene holds the <see cref="AssetRef"/> it names, the path and the UID, which is what lets it load in another run, and after the file moved.
     /// </summary>
-    public void RegisterSceneConverter(string component, string field, Func<ulong, string?> write, Func<string, ulong> read) => _sceneConverters[(component, field)] = (write, read);
+    /// <param name="type">The asset type, as <c>[Property(Asset = "…")]</c> spells it.</param>
+    /// <param name="toRef">The reference a handle names, or null when it names nothing that can be saved (a model made in code has no path).</param>
+    /// <param name="fromRef">The handle of this run for a reference (loading what it names when needed), or 0 when there is none. When it throws, the failure is logged, the field stays 0 and the scene loads on.</param>
+    public void RegisterAssetType(string type, Func<uint, AssetRef?> toRef, Func<AssetRef, uint> fromRef)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(type);
+        ArgumentNullException.ThrowIfNull(toRef);
+        ArgumentNullException.ThrowIfNull(fromRef);
+        _assetTypes[type] = (toRef, fromRef);
+    }
 
     /// <summary>Leaves a component out of scenes: what is derived (<c>WorldTransform</c>, which is always left out) or only means something in this run (physics bodies).</summary>
     public void IgnoreInScenes(string component) => _sceneIgnored.Add(component);
@@ -147,27 +160,6 @@ public sealed unsafe partial class World
 
     private void WriteField(Utf8JsonWriter json, ComponentInfo info, FieldDef field, byte* at, Dictionary<ulong, int> local)
     {
-        if (_sceneConverters.TryGetValue((info.Name, field.Name), out var converter) && field.Kind is FieldKind.UInt32 or FieldKind.UInt64 or FieldKind.Int32 or FieldKind.Int64)
-        {
-            ulong raw = field.Kind switch
-            {
-                FieldKind.UInt32 => *(uint*)at,
-                FieldKind.Int32 => (ulong)*(int*)at,
-                FieldKind.Int64 => (ulong)*(long*)at,
-                _ => *(ulong*)at,
-            };
-            if (converter.Write(raw) is { } text)
-            {
-                json.WriteStringValue(text);
-            }
-            else
-            {
-                json.WriteNullValue();
-            }
-
-            return;
-        }
-
         switch (field.Kind)
         {
             case FieldKind.Bool: json.WriteBooleanValue(*at != 0); break;
@@ -177,7 +169,18 @@ public sealed unsafe partial class World
             case FieldKind.UInt16: json.WriteNumberValue(*(ushort*)at); break;
             case FieldKind.Int32: json.WriteNumberValue(*(int*)at); break;
             case FieldKind.UInt32: json.WriteNumberValue(*(uint*)at); break;
-            case FieldKind.AssetRef: json.WriteNumberValue(*(uint*)at); break; // A1.4 writes the path and UID instead; until then the handle, as for any uint
+            case FieldKind.AssetRef:
+                // The handle means nothing in another run: what it names goes instead, as "path|uid" (null for none, and for what cannot be saved).
+                if (AssetRefOf(info, field, *(uint*)at) is { } named)
+                {
+                    json.WriteStringValue(named.ToString());
+                }
+                else
+                {
+                    json.WriteNullValue();
+                }
+
+                break;
             case FieldKind.Int64: WriteLong(json, *(long*)at); break;
             case FieldKind.UInt64: WriteULong(json, *(ulong*)at); break;
             case FieldKind.Float32: WriteDouble(json, *(float*)at); break;
@@ -205,6 +208,70 @@ public sealed unsafe partial class World
                 }
 
                 break;
+        }
+    }
+
+    // What the handle of an AssetRef field names; null for 0, for a type nobody registered (said once) and for what the type cannot name.
+    private AssetRef? AssetRefOf(ComponentInfo info, FieldDef field, uint handle)
+    {
+        if (handle == 0)
+        {
+            return null;
+        }
+
+        if (field.AssetType is not { } type || !_assetTypes.TryGetValue(type, out var registered))
+        {
+            WarnAssetTypeOnce(info, field);
+            return null;
+        }
+
+        return registered.ToRef(handle) is { IsEmpty: false } named ? named : null;
+    }
+
+    // The handle of this run for the text of a reference; 0 for no text, for a type nobody registered (said once), and for an asset that cannot be loaded (logged).
+    private uint HandleOf(ComponentInfo info, FieldDef field, string text)
+    {
+        if (text.Length == 0)
+        {
+            return 0;
+        }
+
+        if (field.AssetType is not { } type || !_assetTypes.TryGetValue(type, out var registered))
+        {
+            WarnAssetTypeOnce(info, field);
+            return 0;
+        }
+
+        if (!AssetRef.TryParse(text, out AssetRef named))
+        {
+            throw new FormatException($"'{text}' is not an asset reference (a path, path|uid://… or uid://…)");
+        }
+
+        try
+        {
+            uint handle = registered.FromRef(named);
+            if (handle == 0)
+            {
+                Log.Warn("Scene", $"{info.Name}.{field.Name}: {named} names no {field.AssetType} that this world can find: left empty");
+            }
+
+            return handle;
+        }
+        catch (Exception e) when (e is IOException or ContentException or FormatException or InvalidOperationException or ArgumentException)
+        {
+            Log.Warn("Scene", $"{info.Name}.{field.Name}: {named} could not be loaded: {e.Message}");
+            return 0;
+        }
+    }
+
+    private void WarnAssetTypeOnce(ComponentInfo info, FieldDef field)
+    {
+        string key = $"{info.Name}.{field.Name}";
+        if (_assetTypesWarned.Add(key))
+        {
+            Log.Warn("Scene", field.AssetType is null
+                ? $"{key} is an asset field with no asset type: scenes cannot save what it names"
+                : $"{key} has the asset type '{field.AssetType}', which this world has no RegisterAssetType for: scenes cannot save what it names");
         }
     }
 
@@ -452,20 +519,6 @@ public sealed unsafe partial class World
 
     private void ReadField(ComponentInfo info, FieldDef field, JsonElement value, byte* at, Dictionary<int, Entity> byLocal)
     {
-        if (_sceneConverters.TryGetValue((info.Name, field.Name), out var converter) && field.Kind is FieldKind.UInt32 or FieldKind.UInt64 or FieldKind.Int32 or FieldKind.Int64)
-        {
-            ulong raw = value.ValueKind == JsonValueKind.String && value.GetString() is { } text ? converter.Read(text) : 0;
-            switch (field.Kind)
-            {
-                case FieldKind.UInt32: *(uint*)at = (uint)raw; break;
-                case FieldKind.Int32: *(int*)at = (int)raw; break;
-                case FieldKind.Int64: *(long*)at = (long)raw; break;
-                default: *(ulong*)at = raw; break;
-            }
-
-            return;
-        }
-
         switch (field.Kind)
         {
             case FieldKind.Bool: *at = (byte)(value.ValueKind == JsonValueKind.True ? 1 : 0); break;
@@ -475,7 +528,10 @@ public sealed unsafe partial class World
             case FieldKind.UInt16: *(ushort*)at = value.GetUInt16(); break;
             case FieldKind.Int32: *(int*)at = value.GetInt32(); break;
             case FieldKind.UInt32: *(uint*)at = value.GetUInt32(); break;
-            case FieldKind.AssetRef: *(uint*)at = value.GetUInt32(); break;
+            case FieldKind.AssetRef:
+                // null, or any other JSON than a string, is no reference. A path alone is one too, which is how scenes before UIDs hold a model.
+                *(uint*)at = value.ValueKind == JsonValueKind.String ? HandleOf(info, field, value.GetString()!) : 0;
+                break;
             case FieldKind.Int64: *(long*)at = value.ValueKind == JsonValueKind.String ? long.Parse(value.GetString()!, CultureInfo.InvariantCulture) : value.GetInt64(); break;
             case FieldKind.UInt64: *(ulong*)at = value.ValueKind == JsonValueKind.String ? ulong.Parse(value.GetString()!, CultureInfo.InvariantCulture) : value.GetUInt64(); break;
             case FieldKind.Float32: *(float*)at = (float)ReadDouble(value); break;

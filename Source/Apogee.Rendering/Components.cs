@@ -13,7 +13,7 @@ namespace Apogee.Rendering;
 public struct ModelRenderer
 {
     /// <summary>The model's id in the <see cref="ModelLibrary"/>; an inspector shows its path instead.</summary>
-    [Property(Category = "Model")]
+    [Property(Category = "Model", Asset = "model")]
     public uint Model;
 }
 

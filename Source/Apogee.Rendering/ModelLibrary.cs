@@ -80,17 +80,21 @@ public sealed partial class ModelLibrary : EngineObject, IDisposable
         _renderer = null;
     }
 
-    /// <summary>The id of the model at <paramref name="path"/>, which is the same for every call with that path. The file has to exist; whether it is a model shows when it is first drawn.</summary>
+    /// <summary>
+    /// The id of the model at <paramref name="path"/>, which is the same for every call with that path. <paramref name="path"/> may also be the <c>uid://…</c> of a model, which is the file that has it.
+    /// The file has to exist (or, in a game that shipped only its imported artifacts, be an imported one); whether it is a model shows when it is first drawn.
+    /// </summary>
     [Method]
     public uint Load(string path)
     {
+        path = _content.ResolveAssetPath(path);
         string canonical = VfsPath.Normalize(path);
         if (_byPath.TryGetValue(canonical, out uint id))
         {
             return id;
         }
 
-        if (!_files.FileExists(canonical))
+        if (!_files.FileExists(canonical) && _content.ArtifactPathFor(canonical) is null)
         {
             throw new System.IO.FileNotFoundException($"There is no model file at {path}.");
         }
