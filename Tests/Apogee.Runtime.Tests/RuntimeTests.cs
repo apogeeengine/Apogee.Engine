@@ -781,8 +781,13 @@ public class CommandTests
         bool windows = OperatingSystem.IsWindows();
         string folder = System.IO.Path.Combine(scratch.Root, "runtime");
         Directory.CreateDirectory(folder);
-        byte[] host = File.ReadAllBytes(Environment.ProcessPath!);
-        File.WriteAllBytes(System.IO.Path.Combine(folder, windows ? "Apogee.Runtime.exe" : "Apogee.Runtime"), [.. host, .. Apogee.Export.PackKeySlot.Template.ToArray()]);
+
+        // Elsewhere the program is the .NET host with the slot appended. A Windows export rewrites the program's resources, which needs a layout it can read (an appended slot would be an overlay), so there
+        // the program is a small executable that has the slot in its code.
+        byte[] program = windows
+            ? Apogee.Export.Tests.TinyPe.Typical(Apogee.Export.PackKeySlot.Template.ToArray()).Build()
+            : [.. File.ReadAllBytes(Environment.ProcessPath!), .. Apogee.Export.PackKeySlot.Template.ToArray()];
+        File.WriteAllBytes(System.IO.Path.Combine(folder, windows ? "Apogee.Runtime.exe" : "Apogee.Runtime"), program);
         File.WriteAllText(System.IO.Path.Combine(folder, windows ? "flecs.dll" : "libflecs.so"), "a native library");
         return folder;
     }

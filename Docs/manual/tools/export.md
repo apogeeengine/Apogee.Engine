@@ -21,7 +21,7 @@ Apogee.Runtime --export <game folder> <out folder> --target <rid> [--cooked] [--
 | `--target <rid>` | the platform: `linux-x64`, `win-x64`, `osx-arm64` or `osx-x64` (the platforms the engine has complete native libraries for). Anything else is an error that lists these. |
 | `--cooked` | pack the [imported](../content/import.md) artifacts and the [cooked](../content/packs.md#making-one) documents instead of the sources they replace (the game is imported first, in a copy). |
 | `--runtime <dir>` | the folder the runtime for the target was published to. Default: the folder of the running program when it is the NativeAOT runtime, else the `Bin/publish/runtime` above the program or the current folder. |
-| `--console` | Windows only: keep the console window (the Windows export otherwise has none). The Windows packaging is still to come, see below. |
+| `--console` | Windows only: keep the console subsystem, so that the game opens a console window (to read its log). Without it the program is a windowed one, see [Windows](#windows). |
 
 Exit codes: 0 fine, 1 bad arguments (an unknown target, a bad `APOGEE_PACK_KEY`), 2 the export failed (the message says why). Warnings are printed to stderr, for example that no key is set.
 
@@ -79,8 +79,36 @@ because Steam appends `+connect_lobby <id>` when a player accepts an invitation.
 ## Platform steps
 
 The last step of an export depends on the operating system (`IPlatformPackaging`): the executable's icon and version information on Windows, the `.app` bundle on macOS, the icon file and desktop
-entry on Linux. The Linux step is described below; the Windows and macOS steps are not written yet: those exports are complete and run, but have no icon of their own, and the Windows program is still a
-console program. Code signing (Authenticode, Developer ID and notarization) is outside the export: sign the result.
+entry on Linux. The Windows and Linux steps are described below; the macOS step is not written yet: that export is complete and runs, but has no icon of its own. Code signing (Authenticode,
+Developer ID and notarization) is outside the export: sign the result.
+
+### Windows
+
+The export copies the runtime built for `win-x64`, renames it `<executable>.exe`, and then changes the file in place with the export's own PE writer (`Source/Apogee.Export/Windows`). It reads and
+writes the executable's headers and resource section itself, with no Windows API, `rc.exe` or `rcedit`, so a Windows export can be made on Linux or macOS from a runtime published on Windows
+(`--runtime`). Three things change:
+
+- **The icon.** The game's `Icon` (a square PNG, 256x256 or more advised) is written as an icon group with seven images: 16, 24, 32, 48, 64 and 128 pixels as 32-bit images with an alpha channel
+  (what every Windows version reads), and 256 pixels as a PNG (Windows Vista and later), each scaled from your image with a box filter. Explorer picks the size it needs; the window and the task bar take
+  the first group, which is number 1. A smaller image is scaled up for the sizes above it and the export warns. A game without an icon keeps the runtime's.
+- **The version information** (the Details tab of the file's properties, the name task managers show) is made from `game.xml`: `CompanyName` is the organization, `FileDescription` the description (the
+  name when there is none), `FileVersion` and `ProductVersion` the version as `major.minor.patch.0`, `InternalName` the executable's name, `OriginalFilename` the executable's file name,
+  `LegalCopyright` the copyright, `ProductName` the name; language English (United States), code page Unicode. Each part of the version must be at most 65535. Any version or icon resource the runtime
+  had is replaced; its other resources (the application manifest above all) are kept as they are.
+- **The subsystem.** The runtime is a console program; a game started by a double-click would open a console window beside its own. The export makes it a windowed program (`IMAGE_SUBSYSTEM_WINDOWS_GUI`).
+  A windowed program has no standard output: run the game from a terminal and nothing is printed. `--console` keeps the console subsystem for when you want to read the log.
+
+How the file is changed: the resource section is rewritten where it is when it is the last section of the file; otherwise (linkers put the relocations last) a new `.rsrc` section is added after the
+last one, and the old one is renamed `.rsrc0` and left in the file as unused data. No existing section moves, so the code, the pack key and everything that points into the program stay where they
+are, and the key is written before this step so that the checksum in the header, which is written last, covers the final file. Adding a section header needs 40 free bytes between the section table and
+the first section's data; a linker leaves hundreds, but an executable made some other way may not, and the export then stops with an error saying so. The export refuses an executable that has other data after
+its sections (an installer, an attached archive), and one that is damaged: the message says what is wrong.
+
+- **Signing.** A signed runtime loses its signature (the changes invalidate it), and the export warns. Signing the game (Authenticode, `signtool sign`) is outside the export: sign `<executable>.exe`, and
+  the DLLs if you like, after the export. An unsigned program from the internet is held by Windows SmartScreen until enough people have run it, or until it is signed with a certificate that has a reputation;
+  a game on Steam is not affected by that.
+- **Not tested on Windows by the project's tests.** The unit tests read the exported file back with `System.Reflection.PortableExecutable` and their own parsers, on any host; on Windows one test also asks
+  `FileVersionInfo` for the version information. Whether Explorer shows the icon and the Details tab, and that a double-click opens no console, is checked by hand on a Windows computer.
 
 ### Linux
 
@@ -147,5 +175,5 @@ game's icon (`Rgba(size)`, `Png(size)`: a box filter down, with a warning for an
 ## Tests
 
 `Tests/Apogee.Export.Tests`: the targets, reading the platform from an executable header, what is left out of a runtime folder, the key slot (written into the only slot, read back, no slot or two is an
-error, the key is not in the file in the clear), the icon sizes, the Linux step (the executable bit, `icon.png` and the manifest's icon, the escaping of the desktop entry), and exports for all four targets from any host with a synthesized runtime folder (layout, renamed executable, what is packed, the game
+error, the key is not in the file in the clear), the icon sizes, the PE writer (the resource tree, the section that is rewritten or added, header room, signatures and overlays, the subsystem, the checksum, files that are damaged or hostile, a real compiler-made assembly), the Windows step (the version information and the icon images read back, the key kept), the Linux step (the executable bit, `icon.png` and the manifest's icon, the escaping of the desktop entry), and exports for all four targets from any host with a synthesized runtime folder (layout, renamed executable, what is packed, the game
 folder untouched, encrypted packs, the output folder rules). `Tests/Apogee.Runtime.Tests` runs an exported game from its folder, headless, on its encrypted pack.

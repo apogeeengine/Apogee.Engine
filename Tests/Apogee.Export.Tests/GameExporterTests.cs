@@ -201,6 +201,33 @@ public class GameExporterTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("not encrypted", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AWindowsExportHasTheIconTheVersionAndTheKey(bool console)
+    {
+        var windows = new ExportTarget("win", "x64");
+        using var setup = new Setup(windows);
+        PackKey key = PackKey.Parse(Hex);
+
+        ExportResult result = GameExporter.Export(setup.Options(windows, key: key) with { Console = console });
+
+        byte[] exe = File.ReadAllBytes(result.Executable);
+        using var reader = new System.Reflection.PortableExecutable.PEReader(new MemoryStream(exe));
+        Assert.Equal(console ? System.Reflection.PortableExecutable.Subsystem.WindowsCui : System.Reflection.PortableExecutable.Subsystem.WindowsGui, reader.PEHeaders.PEHeader!.Subsystem);
+        List<TestResource> resources = TestResources.Read(exe);
+        Assert.Equal(7, resources.Count(r => r.Type == "#3"));
+        Assert.Single(resources, r => r.Type == "#14");
+        Assert.Contains("Fixture Game", Encoding.Unicode.GetString(resources.Single(r => r.Type == "#16").Data), StringComparison.Ordinal);
+        Assert.Contains(resources, r => r.Type == "#24"); // the runtime's manifest
+
+        // The key is in the file once, and decodes.
+        PackKey? embedded = PackKeySlot.Decode(exe.AsSpan(FakeRuntime.SlotOffset(exe), 68));
+        Assert.Equal(key.Bytes.ToArray(), embedded!.Bytes.ToArray());
+        Assert.Equal(-1, exe.AsSpan(FakeRuntime.SlotOffset(exe) + 1).IndexOf(PackKeySlot.Template[..16]));
+        Assert.Null(GameManifest.Load(result.GameRoot, out _)!.Icon); // the icon is in the executable
+    }
+
     [Fact]
     public void WithoutAKeyThePacksArePlainAndTheSlotIsEmptyWithAWarning()
     {

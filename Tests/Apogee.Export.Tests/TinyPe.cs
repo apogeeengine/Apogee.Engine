@@ -23,6 +23,9 @@ internal sealed class TinyPe
     /// <summary>PE32+ (64-bit) when true, PE32 otherwise.</summary>
     public bool Pe32Plus { get; init; } = true;
 
+    /// <summary>The processor: 0x8664 x64, 0xAA64 arm64.</summary>
+    public ushort Machine { get; init; } = 0x8664;
+
     /// <summary>3 is a console program, 2 a windowed one.</summary>
     public ushort Subsystem { get; init; } = 3;
 
@@ -110,7 +113,7 @@ internal sealed class TinyPe
 
         // COFF header: Machine, NumberOfSections, ... SizeOfOptionalHeader at +16, Characteristics at +18.
         Span<byte> coff = file.AsSpan(PeOffset + 4, 20);
-        BinaryPrimitives.WriteUInt16LittleEndian(coff, 0x8664);
+        BinaryPrimitives.WriteUInt16LittleEndian(coff, Machine);
         BinaryPrimitives.WriteUInt16LittleEndian(coff[2..], (ushort)placed.Count);
         BinaryPrimitives.WriteUInt16LittleEndian(coff[16..], (ushort)optionalSize);
         BinaryPrimitives.WriteUInt16LittleEndian(coff[18..], 0x0022);
@@ -165,7 +168,7 @@ internal sealed class TinyPe
     }
 
     /// <summary>A typical runtime: code with some data (and so a slot for the pack key), a manifest in the resources, and <c>.reloc</c> last, like a linker's output.</summary>
-    public static TinyPe Typical(byte[] textData, ushort subsystem = 3, byte[]? certificate = null) => new TinyPe { Subsystem = subsystem, Certificate = certificate, MinHeaderSize = 0x400 }
+    public static TinyPe Typical(byte[] textData, ushort subsystem = 3, byte[]? certificate = null, ushort machine = 0x8664) => new TinyPe { Machine = machine, Subsystem = subsystem, Certificate = certificate, MinHeaderSize = 0x400 }
         .Section(".text", textData, TextFlags)
         .Section(".rdata", new byte[300], DataFlags)
         .Resources([(24, 1, 0x0409, "<assembly>a manifest</assembly>"u8.ToArray())])

@@ -68,6 +68,12 @@ internal static class FakeRuntime
     public static byte[] Executable(ExportTarget target)
     {
         byte[] noise = SHA512.HashData("noise"u8);
+        if (target.Os == "win")
+        {
+            // A Windows export rewrites the executable's resources, so it must be a real PE file: the code is noise around the slot, with a manifest and relocations, and a console subsystem like the runtime's.
+            return TinyPe.Typical([.. noise, .. PackKeySlot.Template.ToArray(), .. noise], machine: (ushort)(target.Arch == "arm64" ? 0xAA64 : 0x8664)).Build();
+        }
+
         return [.. Header(target), .. noise, .. PackKeySlot.Template.ToArray(), .. noise];
     }
 
