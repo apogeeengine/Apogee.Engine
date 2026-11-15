@@ -76,7 +76,11 @@ A key goes by the modifiers held with it; a modifier key alone does not count (t
 show the player: the binding as their keyboard names it (`Z` on AZERTY for a `W` binding, `&` for a key that types it), its gamepad button (`Pad A`) when a gamepad was used last, or `–` when unbound;
 `InputActionRouter.label_binding(text)` does the same for any text (`Hold Ctrl+Left mouse`).
 
-The player's bindings are saved as what differs from the defaults, as text (`map:save_text()`), one line per action, which a game keeps in its user settings and applies at startup with `map:load_text(text)`:
+**The bindings are saved for you.** A game's `input.map` is kept in `user://settings.xml` (see [Settings](settings.md#input-bindings)): every `set_bindings`, `reset` and `reset_all` marks it to be saved, and the next
+run starts with the player's bindings. The saved bindings of an action that does not exist yet (a mod's, loaded later) wait until `add_action` creates it, and `save_text` and `save` include them, so nothing is
+lost while a mod is off. `InputActionMap.BindingsChanged` is the C# event behind it.
+
+A game that keeps bindings somewhere else, or a map that is not the game's own, uses the text form: what differs from the defaults, as text (`map:save_text()`), one line per action, applied with `map:load_text(text)`:
 
 ```text
 lights = Hold L | Joy RB

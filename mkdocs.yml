@@ -73,6 +73,7 @@ nav:
       - Platform:
           - Platform: manual/platform/platform.md
           - Input actions: manual/platform/input.md
+          - Settings: manual/platform/settings.md
       - Graphics:
           - Graphics: manual/graphics/graphics.md
           - Rendering: manual/graphics/rendering.md

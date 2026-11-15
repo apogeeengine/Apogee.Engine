@@ -32,6 +32,9 @@ system and a line in the log). `Update(dt)` is called once a frame **after** the
 
 `audio.volume` is the master volume (the listener's gain, which is also the volume of the `master` bus).
 
+The player's volumes are [settings](../platform/settings.md#the-engines-settings): the setting `audio.volume` sets the master volume at the start and whenever it changes, and a game that defines a number setting
+`audio.bus.music` (`settings:define("audio.bus.music", { type = "number", default = 1, min = 0, max = 1 })`) gets the volume of the bus `music` kept in the player's file and applied from the start.
+
 **Files.** Sounds are read through the game's virtual file system: `res://`, `mod://<id>/`, packs and zips, so a mod brings its sounds and a pack can hold them. **Only virtual paths are read**: a path with no
 `scheme://` is an error, so a script cannot ask for a file by its place on the disk. (A mod can still read any `res://`, `mod://` or `user://` file: the audio classes do not know which mod called them, like the UI and model classes.) The format is told from the file's first bytes, not its name. A file that is missing or is not audio we read is an error with the reason.
 OpenAL's current context is process-wide: **one audio system per process**.
