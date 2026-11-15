@@ -7,6 +7,11 @@ namespace Apogee.Content.FileSystem;
 /// <summary>
 /// A folder of the real file system. Paths are joined to the folder after they were checked to hold only plain names, and the result is checked to be inside it. A link
 /// inside the folder that points out of it is followed, as the operating system does: do not mount a folder whose contents you do not trust to be links-free.
+/// <para>
+/// A write is durable and whole: the bytes go to a hidden file of a unique name beside the target, are flushed to the disk, and the file is then renamed over the target, so a crash or a full
+/// disk leaves the old file, and not an empty one. A file that is a <em>symbolic link</em> is written through: the new bytes go to the file the link leads to, and the link stays a link. A file
+/// that has several <em>hard links</em> is replaced by a new file: the other names keep the old bytes (the operating system does not say which names a file has, so this cannot be seen from here).
+/// </para>
 /// </summary>
 public sealed class DirectorySource : IFileSource
 {
@@ -67,13 +72,78 @@ public sealed class DirectorySource : IFileSource
     public void WriteAllBytes(string path, ReadOnlySpan<byte> bytes)
     {
         RequireWritable();
-        string full = Full(path);
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        string full = LinkTarget(Full(path));
+        string directory = Path.GetDirectoryName(full)!;
+        Directory.CreateDirectory(directory);
 
-        // Written beside the file and moved over it, so that a crash or a full disk leaves the old file whole.
-        string temporary = full + ".tmp";
-        File.WriteAllBytes(temporary, bytes);
-        File.Move(temporary, full, overwrite: true);
+        // Written beside the file, to disk, and moved over it, so that a crash or a full disk leaves the old file whole. The name is hidden and unique: it cannot be a file of the user's (the
+        // old "<name>.tmp" could), and a leftover from a crash is not mistaken for an asset.
+        string name = Path.GetFileName(full);
+        string temporary = Path.Combine(directory, $".{(name.Length > 100 ? name[..100] : name)}.{Guid.NewGuid():N}.tmp");
+        bool moved = false;
+        try
+        {
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(bytes);
+                stream.Flush(flushToDisk: true);
+            }
+
+            KeepPermissions(full, temporary);
+            File.Move(temporary, full, overwrite: true);
+            moved = true;
+        }
+        finally
+        {
+            if (!moved)
+            {
+                DeleteQuietly(temporary);
+            }
+        }
+    }
+
+    // A file that is a symbolic link is written where the link leads (a dangling link too: the file it names is made), so that the link stays a link.
+    private static string LinkTarget(string full)
+    {
+        try
+        {
+            var info = new FileInfo(full);
+            return info.LinkTarget is null ? full : info.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? full;
+        }
+        catch (IOException)
+        {
+            return full; // a loop of links, or one that cannot be read: the write then replaces the link itself
+        }
+    }
+
+    // A file replaced by a rename gets the mode of the one it replaces (an executable stays executable) where the system has modes.
+    private static void KeepPermissions(string existing, string replacement)
+    {
+        if (OperatingSystem.IsWindows() || !File.Exists(existing))
+        {
+            return;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(replacement, File.GetUnixFileMode(existing));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // The new file keeps the default mode: not worth failing the write for.
+        }
+    }
+
+    private static void DeleteQuietly(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A temporary file that cannot be removed is a leftover, and the error that matters is the one being thrown.
+        }
     }
 
     public void Delete(string path)

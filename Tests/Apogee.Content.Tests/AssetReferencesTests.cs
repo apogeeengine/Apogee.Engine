@@ -342,6 +342,25 @@ public class AssetReferencesTests
         Assert.Equal(2, report.Changes.Count + report.Skipped.Count); // the reference in the pack was found too, and its UID still finds the asset
     }
 
+    [Fact]
+    public void ASceneThatIsASymbolicLinkIsRewrittenThroughTheLink()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating a symbolic link needs a privilege on Windows.");
+        using var project = new Project();
+        using var outside = new TempFolder();
+        project.Write("models/car.dat", "car");
+        string real = outside.Write("shared.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        Directory.CreateDirectory(Path.Combine(project.Root, "scenes"));
+        string link = Path.Combine(project.Root, "scenes", "linked.ascene");
+        File.CreateSymbolicLink(link, real);
+
+        RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat");
+
+        Assert.Equal(["res://scenes/linked.ascene"], report.Documents);
+        Assert.NotNull(new FileInfo(link).LinkTarget); // the link is still there...
+        Assert.Contains("res://models/truck.dat", File.ReadAllText(real), StringComparison.Ordinal); // ...and the file it leads to was rewritten
+    }
+
     // ---- Files that cannot be trusted ---------------------------------------------------------------------------------------------------
 
     [Fact]

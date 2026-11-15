@@ -256,6 +256,80 @@ public class DirectorySourceTests
     }
 }
 
+public class DirectorySourceWriteTests
+{
+    [Fact]
+    public void AWriteNeverTouchesAFileOfTheUsersThatLooksLikeItsTemporaryFile()
+    {
+        using var folder = new TempFolder();
+        folder.Write("scene.ascene", "old");
+        folder.Write("scene.ascene.tmp", "mine");
+        folder.Write(".scene.ascene.tmp", "also mine");
+        var source = new DirectorySource(folder.Root, writable: true);
+
+        source.WriteAllBytes("scene.ascene", "new"u8);
+
+        Assert.Equal("new", File.ReadAllText(Path.Combine(folder.Root, "scene.ascene")));
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(folder.Root, "scene.ascene.tmp")));
+        Assert.Equal("also mine", File.ReadAllText(Path.Combine(folder.Root, ".scene.ascene.tmp")));
+        Assert.Equal(3, Directory.GetFiles(folder.Root).Length); // no temporary file is left
+    }
+
+    [Fact]
+    public void AFailedWriteLeavesTheOldFileAndNoTemporaryFile()
+    {
+        using var folder = new TempFolder();
+        folder.Write("a.txt", "old");
+        Directory.CreateDirectory(Path.Combine(folder.Root, "dir"));
+        var source = new DirectorySource(folder.Root, writable: true);
+
+        // "dir" is a folder: the rename cannot replace it, after the temporary file was written.
+        Assert.ThrowsAny<Exception>(() => source.WriteAllBytes("dir", "x"u8));
+
+        Assert.Equal("old", File.ReadAllText(Path.Combine(folder.Root, "a.txt")));
+        Assert.Empty(Directory.GetFiles(folder.Root, ".*", SearchOption.AllDirectories));
+        Assert.Equal(["a.txt"], Directory.GetFiles(folder.Root).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void AFileThatIsASymbolicLinkIsWrittenThroughAndStaysALink()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating a symbolic link needs a privilege on Windows.");
+        using var folder = new TempFolder();
+        using var outside = new TempFolder();
+        string real = outside.Write("real.txt", "old");
+        string link = Path.Combine(folder.Root, "link.txt");
+        File.CreateSymbolicLink(link, real);
+        var source = new DirectorySource(folder.Root, writable: true);
+
+        source.WriteAllBytes("link.txt", "new"u8);
+
+        Assert.NotNull(new FileInfo(link).LinkTarget); // still a link
+        Assert.Equal("new", File.ReadAllText(real)); // the file it leads to has the new bytes
+        Assert.Equal("new", Encoding.UTF8.GetString(source.ReadAllBytes("link.txt")));
+        Assert.Empty(Directory.GetFiles(outside.Root, ".*"));
+    }
+
+    [Fact]
+    public void AReplacedFileKeepsItsPermissions()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Windows has no Unix file modes.");
+            return;
+        }
+
+        using var folder = new TempFolder();
+        string path = folder.Write("run.sh", "old");
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var source = new DirectorySource(folder.Root, writable: true);
+
+        source.WriteAllBytes("run.sh", "new"u8);
+
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(path));
+    }
+}
+
 public class ZipSourceTests
 {
     private static ZipSource MakeZip(params (string Name, string Content)[] entries)
