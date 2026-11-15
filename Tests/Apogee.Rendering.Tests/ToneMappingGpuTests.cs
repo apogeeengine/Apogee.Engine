@@ -80,7 +80,8 @@ public class ToneMappingGpuTests(GpuFixture gpu) : GpuTest(gpu)
         using GpuImage hdr = Device.CreateImage(new ImageDescription(PixelFormat.R16G16B16A16Sfloat, Width, Height, ImageUsage.Sampled), "tone mapping input");
         Device.UploadImage(hdr, texels, [new ImageRegion(0, 0, 0, Width, Height)], ImageState.ShaderRead);
         using GpuImage target = Device.CreateImage(new ImageDescription(PixelFormat.R8G8B8A8Unorm, Width, Height, ImageUsage.ColorAttachment), "tone mapping output");
-        using GpuSampler sampler = Device.CreateSampler(SamplerDescription.LinearClamp, "tone mapping sampler");
+        // Nearest, as the renderer's tone mapping pass: the image is read 1:1, and a linear filter would multiply the infinite last column by a zero weight at its neighbour (NaN on some GPUs).
+        using GpuSampler sampler = Device.CreateSampler(SamplerDescription.NearestClamp, "tone mapping sampler");
         uint hdrIndex = Device.Bindless.AddSampledImage(hdr);
         uint samplerIndex = Device.Bindless.AddSampler(sampler);
 

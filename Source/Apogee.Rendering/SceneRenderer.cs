@@ -329,7 +329,9 @@ public sealed unsafe class SceneRenderer : IDisposable
             return new DebugPipelines(Make("lineVs", "Debug lines", true), Make("lineVs", "Debug lines (hidden)", false), Make("triangleVs", "Debug triangles", true));
         });
 
-        _clampSampler = device.CreateSampler(SamplerDescription.LinearClamp, "HDR sampler");
+        // The tone mapping pass reads the HDR image 1:1 (it has the output's size, each pixel samples its own texel's centre), so the nearest texel is exactly what linear filtering would give,
+        // except that a linear filter also multiplies the neighbours by a weight of zero: an infinite pixel would make that 0 * Inf = NaN on a GPU that does not skip zero weights, and blacken the pixel beside it.
+        _clampSampler = device.CreateSampler(SamplerDescription.NearestClamp, "HDR sampler");
         _clampSamplerIndex = device.Bindless.AddSampler(_clampSampler);
     }
 
