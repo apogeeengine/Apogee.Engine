@@ -95,40 +95,64 @@ RewriteReport report = AssetReferences.Rewrite(assets, "res://models/car.glb", "
 
 - **Documents:** every authored file (`AuthoredAssets.Extensions`: scenes) in the roots of the database, and every `.xml` file under the `defFolders` you name (definitions). Sidecars (`.import.xml`) hold settings,
   not references, and are not searched; they move with their asset.
-- **References:** an attribute whose whole text is an [`AssetRef`](#the-values). Text inside elements is not looked at.
+- **References:** an attribute whose whole text is an [`AssetRef`](#the-values). Text inside elements is not rewritten (it is reported, see below).
 - **What counts as the asset:** an attribute whose path is the asset's path, or whose UID is the asset's UID and whose path does not lead to some *other* existing file. The second condition is the rule
-  of `Resolve` (the path wins while its file is there): a reference that carries the UID of a file and the path of its copy means the copy, and renaming the original must not touch it. The two
-  addresses of a package file, `res://packages/id/x` and `mod://id/x`, are the same path, and a rewritten reference keeps the form it was written in.
+  of `Resolve` (the path wins while its file is there): a reference that carries the UID of a file and the path of its copy means the copy, and renaming the original must not touch it. When a UID is on two
+  files (a copy that was not imported yet), the engine resolves it to the one `PathOf` names; renaming the *other* file does not take a stale-path reference with that UID, only the references that spell its own path.
+- **Package files:** the two addresses of a package file, `res://packages/id/x` and `mod://id/x`, are the same path, and a rewritten reference keeps the form it was written in. A `mod://id/x` is searched
+  and rewritten as both `res://packages/id/x` and `res://dev_mods/id/x` (the mount does not say which folder backs it): if the same id exists in both folders, their references are treated alike.
 - **Scripts:** with `includeScripts` (always, in `Rewrite` and `Move`) the `.luau` files that spell the old path (or, in `Find`, the UID) are listed with an empty `Attribute`. They are **reported and never rewritten**: a
-  string in code may be built, compared or logged. A `uid://` in a script follows the file and is not reported by `Rewrite`.
+  string in code may be built, compared or logged. A `uid://` in a script follows the file and is not reported by `Rewrite`. The search is linear in the size of the script, and at most 10,000 mentions are listed per script.
+- **Paths that are not attribute references:** `RewriteReport.Unrewritable` lists, and `Move` adds a warning for each, the places that name the old path and are **not rewritten**: `<EntryScene path>` and `<Icon path>`
+  in `game.xml`, `<Script path>` in a package's `mod.xml` (relative paths there; the site's value is the full path), and the text inside an element of a document (`<Model>res://models/car.glb</Model>`; `Attribute` is
+  empty). Edit them by hand; they break if the file moves. A path in a `.rml` or `.rcss` file is not looked at.
 
 ### What is written
 
 `Rewrite` changes the path part of each matching reference and nothing else. It edits the **text** of the file, so comments, indentation, quote style, line endings, a byte order mark and the order of
-every other attribute stay exactly as they were (a scene is under version control, and a diff of a rename should show the renamed paths). The UID is never changed; a UID alone has nothing to rewrite and
-is listed in `Unchanged`, as is a reference that already says the new path. It may be called before the file moves or after (the UID is read from whichever path has the file).
+every other attribute stay exactly as they were (a scene is under version control, and a diff of a rename should show the renamed paths). Everything from the `|` on stays character for character: a UID written
+in capitals is still in capitals. The UID is never changed; a UID alone has nothing to rewrite and
+is listed in `Unchanged`, as is a reference that already says the new path. It may be called before the file moves or after (the UID is read from whichever path has the file). A scene that is a **symbolic
+link** is written through: the file it leads to is rewritten and the link stays. A file with several **hard links** is replaced by a new file, and the other names keep the old text.
 
 Each edit is checked twice: before it, the attributes found in the text must be the attributes of the parsed document, in the same order with the same names, and a value to change must decode to what the
 parse says; after it, the new text is parsed again and must be the old document with only the chosen values changed (same elements, text and attributes). A file that fails a check is skipped.
 
+Every file is written the same way (`DirectorySource`): the new bytes go to a hidden file beside it with a unique name, are flushed to the disk, and are then renamed over the file, so a crash or a full disk leaves
+the old file whole and never an empty one. The file keeps its permissions.
+
 ### All or nothing
 
-1. Every new text is made and checked in memory first. Nothing is written if the request is wrong (the same path, a missing file, both paths existing, a target that exists).
-2. Files that cannot be used are **skipped with a reason** in `RewriteReport.Skipped`, never half-written: unreadable, larger than `AssetReferences.MaxDocumentBytes` (64 MB), not valid UTF-8 (the text is
-   written back, so a replaced byte would be damage), not well-formed XML or with a document type, a cooked document (rewritten from its edited source instead), and anything in a read-only root such as a pack or
-   a mod (its references are found, and not rewritten; their UIDs still find the asset). Check `Skipped` before you tell the user the rename is complete.
-3. Before the first write every file is read again and must be what the plan was made from: a scene the editor saved in between stops the rename, with nothing written. Then the files are written one by one (each
-   write puts the whole new file in place), and if one write fails the ones already written get their old bytes back; a file that cannot be put back is named in the error.
-4. `dryRun: true` runs all of it except the writes and returns the same report with `Applied` false: use it for a confirmation dialog.
+1. Every new text is made and checked in memory first. Nothing is written if the request is wrong: the same path, a missing file, both paths existing, a folder as either path, and for `Move` a target inside the source or inside
+   a file, `game.xml` and `mod.xml`, and a package's own `imported/`. A rename that only changes the case of a name on a file system that ignores case is refused with that explanation (paths are compared with their case: do it in two steps).
+2. Files that cannot be used are **skipped with a reason** in `RewriteReport.Skipped`, never half-written: unreadable, larger than `AssetReferences.MaxDocumentBytes` (64 MB), naming the asset more than
+   `AssetReferences.MaxReferencesPerDocument` (100,000) times, over the memory a rewrite may take (`MaxPlannedBytes`, 256 MB for the old and the new text of all the documents), not valid UTF-8 (the text is
+   written back, so a replaced byte would be damage; a file that cannot be read as UTF-8 and does not name the asset is no concern), not well-formed XML or with a document type, a cooked document (rewritten from its edited
+   source instead), and anything in a read-only root such as a pack or a mod (its references are found, and not rewritten; their UIDs still find the asset).
+3. **A skipped document that could have been written refuses the rename.** Its references to the asset would break silently, so `Rewrite` and `Move` throw a `ContentException` before any write or move (a
+   `dryRun` does not throw: its `Skipped` list is what to show the user, with `SkippedDocument.Blocking` true for these). Pass `allowSkipped: true` to go on after the user agreed. Documents in read-only roots never
+   block: nothing could have rewritten them.
+4. Before the first write every file is read again and must be what the plan was made from: a scene the editor saved in between stops the rename, with nothing written. Then the files are written one by one,
+   each checked again just before its own write (the editor can save while the earlier ones are being written). If a check fails or a write fails, **whatever the exception**, the ones already written get their old
+   bytes back, but only a file that still holds what was written: one saved since is left as the person saved it and named in the error (`saved since, left as it is`), never overwritten with older text. A file that
+   cannot be put back is named in the error.
+5. `dryRun: true` runs all of it except the writes and returns the same report with `Applied` false: use it for a confirmation dialog.
+6. Everything that can go wrong before the first write (a folder that cannot be listed or that is deleted during the scan, a file that cannot be opened, a source of your own that throws) comes out of `Find`,
+   `Rewrite` and `Move` as a `ContentException` that says nothing was changed; only a null argument is an `ArgumentNullException`. Listing the project is bounded (64 folders deep, 100,000 folders), so a link that
+   leads back to a folder above it ends in an error, not in a tree without end.
 
 ### Move
 
 `AssetDatabase.Move(from, to)` is for a file in the game folder (`res://`; a pack or a mod is read-only). It refuses a folder (move the files in it, one call each), an `.import.xml` (it follows its asset), the
-`imported/` cache and hidden folders, and a target that exists. Then, in this order: the references are rewritten, the file and its `.import.xml` move (so the UID goes with it), the imported artifact moves
-to the name the importer would give it, and `imported/index.xml` and `imported/assets.xml` say the new path. If a file cannot move, the files already moved and the documents are put back. The import data is
+`imported/` cache (also a package's own) and hidden folders, `game.xml` and `mod.xml`, and a target that exists. Then, in this order: the references are rewritten, the file and its `.import.xml` move (so the UID goes with it), the imported artifact moves
+to the name the importer would give it, and `imported/index.xml` and `imported/assets.xml` say the new path. If a file cannot move, the files already moved (the last first) and then the documents are put back. If a
+moved file cannot be put back, the undoing stops there with the asset at its new path, where the documents (left as they are) name it: a document never names a file that did not move. The import data is
 a cache: if it cannot be updated that is a warning, and the next import repairs it. The artifact stays valid, because the import key does not depend on the path: nothing imports again (call
 `AssetImporter.Reimport` if you want to be sure). `MoveReport.Warnings` also says when another asset reads the moved one by path (a glTF's image), or the moved asset reads others by relative path and
-changed folder: those imports can fail until their files are updated.
+changed folder: those imports can fail until their files are updated; and one line for each place in `RewriteReport.Unrewritable`.
+
+**Running the same `Move` again finishes an interrupted one.** If the process died, or an error left things half done, after the documents were rewritten (the references then already say the new path and are listed
+as `Unchanged`) or after the asset moved but before its `.import.xml` and import data did, call `Move(from, to)` with the same arguments: it moves what is left and brings the import data up to date.
 
 ## From Luau
 
@@ -155,7 +179,9 @@ A game cooked with `--pack --cooked` has the artifacts of its imported assets an
 still resolves.
 
 `Tests/Apogee.Content.Tests/AssetReferencesTests.cs` covers finding and rewriting references (by path and by a stale path's UID, comments, quotes, CRLF and a byte order mark kept, similar paths left alone, packages, read-only
-roots, hostile and cooked files, a failed write put back, a file saved in between, previews) and `Move` (sidecar, artifact and lists, a model used by two scenes that still resolves through its UID, refusals, a failed move put back).
+roots, hostile and cooked files, a writable document that was skipped, a failed write put back for any exception, a file saved since or in between, a file that cannot be put back, symbolic links, reading that goes
+wrong, a script with 500,000 mentions, a UID on two files, a UID in capitals, `game.xml`, `mod.xml` and element text, previews) and `Move` (sidecar, artifact and lists, a model used by two scenes that still resolves through its UID,
+refusals, a failed move put back, a move that cannot be undone and the same call finishing it, an interrupted one finished). `Tests/Apogee.Content.Tests/FileSystemTests.cs` covers the durable write and the limits of a listing.
 
 `Tests/Apogee.Ecs.Tests/SceneAssetTests.cs` covers asset fields in scenes (saved as path and UID, loaded from either, a moved asset found through its UID, an unregistered type), `GamePackerTests` the path-only reference in a cooked pack,
 `Tests/Apogee.Rendering.Tests/ModelLibraryPathTests.cs` `uid://` in `ModelLibrary.Load`, and `RuntimeTests.AModelLoadsByUidAndASavedSceneFindsAModelThatWasMoved` the `assets` global and a scene saved by a script that loads after the model moved.

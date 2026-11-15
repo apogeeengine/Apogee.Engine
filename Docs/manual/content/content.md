@@ -34,7 +34,7 @@ Rules that keep a path meaning the same everywhere (and a script inside its moun
 `.` or `..`, no empty segment, no `\ : * ? " < > |` or control characters, nothing that ends in a dot or a space, and no Windows device name (`nul`, `con.txt`). A path
 that breaks a rule is a `VfsException` (an `IOException`) when it is read or written, and simply not there for `Exists` and its kin. Paths are **case-sensitive**,
 even on a file system that is not (a texture asked for as `Ground.PNG` would load on Windows and fail on Linux): write them as they are on disk, in lowercase by convention.
-Only a writable source takes a write, a missing file is a `FileNotFoundException`, and writes go through a temporary file so that a crash leaves the old one. Zip entries whose
+Only a writable source takes a write, a missing file is a `FileNotFoundException`, and a write goes to a hidden temporary file of a unique name, is flushed to the disk and is renamed over the target, so that a crash or a full disk leaves the old file whole (a symbolic link is written through and stays a link; a file with several hard links is replaced by a new file). `EnumerateFiles` takes `maxDepth` and `maxDirectories` for a folder that may hold links leading back to a folder above them. Zip entries whose
 names break the rules are skipped (with a warning), so no entry can name a place outside the zip. A `DirectorySource` follows links inside its folder as the OS does: do not
 mount a folder that you do not trust to be free of links.
 
