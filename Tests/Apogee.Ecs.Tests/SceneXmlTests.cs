@@ -221,17 +221,6 @@ public sealed class SceneXmlTests : IDisposable
     }
 
     [Fact]
-    public void JsonTextIsAnErrorThatSaysTheFormatIsNotReadAnyMore()
-    {
-        const string json = "{ \"entities\": [] }";
-
-        FormatException e = Assert.Throws<FormatException>(() => _world.LoadScene(json));
-        Assert.Contains("JSON", e.Message, StringComparison.Ordinal);
-        Assert.Throws<FormatException>(() => _world.LoadScene("\uFEFF  \n" + json));   // a BOM and blank lines before it make no difference
-        Assert.Empty(_world.Roots());
-    }
-
-    [Fact]
     public void ABomOrAnXmlDeclarationBeforeTheSceneIsFine()
     {
         List<Entity> loaded = _world.LoadScene("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- a comment -->\n<Scene version=\"1\"><Entity id=\"1\" name=\"a\"/></Scene>");

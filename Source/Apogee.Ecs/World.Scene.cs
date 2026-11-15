@@ -11,7 +11,7 @@ using Apogee.Reflection;
 namespace Apogee.Ecs;
 
 // Scenes: the user entities of a world as XML text (a `.ascene` file), read and written through the engine's XmlNode and field by field from the registry's descriptions, so no reflection is
-// involved and it works in a NativeAOT program. The format is ours, not Flecs': Flecs' own JSON would carry the entities of the types and systems the engine registers.
+// involved and it works in a NativeAOT program. The format is ours, not Flecs' own serialization, which would carry the entities of the types and systems the engine registers.
 //
 //   <?xml version="1.0" encoding="utf-8"?>
 //   <Scene version="1">
@@ -252,19 +252,12 @@ public sealed unsafe partial class World
 
     /// <summary>
     /// Creates the entities of scene text, under <paramref name="parent"/> when given, and returns them in the order of the file (parents first). A component the file names that this world cannot
-    /// find, and a field it does not have, are logged and skipped; components that scripts defined are defined again from the file. Throws <see cref="FormatException"/> when the text is not a scene
-    /// (including JSON text from before scenes were XML).
+    /// find, and a field it does not have, are logged and skipped; components that scripts defined are defined again from the file. Throws <see cref="FormatException"/> when the text is not a scene.
     /// </summary>
     [Method]
     public List<Entity> LoadScene(string text, Entity parent = default)
     {
         ArgumentNullException.ThrowIfNull(text);
-
-        // A BOM or blank lines may come before the first character; a scene written before the format was XML starts with a brace.
-        if (text.AsSpan().TrimStart("\uFEFF \t\r\n").StartsWith("{", StringComparison.Ordinal))
-        {
-            throw new FormatException("the scene is JSON text; scenes are XML now and the JSON format is no longer read");
-        }
 
         XmlNode root;
         try

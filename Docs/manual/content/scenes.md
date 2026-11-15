@@ -69,7 +69,7 @@ the scene's is skipped with a warning and the existing one is used.
 
 Loading is forgiving, so that a scene outlives the code around it. A component or an attribute the world does not have is logged (with the line) and skipped; an attribute whose text is not a
 value of its field is logged and the field stays zero; a name that is taken under the same parent gets a free one (`crate 2`). What is an error (a `FormatException`) is a document that is not a scene:
-XML that is not well-formed, a root other than `<Scene>`, a `version` newer than the engine's, and text from before scenes were XML, which was JSON (it starts with a brace) and says so.
+XML that is not well-formed, a root other than `<Scene>`, and a `version` newer than the engine's.
 
 ## The schema
 
@@ -119,7 +119,3 @@ Merged into the scene above, `crate` keeps its rotation and scale and its `Ticke
 `patch`, `remove` and `append` are the attributes the merge reserves, so a field cannot be called any of them if its component is meant to be patched.
 
 The merged tree loads with `world.LoadScene(node)`.
-
-## JSON scenes
-
-Scenes were JSON in an earlier version of the engine. They are not read any more: loading JSON text is a `FormatException`. Write the scene again as XML (the format above), or load it in the version of the engine that wrote it and save it again.

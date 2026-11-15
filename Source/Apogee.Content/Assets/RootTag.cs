@@ -61,7 +61,7 @@ internal static partial class RootTag
     [GeneratedRegex(@"\G\s*/?>", RegexOptions.CultureInvariant, RegexTimeoutMilliseconds)]
     private static partial Regex TagEndAt();
 
-    /// <summary>Finds the root start tag of <paramref name="text"/>; false when the text does not start with a well-shaped one (not XML, JSON, a damaged tag).</summary>
+    /// <summary>Finds the root start tag of <paramref name="text"/>; false when the text does not start with a well-shaped one (not XML, a damaged tag).</summary>
     public static bool TryFind(string text, [NotNullWhen(true)] out Tag? tag)
     {
         tag = null;
