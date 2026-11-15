@@ -214,6 +214,51 @@ public sealed class VirtualFileSystem
         mount.Source.CreateDirectory(relative);
     }
 
+    /// <summary>Whether a write to <paramref name="path"/> would be accepted: the path is valid and the mount that holds it takes writes. Nothing is written.</summary>
+    public bool CanWrite(string path)
+    {
+        try
+        {
+            _ = Writable(path);
+            return true;
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or VfsException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Moves the file at <paramref name="from"/> to <paramref name="to"/>, which must have no file or folder yet; the folders above it are made. Inside one source (a game folder) it is a rename; between
+    /// two sources it is a copy and then a delete. Both paths have to be writable.
+    /// </summary>
+    /// <exception cref="FileNotFoundException">There is no file at <paramref name="from"/>.</exception>
+    /// <exception cref="IOException">Something is already at <paramref name="to"/>.</exception>
+    /// <exception cref="UnauthorizedAccessException">One of the paths is not in a writable source.</exception>
+    public void Move(string from, string to)
+    {
+        (Mount source, string sourceRelative) = Writable(from);
+        (Mount target, string targetRelative) = Writable(to);
+        if (!FileExists(from))
+        {
+            throw new FileNotFoundException($"There is no file '{VfsPath.Parse(from)}'.", from);
+        }
+
+        if (Exists(to))
+        {
+            throw new IOException($"'{VfsPath.Parse(to)}' already exists.");
+        }
+
+        if (ReferenceEquals(source, target))
+        {
+            source.Source.Move(sourceRelative, targetRelative);
+            return;
+        }
+
+        target.Source.WriteAllBytes(targetRelative, ReadAllBytes(from));
+        source.Source.Delete(sourceRelative);
+    }
+
     // ---- Lookup ---------------------------------------------------------------------------------------------------------------------
 
     /// <summary>The source with the file, and the file's path in it.</summary>

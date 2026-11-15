@@ -187,6 +187,50 @@ public class DirectorySourceTests
     }
 
     [Fact]
+    public void MovingAFileRenamesItAndRefusesToReplaceAnything()
+    {
+        using var folder = new TempFolder();
+        using var readOnly = new TempFolder();
+        folder.Write("a/one.txt", "one");
+        folder.Write("two.txt", "two");
+        readOnly.Write("fixed.txt", "fixed");
+        var files = new VirtualFileSystem();
+        files.Mount("res://", new DirectorySource(folder.Root, writable: true));
+        files.Mount("mod://ro", new DirectorySource(readOnly.Root));
+
+        Assert.True(files.CanWrite("res://anything/new.txt"));
+        Assert.False(files.CanWrite("mod://ro/fixed.txt"));
+        Assert.False(files.CanWrite("not a path"));
+
+        files.Move("res://a/one.txt", "res://deeper/still/uno.txt"); // the folders above the target are made
+        Assert.Equal("one", files.ReadAllText("res://deeper/still/uno.txt"));
+        Assert.False(files.Exists("res://a/one.txt"));
+
+        Assert.Throws<IOException>(() => files.Move("res://two.txt", "res://deeper/still/uno.txt")); // not over a file
+        Assert.Equal("one", files.ReadAllText("res://deeper/still/uno.txt"));
+        Assert.Throws<FileNotFoundException>(() => files.Move("res://nothing.txt", "res://x.txt"));
+        Assert.Throws<UnauthorizedAccessException>(() => files.Move("mod://ro/fixed.txt", "res://fixed.txt"));
+        Assert.Throws<UnauthorizedAccessException>(() => files.Move("res://two.txt", "mod://ro/two.txt"));
+        Assert.True(files.FileExists("mod://ro/fixed.txt"));
+    }
+
+    [Fact]
+    public void MovingBetweenTwoSourcesCopiesAndDeletes()
+    {
+        using var first = new TempFolder();
+        using var second = new TempFolder();
+        first.Write("a.txt", "a");
+        var files = new VirtualFileSystem();
+        files.Mount("res://", new DirectorySource(first.Root, writable: true));
+        files.Mount("user://", new DirectorySource(second.Root, writable: true));
+
+        files.Move("res://a.txt", "user://moved/a.txt");
+
+        Assert.Equal("a", files.ReadAllText("user://moved/a.txt"));
+        Assert.False(files.Exists("res://a.txt"));
+    }
+
+    [Fact]
     public void WritingIsOnlyForAWritableSourceAndKeepsNoTemporaryFile()
     {
         using var folder = new TempFolder();

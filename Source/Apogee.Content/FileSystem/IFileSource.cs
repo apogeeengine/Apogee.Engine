@@ -50,6 +50,23 @@ public interface IFileSource
     void Delete(string path) => throw new UnauthorizedAccessException($"{Description} is read-only.");
 
     void CreateDirectory(string path) => throw new UnauthorizedAccessException($"{Description} is read-only.");
+
+    /// <summary>
+    /// Moves a file inside this source to a path that has no file yet, making the folders above it. A source that can move without copying (a folder: one rename) overrides this; the default
+    /// copies and then deletes, which is what a source that only reads and writes whole files can do.
+    /// </summary>
+    /// <exception cref="FileNotFoundException">There is no file at <paramref name="source"/>.</exception>
+    /// <exception cref="IOException">There is already a file at <paramref name="target"/>.</exception>
+    void Move(string source, string target)
+    {
+        if (Kind(target) != FileKind.None)
+        {
+            throw new IOException($"'{target}' already exists.");
+        }
+
+        WriteAllBytes(target, ReadAllBytes(source));
+        Delete(source);
+    }
 }
 
 /// <summary>A path that is not valid, or that leaves its mount.</summary>

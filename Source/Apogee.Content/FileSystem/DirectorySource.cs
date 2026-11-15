@@ -95,6 +95,22 @@ public sealed class DirectorySource : IFileSource
         }
     }
 
+    public void Move(string source, string target)
+    {
+        RequireWritable();
+        string fullSource = Full(source);
+        string fullTarget = Full(target);
+        if (!File.Exists(fullSource))
+        {
+            throw new FileNotFoundException($"There is no file '{source}' in {_root}.", fullSource);
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(fullTarget)!);
+
+        // One rename on the same volume, and it refuses to replace anything: the caller has checked that the target is free, and a file that appeared since is not ours to overwrite.
+        File.Move(fullSource, fullTarget, overwrite: false);
+    }
+
     public void CreateDirectory(string path)
     {
         RequireWritable();
