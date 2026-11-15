@@ -17,8 +17,11 @@ internal static class ReferenceSearch
     /// <summary>The most mentions listed for one script. Rewrite and Move search every script, mods' too: one that spells a path millions of times must not fill the memory.</summary>
     internal const int MaxMentionsPerScript = 10_000;
 
-    /// <summary>A reference found in a document. <see cref="Ordinal"/> is the attribute's place among all the attributes of the document (see <see cref="ReferenceText.Attributes"/>); -1 for a script.</summary>
-    internal readonly record struct Hit(int Ordinal, AssetReferenceSite Site);
+    /// <summary>
+    /// A reference found in a document. <see cref="Ordinal"/> is the attribute's place among all the attributes of the document (see <see cref="ReferenceText.Attributes"/>); -1 for a script.
+    /// <see cref="Raw"/> is the text of the attribute as the file says it, so that a rewrite changes the path and keeps the rest (the spelling of the UID) as it was.
+    /// </summary>
+    internal readonly record struct Hit(int Ordinal, AssetReferenceSite Site, string Raw = "");
 
     /// <summary>
     /// What looking at one file gave: its references, or why it could not be used. <see cref="Bytes"/>, <see cref="Text"/> and <see cref="Tree"/> are what the references were found in (the text and the
@@ -248,7 +251,7 @@ internal static class ReferenceSearch
                     throw new ContentException($"it names the asset more than {AssetReferences.MaxReferencesPerDocument} times");
                 }
 
-                hits.Add(new Hit(ordinal, new AssetReferenceSite(path, element.Line, element.Name, attribute.Name, value)));
+                hits.Add(new Hit(ordinal, new AssetReferenceSite(path, element.Line, element.Name, attribute.Name, value), attribute.Value));
             }
         }
 

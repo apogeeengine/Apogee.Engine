@@ -256,7 +256,7 @@ public static class AssetReferences
                 }
 
                 changes.Add(new ReferenceChange(hit.Site, updated));
-                newValues[hit.Ordinal] = updated.ToString();
+                newValues[hit.Ordinal] = TextOf(updated, hit.Raw);
             }
 
             if (changes.Count == 0)
@@ -301,6 +301,13 @@ public static class AssetReferences
             }
 
             return document.Text is null ? $"cooked: its {count} reference(s) to the asset cannot be rewritten in place; cook it again from the edited source" : null;
+        }
+
+        // The new text of the attribute: the new path, then the old text from the "|" on, character for character (a UID written in capitals stays in capitals).
+        private static string TextOf(AssetRef updated, string raw)
+        {
+            int bar = raw.IndexOf(AssetRef.Separator, StringComparison.Ordinal);
+            return bar < 0 || !updated.HasPath ? updated.ToString() : updated.Path + raw[bar..];
         }
 
         // The reference after the rename: the path part says the new path, spelled the way the reference spelled the old one; the UID stays; a UID alone has nothing to rewrite.

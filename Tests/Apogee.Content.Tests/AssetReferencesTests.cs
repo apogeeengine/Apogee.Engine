@@ -257,6 +257,23 @@ public class AssetReferencesTests
     private static AssetUid ReadUid(string document) => AuthoredAssets.ReadUid(Encoding.UTF8.GetBytes(document));
 
     [Fact]
+    public void OnlyThePathPartOfAReferenceChangesAndTheUidIsKeptCharacterForCharacter()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        AssetUid car = project.Imported("models/car.dat");
+        string upper = car.ToString().ToUpperInvariant(); // "UID://4K2M…": the same UID, written the way another tool wrote it
+        Assert.True(AssetRef.TryParse($"res://models/car.dat|{upper}", out AssetRef parsed) && parsed.Uid == car);
+        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{upper}"), Model($"res://models/car.dat|{car}")));
+
+        AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://x/truck.dat");
+
+        string after = project.Read("scenes/a.ascene");
+        Assert.Contains($"Model=\"res://x/truck.dat|{upper}\"", after, StringComparison.Ordinal);
+        Assert.Contains($"Model=\"res://x/truck.dat|{car}\"", after, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AUidAloneAndAnUpToDateReferenceAreLeftAlone()
     {
         using var project = new Project();
