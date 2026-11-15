@@ -26,6 +26,7 @@ public static class CrashHandler
     private static readonly Dictionary<string, string> s_context = [];
     private static bool s_installed;
     private static bool s_unobservedReported;
+    private static int s_sequence;
     private static string? s_reportDirectory;
     private static RecentLogSink? s_recent;
     private static IDisposable? s_logSink;
@@ -184,7 +185,10 @@ public static class CrashHandler
             DateTimeOffset now = DateTimeOffset.UtcNow;
             string text = CrashReport.Build(kind, exception, lines, context, now);
             Directory.CreateDirectory(directory);
-            string stem = string.Create(CultureInfo.InvariantCulture, $"crash-{now:yyyyMMdd-HHmmss-fff}-{KindName(kind)}");
+            // The sequence number keeps the names of reports made in the same millisecond in the order they were made, and a name is never used twice: with the first free name, the
+            // report made after DeleteOldest removed the oldest one would take the freed name, sort as the oldest of its millisecond and be deleted by the next call.
+            int sequence = (Interlocked.Increment(ref s_sequence) & 0x7FFFFFFF) % 10000;
+            string stem = string.Create(CultureInfo.InvariantCulture, $"crash-{now:yyyyMMdd-HHmmss-fff}-{sequence:0000}-{KindName(kind)}");
             string path = "";
             for (int attempt = 0; attempt < 100; attempt++)
             {

@@ -30,7 +30,7 @@ game (`--pack`, `--import`, ...), reports go to `<local application data>/Apogee
 
 ## Crash reports
 
-A crash report is a plain text file `crash-<yyyyMMdd-HHmmss-fff>-<kind>.txt` in `<user>/crashes`. The newest 20 are kept. It holds:
+A crash report is a plain text file `crash-<yyyyMMdd-HHmmss-fff>-<number>-<kind>.txt` (the number orders reports made in the same millisecond) in `<user>/crashes`. The newest 20 are kept. It holds:
 
 - the kind and the time (UTC);
 - the engine version, the .NET version and whether it is a NativeAOT build;
