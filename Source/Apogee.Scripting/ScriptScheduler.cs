@@ -10,7 +10,7 @@ using LuaType = Apogee.Native.Luau.Type;
 namespace Apogee.Scripting;
 
 /// <summary>
-/// The tasks of one VM: what <c>task.spawn</c>, <c>task.defer</c>, <c>task.delay</c> and <c>task.every</c> start, and what <c>task.wait</c> puts to sleep. A task is a Luau thread the scheduler
+/// The tasks of one VM (and its tweens, which it steps and cancels along with them): what <c>task.spawn</c>, <c>task.defer</c>, <c>task.delay</c> and <c>task.every</c> start, and what <c>task.wait</c> puts to sleep. A task is a Luau thread the scheduler
 /// resumes: at once (spawn), at the next drain (defer), when its time comes (delay, wait, every). There is no clock in here: <see cref="LuauVm.AdvanceTime"/> says how much game time and real time
 /// passed, so a test drives it with a fake clock and the engine drives it with the frame. Every resume is a protected resume under the time budget of the task's owner, and the thread keeps the
 /// memory category of the script that started it. Not thread safe: use it from the thread that made the VM.
@@ -20,10 +20,13 @@ public sealed unsafe class ScriptScheduler
     /// <summary>A task is due when its wake time is at most this far in the future, so that 30 frames of 1/60 s meet a wait of half a second.</summary>
     private const double Epsilon = 1e-9;
 
-    private enum Phase
+    internal enum Phase
     {
         /// <summary>Asleep: in one of the heaps (a wait, a delay, the period of an <c>every</c>).</summary>
         Waiting,
+
+        /// <summary>Asleep until something wakes it by hand (<c>Tween:wait</c>): in no queue.</summary>
+        Parked,
 
         /// <summary>Queued for the next drain.</summary>
         Deferred,
@@ -41,7 +44,7 @@ public sealed unsafe class ScriptScheduler
         Real,
     }
 
-    private sealed class TaskEntry
+    internal sealed class TaskEntry
     {
         public State* Thread;
         public int Reference;
@@ -68,7 +71,13 @@ public sealed unsafe class ScriptScheduler
 
         public Clock WaitClock;
         public double WaitStart;
+
+        /// <summary>What a task that was parked is resumed with instead of the elapsed time: 1 for true, 2 for false, 0 for none.</summary>
+        public int WakeResult;
     }
+
+    /// <summary>A task that put itself to sleep until <see cref="Wake"/>: the entry and the token that was current when it parked, so that a task that was cancelled in between is not woken.</summary>
+    internal readonly record struct ParkedTask(TaskEntry Entry, int Token);
 
     private readonly LuauVm _vm;
     private readonly Dictionary<nint, TaskEntry> _tasks = [];
@@ -79,7 +88,22 @@ public sealed unsafe class ScriptScheduler
     private readonly List<(TaskEntry Entry, int Token)> _due = [];
     private long _sequence;
 
-    internal ScriptScheduler(LuauVm vm) => _vm = vm;
+    private readonly TweenRunner _tweens;
+
+    internal ScriptScheduler(LuauVm vm)
+    {
+        _vm = vm;
+        _tweens = new TweenRunner(vm, this);
+    }
+
+    /// <summary>The tweens of the VM, which are stepped after the tasks of each <see cref="LuauVm.AdvanceTime"/>.</summary>
+    internal TweenRunner Tweens => _tweens;
+
+    /// <summary>The tweens that have not ended: playing, delayed or paused.</summary>
+    public int TweenCount => _tweens.Count;
+
+    /// <summary>The tweens of <paramref name="owner"/> that have not ended.</summary>
+    public int TweenCountOf(ScriptOwner owner) => _tweens.CountOf(owner);
 
     /// <summary>Game seconds since the VM started: what <c>task.time()</c> gives, and the clock of <c>task.wait</c>, <c>task.delay</c> and <c>task.every</c>. It stops while the game's time scale is 0.</summary>
     public double Time { get; private set; }
@@ -108,25 +132,29 @@ public sealed unsafe class ScriptScheduler
     /// <summary>Raised when a task ends with an error, a timeout or a memory error (it is logged too), with its owner and the message. The script that started the task never sees the error.</summary>
     public event Action<ScriptOwner, string>? TaskFailed;
 
-    /// <summary>Stops every task of <paramref name="owner"/>: what a mod that failed to load leaves behind.</summary>
+    /// <summary>Stops every task and tween of <paramref name="owner"/>: what a mod that failed to load leaves behind. A tween stopped this way emits no signal.</summary>
     public void CancelOwner(ScriptOwner owner)
     {
         foreach (TaskEntry entry in _tasks.Values.Where(t => t.Owner == owner).ToArray())
         {
             Cancel(entry);
         }
+
+        _tweens.CancelOwner(owner);
     }
 
-    /// <summary>Stops every task: the VM is going away.</summary>
+    /// <summary>Stops every task and tween: the VM is going away. A tween stopped this way emits no signal.</summary>
     public void CancelAll()
     {
         foreach (TaskEntry entry in _tasks.Values.ToArray())
         {
             Cancel(entry);
         }
+
+        _tweens.CancelAll();
     }
 
-    /// <summary>Stops the tasks started while a module loaded (or by those tasks): the module is being reloaded, or it failed to load.</summary>
+    /// <summary>Stops the tasks and tweens started while a module loaded (or by those tasks): the module is being reloaded, or it failed to load.</summary>
     private void CancelScope(ReloadScope scope)
     {
         _ = _taggedScopes.Remove(scope);
@@ -134,12 +162,29 @@ public sealed unsafe class ScriptScheduler
         {
             Cancel(entry);
         }
+
+        _tweens.CancelScope(scope);
+    }
+
+    /// <summary>
+    /// The module scope that work started now belongs to: the module that is loading, or else the module of the task that is running. The first time a scope is seen it registers the one cleanup that cancels
+    /// what was started in it, so a long-lived scope does not collect one cleanup per task or tween.
+    /// </summary>
+    internal ReloadScope? ScopeForNewWork()
+    {
+        ReloadScope? scope = ScriptScope.Current;
+        if (scope is not null && _taggedScopes.Add(scope))
+        {
+            ScriptScope.OnReload(() => CancelScope(scope));
+        }
+
+        return scope ?? _current?.Scope;
     }
 
     // ---- Time ---------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// Moves both clocks, resumes the tasks that are due and then the deferred ones. Every task that is due is picked before the first one runs, so a task that waits again, even for 0 seconds, is
+    /// Moves both clocks, resumes the tasks that are due, steps the tweens and then resumes the deferred tasks. Every task that is due is picked before the first one runs, so a task that waits again, even for 0 seconds, is
     /// resumed once per call at most. The due ones run in the order of their wake times (game clock first, then the real clock), then in the order they were scheduled.
     /// </summary>
     internal void Advance(double gameSeconds, double realSeconds)
@@ -155,17 +200,27 @@ public sealed unsafe class ScriptScheduler
         _due.Clear();
         PopDue(_gameHeap, Time);
         PopDue(_realHeap, RealTime);
-        for (int i = 0; i < _due.Count; i++) // nothing adds to the list while the tasks run
+        _tweens.TaskPhase = true; // a tween that a task makes now first moves with the next step
+        try
         {
-            (TaskEntry entry, int token) = _due[i];
-            if (entry.Phase == Phase.Waiting && entry.Token == token) // an earlier task of this step may have cancelled it
+            for (int i = 0; i < _due.Count; i++) // nothing adds to the list while the tasks run
             {
-                Run(entry, _vm.Main, ElapsedOf(entry));
+                (TaskEntry entry, int token) = _due[i];
+                if (entry.Phase == Phase.Waiting && entry.Token == token) // an earlier task of this step may have cancelled it
+                {
+                    Run(entry, _vm.Main, ElapsedOf(entry));
+                }
             }
+        }
+        finally
+        {
+            _tweens.TaskPhase = false;
         }
 
         _due.Clear();
 
+        // The tweens go after the due tasks and before the deferred ones, so that a task waiting for a tween that ends now resumes in this very drain.
+        _tweens.Step(gameSeconds, realSeconds);
         Drain();
     }
 
@@ -338,13 +393,7 @@ public sealed unsafe class ScriptScheduler
         }
 
         // The scope of the module that is loading, or the one of the task that starts this one: the module's tasks end when it is reloaded.
-        ReloadScope? scope = ScriptScope.Current;
-        if (scope is not null && _taggedScopes.Add(scope))
-        {
-            ScriptScope.OnReload(() => CancelScope(scope));
-        }
-
-        entry.Scope = scope ?? _current?.Scope;
+        entry.Scope = ScopeForNewWork();
         _tasks[(nint)entry.Thread] = entry;
         return entry;
     }
@@ -399,6 +448,39 @@ public sealed unsafe class ScriptScheduler
 
         Sleep(entry, clock, (clock == Clock.Game ? Time : RealTime) + seconds);
         return Lua.Yield;
+    }
+
+    /// <summary>
+    /// For <c>Tween:wait</c>: the running task goes to sleep until <see cref="Wake"/>. Checks everything first and changes nothing when it throws; the caller then returns <see cref="Lua.Yield"/>.
+    /// </summary>
+    internal ParkedTask Park(State* L, string what)
+    {
+        if (!_tasks.TryGetValue((nint)L, out TaskEntry? entry) || entry.Phase != Phase.Running)
+        {
+            throw new ValueException($"{what} must run in a task: start the function with task.spawn, task.defer or task.delay");
+        }
+
+        if (Lua.Isyieldable(L) == 0)
+        {
+            throw new ValueException($"{what} cannot yield here: it was called from a metamethod or from a call made by the engine, not from the task itself");
+        }
+
+        entry.Phase = Phase.Parked;
+        entry.Token++;
+        return new ParkedTask(entry, entry.Token);
+    }
+
+    /// <summary>Resumes a parked task at the next drain, with <paramref name="result"/> as the value its wait returns. Does nothing when the task ended or was cancelled in the meantime.</summary>
+    internal void Wake(ParkedTask parked, bool result)
+    {
+        TaskEntry entry = parked.Entry;
+        if (entry.Phase != Phase.Parked || entry.Token != parked.Token)
+        {
+            return;
+        }
+
+        entry.WakeResult = result ? 1 : 2;
+        Queue(entry);
     }
 
     /// <summary><c>task.cancel(thread)</c>: a task that is asleep or deferred never runs again. A thread that is not a task (or is over) is not an error.</summary>
@@ -469,7 +551,16 @@ public sealed unsafe class ScriptScheduler
         }
         else if (Stack.Reserve(thread, 2))
         {
-            Lua.Pushnumber(thread, elapsed);
+            if (entry.WakeResult != 0)
+            {
+                Lua.Pushboolean(thread, entry.WakeResult == 1 ? 1 : 0);
+                entry.WakeResult = 0;
+            }
+            else
+            {
+                Lua.Pushnumber(thread, elapsed);
+            }
+
             arguments = 1;
         }
         else

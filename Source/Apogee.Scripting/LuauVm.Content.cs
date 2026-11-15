@@ -49,6 +49,7 @@ public sealed unsafe partial class LuauVm
     {
         RegisterFileNatives();
         RegisterTaskNatives();
+        RegisterTweenNatives();
 
         ScriptNatives.RegisterLibrary("xml", "decode", &XmlDecodeBody, "(text: string) -> XmlElement",
             "Reads XML text into an element: its name, attrs (by name), order (the attribute names as written), children, text and line. Raises an error with the line when the text is not well-formed.");

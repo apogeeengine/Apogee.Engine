@@ -152,3 +152,36 @@ public static partial class ZooLibrary
     [Method]
     public static int Groom(Traits? traits) => traits is { } given ? (int)given : -1;
 }
+
+/// <summary>An object with one property of each kind a tween can animate, and some it cannot.</summary>
+[ApogeeClass]
+public partial class Mover : EngineObject
+{
+    private int _limited;
+
+    [Property]
+    public float Speed { get; set; }
+
+    [Property]
+    public int Count { get; set; }
+
+    [Property]
+    public Vector3 Tint { get; set; }
+
+    [Property]
+    public Quaternion Turn { get; set; } = Quaternion.Identity;
+
+    [Property]
+    public string Label { get; set; } = "";
+
+    [Property]
+    public float Locked { get; } = 1;
+
+    /// <summary>A property whose setter refuses values above 5.</summary>
+    [Property]
+    public int Limited
+    {
+        get => _limited;
+        set => _limited = value > 5 ? throw new ValueException("too big") : value;
+    }
+}

@@ -4,12 +4,12 @@ namespace Apogee.Scripting;
 
 public sealed unsafe partial class LuauVm
 {
-    /// <summary>The tasks scripts started with the <c>task</c> library: sleeping, deferred and running.</summary>
+    /// <summary>The tasks scripts started with the <c>task</c> library (sleeping, deferred and running) and the tweens of the <c>tween</c> library.</summary>
     public ScriptScheduler Scheduler { get; }
 
     /// <summary>
-    /// Moves the game clock by <paramref name="gameSeconds"/> and the real clock by <paramref name="realSeconds"/> (the game's time scale makes them differ), resumes the tasks that are due, and
-    /// then runs the deferred ones. There is no clock inside the VM: this is how time passes for scripts, so a test calls it with a fake one.
+    /// Moves the game clock by <paramref name="gameSeconds"/> and the real clock by <paramref name="realSeconds"/> (the game's time scale makes them differ), resumes the tasks that are due, steps the tweens, and
+    /// then runs the deferred tasks (which includes the ones whose <c>Tween:wait</c> just ended). There is no clock inside the VM: this is how time passes for scripts, so a test calls it with a fake one.
     /// </summary>
     public void AdvanceTime(double gameSeconds, double realSeconds)
     {

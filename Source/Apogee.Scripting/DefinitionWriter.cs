@@ -60,6 +60,7 @@ public static class DefinitionWriter
         Line(text, "type FieldType = \"bool\" | \"i8\" | \"u8\" | \"i16\" | \"u16\" | \"i32\" | \"u32\" | \"i64\" | \"u64\" | \"f32\" | \"f64\" | \"vec3\" | \"dvec3\" | \"quat\" | \"entity\"");
         Line(text, "type Phase = \"on_load\" | \"post_load\" | \"pre_update\" | \"on_update\" | \"on_validate\" | \"post_update\" | \"pre_store\" | \"on_store\"");
         Line(text, "type Term = number | { any }");
+        Line(text, "type TweenOptions = { ease: Ease?, delay: number?, repeats: number?, reverses: boolean?, unscaled: boolean? }");
         Line(text, "type ComponentView = { [string]: any }");
         Line(text, "type XmlElement = { name: string, attrs: { [string]: string }, order: { string }, children: { XmlElement }, text: string, line: number }");
         Line(text, "type PackageInfo = { id: string, name: string, version: string, author: string, description: string, kind: string, loads: boolean, reason: string?, ran: boolean, error: string? }");

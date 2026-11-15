@@ -6,6 +6,7 @@
     <ProjectReference Include="../Apogee.Reflection/Apogee.Reflection.csproj" />
     <ProjectReference Include="../Apogee.Ecs/Apogee.Ecs.csproj" />
     <ProjectReference Include="../Apogee.Native.Luau/Apogee.Native.Luau.csproj" />
+    <ProjectReference Include="../Apogee.Reflection.Generator/Apogee.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
   </ItemGroup>
   <ItemGroup>
     <!-- The engine's Luau modules: required as @engine/<name>. -->

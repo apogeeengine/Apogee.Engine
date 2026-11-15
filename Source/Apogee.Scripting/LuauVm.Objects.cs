@@ -118,7 +118,11 @@ public sealed unsafe partial class LuauVm
     /// The engine's own classes (<c>World</c>) register from a module initializer, which CoreCLR runs when the assembly is first used and
     /// NativeAOT at startup. Anything that reads the registry (a VM, the definitions) makes sure it has happened.
     /// </summary>
-    internal static void EnsureEngineClasses() => RuntimeHelpers.RunModuleConstructor(typeof(Apogee.Ecs.World).Module.ModuleHandle);
+    internal static void EnsureEngineClasses()
+    {
+        RuntimeHelpers.RunModuleConstructor(typeof(Apogee.Ecs.World).Module.ModuleHandle);
+        RuntimeHelpers.RunModuleConstructor(typeof(Tween).Module.ModuleHandle); // this assembly's own classes (Tween)
+    }
 
     private void InstallBridge()
     {
