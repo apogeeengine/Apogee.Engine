@@ -79,8 +79,7 @@ because Steam appends `+connect_lobby <id>` when a player accepts an invitation.
 ## Platform steps
 
 The last step of an export depends on the operating system (`IPlatformPackaging`): the executable's icon and version information on Windows, the `.app` bundle on macOS, the icon file and desktop
-entry on Linux. The Windows and Linux steps are described below; the macOS step is not written yet: that export is complete and runs, but has no icon of its own. Code signing (Authenticode,
-Developer ID and notarization) is outside the export: sign the result.
+entry on Linux. The Windows, Linux and macOS steps are described below. Code signing with a certificate (Authenticode, Developer ID) and notarization are outside the export: sign the result.
 
 ### Windows
 
@@ -170,6 +169,76 @@ game's folder.
 
 The unit tests export from a synthesized runtime folder, so they check the step's files, not that a real export starts on a given distribution.
 
+### macOS
+
+An export for `osx-arm64` or `osx-x64` is an application bundle. The runtime for the target must be a thin (single processor) one, see above.
+
+```text
+Fixture Game.app/                      the bundle, named after the game's name
+  Contents/
+    Info.plist                         generated from game.xml
+    PkgInfo                            APPL????
+    MacOS/
+      FixtureGame                      the program (mode 755), the game's executable name
+      lib*.dylib                       the native libraries, beside it
+      Shaders/imported/                compiled shaders
+    Resources/
+      game.xml, data/game.pack         the game: its root, see "The layout"
+      game.icns                        the icon
+```
+
+- **`Info.plist`** is written as an XML property list (the text of `game.xml` is escaped, so a name with `&` or `<` is fine). It holds `CFBundleName` and `CFBundleDisplayName` (the game's name),
+  `CFBundleIdentifier` (its `identifier`), `CFBundleExecutable`, `CFBundleVersion` and `CFBundleShortVersionString` (its version), `CFBundlePackageType` `APPL`, `CFBundleIconFile` `game.icns` (when the
+  game has an icon), `CFBundleInfoDictionaryVersion` `6.0`, `LSMinimumSystemVersion`, `NSHighResolutionCapable`, `LSApplicationCategoryType` `public.app-category.games` and
+  `NSHumanReadableCopyright` (its copyright, when it has one). `LSMinimumSystemVersion` is the newest minimum system version (`LC_BUILD_VERSION`) among the program and the `.dylib` files beside it, for
+  the target's processor, and never below 11.0, the first macOS for Apple silicon (also what it is when none of them says).
+- **The icon** is made into `game.icns`, with PNG images at 16, 32, 64, 128, 256, 512 and 1024 pixels and the `@2x` images of 16 to 256 (the sizes Finder and the Dock use). A size above the game's icon is left
+  out, not enlarged: macOS then scales the biggest image there is. **1024x1024 is advised**; below that the export warns that the 512 and 1024 pixel images are missing. The window's icon is the application's
+  icon, so the exported `game.xml` names no `Icon`.
+- **The executable bit** is set as on Linux (`rwxr-xr-x`); a Windows computer has no Unix modes, so the export warns that it must be set where the bundle is unpacked, and an archive made on Windows loses
+  it again. Archive a bundle on a Mac with `ditto -c -k --keepParent "Fixture Game.app" Game.zip`.
+
+#### The code signature
+
+An Apple-silicon Mac only runs a program that is signed, and the NativeAOT runtime comes with an *ad-hoc* signature: the linker signs it with no certificate, only hashes. The signature is a table at the end of the
+file (the CodeDirectory) with the hash of every 16 KiB page of the program; the kernel checks a page's hash when it is loaded and kills the program if it does not match (`Killed: 9`). The export
+changes a page of the program, for it writes the [pack key](#the-pack-key) into it, so it has to make the hashes right again. `MachOSignature.Rehash` does that, after the key is written and as the last
+change to the program:
+
+1. It reads the Mach-O header and finds the `LC_CODE_SIGNATURE` load command, which says where the signature is.
+2. It reads the signature's SuperBlob and finds every CodeDirectory in it (a program can have an alternate one with another hash function).
+3. For each, it hashes every page of the program, from the start of the file up to where the signature begins, with that CodeDirectory's own hash function (SHA-1, SHA-256, SHA-256 cut to 20 bytes, or
+   SHA-384) and page size, and writes the hashes over the old ones in place.
+
+Nothing else is touched: not the length of the file, the header, the position of the signature, the identifier, or the other blobs. All of it is checked first: a file that is not a thin 64-bit Mach-O, or whose lengths
+and offsets do not fit it, fails the export and is not written (the program is untrusted input to this code, so every length is checked against the file with 64-bit arithmetic, and nothing is allocated or looped over by what the file
+claims).
+
+What it does **not** do:
+
+- **It does not sign.** A program without a signature (an x86-64 build the linker did not sign) is left as it is, which macOS runs; for an arm64 one the export warns that it will not run until it is signed
+  (`codesign --force --sign - <executable>`, on a Mac).
+- **It does not repair a signature made with a certificate.** Such a signature also signs the CodeDirectory, so changing the CodeDirectory breaks it, and only the private key can make it again. The export stops
+  with that message: publish the runtime unsigned, and sign the bundle after the export.
+- **There is no Developer ID signing and no notarization.** The bundle is not *sealed* either: no signature covers `Info.plist` or the files in `Resources`; only the program (and each library, by the signature it
+  came with) is signed.
+
+#### Gatekeeper, signing and notarization
+
+- **Downloaded builds** (a browser, a message, a mail attachment) get the quarantine attribute, and Gatekeeper refuses to open an application that is not notarized: the player has to open it with Control-click
+  and *Open*, or allow it in System Settings, Privacy & Security, or remove the attribute (`xattr -dr com.apple.quarantine "Fixture Game.app"`). Files that Steam installs are not quarantined, so a game
+  distributed through Steam opens without any of this.
+- **Developer ID signing and notarization** are done after the export, with Apple's tools and your own certificate: `codesign --force --deep --options runtime --sign "Developer ID Application: …"
+  "Fixture Game.app"`, then `xcrun notarytool submit` and `xcrun stapler staple`. A bundle exported by this step is **not ready for that**: the compiled shaders are data files in `Contents/MacOS`, which
+  holds code, and `codesign` wants such files in `Contents/Resources`; the engine looks for them next to the program (`AppContext.BaseDirectory`), so moving them is a change to the engine's shader loading that
+  has not been made. Re-signing the whole bundle also replaces the ad-hoc signature this step repairs, so do it after the export, never before.
+- **Metal.** Whether an exported game draws on a Mac depends on the engine's Metal backend, which is written but not tested yet (see [help wanted](../../contributing/help-wanted.md)), not on the export.
+
+!!! note "Not run on a Mac"
+    The bundle step was written and tested without a Mac. The tests build Mach-O programs and signatures by hand and check the hashes against an independent computation (the SHA-1 and SHA-256 of each
+    page), and they rehash the real signatures of the libraries in `ThirdParty` to see that the result is byte for byte what the linker made; `codesign --verify` and `plutil -lint` have not been run on an
+    export. The macOS job of the continuous integration is where they will be.
+
 ## From code
 
 ```csharp
@@ -194,5 +263,5 @@ game's icon (`Rgba(size)`, `Png(size)`: a box filter down, with a warning for an
 ## Tests
 
 `Tests/Apogee.Export.Tests`: the targets, reading the platform from an executable header, what is left out of a runtime folder, the key slot (written into the only slot, read back, no slot or two is an
-error, the key is not in the file in the clear), the icon sizes, the PE writer (the resource tree, the section that is rewritten or added, header room, signatures and overlays, the subsystem, the checksum, files that are damaged or hostile, the engine's vendored Windows libraries, damaged and hostile files), the Windows step (the version information and the icon images read back, the key kept), the Linux step (the executable bit, `icon.png` and the manifest's icon, the escaping of the desktop entry), and exports for all four targets from any host with a synthesized runtime folder (layout, renamed executable, what is packed, the game
+error, the key is not in the file in the clear), the icon sizes, the PE writer (the resource tree, the section that is rewritten or added, header room, signatures and overlays, the subsystem, the checksum, files that are damaged or hostile, the engine's vendored Windows libraries, damaged and hostile files), the Windows step (the version information and the icon images read back, the key kept), the Linux step (the executable bit, `icon.png` and the manifest's icon, the escaping of the desktop entry), the macOS step (the plist and its escaping, the `icns` structure and sizes, the bundle layout, the minimum system version, and the Mach-O signature: page hashes of every hash type and page size checked against an independent computation, real signatures from `ThirdParty` reproduced, and hostile lengths and offsets, truncation and random damage all ending in an `ExportException`), and exports for all four targets from any host with a synthesized runtime folder (layout, renamed executable, what is packed, the game
 folder untouched, encrypted packs, the output folder rules). `Tests/Apogee.Runtime.Tests` runs an exported game from its folder, headless, on its encrypted pack.
