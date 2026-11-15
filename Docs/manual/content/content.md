@@ -38,6 +38,9 @@ Only a writable source takes a write, a missing file is a `FileNotFoundException
 names break the rules are skipped (with a warning), so no entry can name a place outside the zip. A `DirectorySource` follows links inside its folder as the OS does: do not
 mount a folder that you do not trust to be free of links.
 
+`CanWrite(path)` says whether a write would be accepted, and `Move(from, to)` moves a file to a path that has nothing yet (inside one folder source it is a single rename that
+refuses to replace anything; between two sources it is a copy and a delete). Tools use them to rename an asset (see [renaming and moving assets](assets.md#renaming-and-moving-assets-for-tools)).
+
 `VfsPath` has the helpers: `Parse` (strict), and lenient `Normalize`, `Combine`, `DirectoryOf` for resolving what a file refers to, where `..` climbs but stops at the root of the scheme.
 `TryGetPhysicalPath` gives the real path of a file that a folder holds (to watch it, or for a library that only takes paths).
 

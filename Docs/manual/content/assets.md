@@ -77,6 +77,59 @@ AssetUid uid = assets.UidOf("res://textures/ground.png");
   of the engine uses, and the scan does not count the files twice.
 - `ContentLoader.ResolveAssetPath(text)` is what a loader that takes "a path or a `uid://`" calls first.
 
+## Renaming and moving assets (for tools)
+
+An editor that renames or moves an asset has two jobs: move the file with its identity, and make the documents that name it say the new path. A reference that carries a UID keeps working
+without the second job (the UID finds the file, and the engine logs that the path is out of date), but a path-only reference does not, and out-of-date paths are noise. `AssetDatabase.Move` does both;
+`AssetReferences` has the pieces.
+
+```csharp
+MoveReport preview = assets.Move("res://models/car.glb", "res://vehicles/truck.glb", defFolders: ["res://data"], dryRun: true);
+MoveReport done    = assets.Move("res://models/car.glb", "res://vehicles/truck.glb", defFolders: ["res://data"]);
+
+IReadOnlyList<AssetReferenceSite> uses = AssetReferences.Find(assets, assets.RefOf("res://models/car.glb"), ["res://data"], includeScripts: true);
+RewriteReport report = AssetReferences.Rewrite(assets, "res://models/car.glb", "res://vehicles/truck.glb", ["res://data"], dryRun: true);
+```
+
+### What is searched
+
+- **Documents:** every authored file (`AuthoredAssets.Extensions`: scenes) in the roots of the database, and every `.xml` file under the `defFolders` you name (definitions). Sidecars (`.import.xml`) hold settings,
+  not references, and are not searched; they move with their asset.
+- **References:** an attribute whose whole text is an [`AssetRef`](#the-values). Text inside elements is not looked at.
+- **What counts as the asset:** an attribute whose path is the asset's path, or whose UID is the asset's UID and whose path does not lead to some *other* existing file. The second condition is the rule
+  of `Resolve` (the path wins while its file is there): a reference that carries the UID of a file and the path of its copy means the copy, and renaming the original must not touch it. The two
+  addresses of a package file, `res://packages/id/x` and `mod://id/x`, are the same path, and a rewritten reference keeps the form it was written in.
+- **Scripts:** with `includeScripts` (always, in `Rewrite` and `Move`) the `.luau` files that spell the old path (or, in `Find`, the UID) are listed with an empty `Attribute`. They are **reported and never rewritten**: a
+  string in code may be built, compared or logged. A `uid://` in a script follows the file and is not reported by `Rewrite`.
+
+### What is written
+
+`Rewrite` changes the path part of each matching reference and nothing else. It edits the **text** of the file, so comments, indentation, quote style, line endings, a byte order mark and the order of
+every other attribute stay exactly as they were (a scene is under version control, and a diff of a rename should show the renamed paths). The UID is never changed; a UID alone has nothing to rewrite and
+is listed in `Unchanged`, as is a reference that already says the new path. It may be called before the file moves or after (the UID is read from whichever path has the file).
+
+Each edit is checked twice: before it, the attributes found in the text must be the attributes of the parsed document, in the same order with the same names, and a value to change must decode to what the
+parse says; after it, the new text is parsed again and must be the old document with only the chosen values changed (same elements, text and attributes). A file that fails a check is skipped.
+
+### All or nothing
+
+1. Every new text is made and checked in memory first. Nothing is written if the request is wrong (the same path, a missing file, both paths existing, a target that exists).
+2. Files that cannot be used are **skipped with a reason** in `RewriteReport.Skipped`, never half-written: unreadable, larger than `AssetReferences.MaxDocumentBytes` (64 MB), not valid UTF-8 (the text is
+   written back, so a replaced byte would be damage), not well-formed XML or with a document type, a cooked document (rewritten from its edited source instead), and anything in a read-only root such as a pack or
+   a mod (its references are found, and not rewritten; their UIDs still find the asset). Check `Skipped` before you tell the user the rename is complete.
+3. Before the first write every file is read again and must be what the plan was made from: a scene the editor saved in between stops the rename, with nothing written. Then the files are written one by one (each
+   write puts the whole new file in place), and if one write fails the ones already written get their old bytes back; a file that cannot be put back is named in the error.
+4. `dryRun: true` runs all of it except the writes and returns the same report with `Applied` false: use it for a confirmation dialog.
+
+### Move
+
+`AssetDatabase.Move(from, to)` is for a file in the game folder (`res://`; a pack or a mod is read-only). It refuses a folder (move the files in it, one call each), an `.import.xml` (it follows its asset), the
+`imported/` cache and hidden folders, and a target that exists. Then, in this order: the references are rewritten, the file and its `.import.xml` move (so the UID goes with it), the imported artifact moves
+to the name the importer would give it, and `imported/index.xml` and `imported/assets.xml` say the new path. If a file cannot move, the files already moved and the documents are put back. The import data is
+a cache: if it cannot be updated that is a warning, and the next import repairs it. The artifact stays valid, because the import key does not depend on the path: nothing imports again (call
+`AssetImporter.Reimport` if you want to be sure). `MoveReport.Warnings` also says when another asset reads the moved one by path (a glTF's image), or the moved asset reads others by relative path and
+changed folder: those imports can fail until their files are updated.
+
 ## From Luau
 
 Everything that loads an asset by path takes a `uid://` as well: `models:load("uid://4k2m9x7q1w3ze")` gives the same id as `models:load("res://models/car.glb")` when that UID names that file, and it follows the file
@@ -100,6 +153,9 @@ A game cooked with `--pack --cooked` has the artifacts of its imported assets an
 `Tests/Apogee.Core.Tests/AssetRefTests.cs` covers the text forms. `Tests/Apogee.Content.Tests/AssetUidTests.cs` covers the UID in sidecars (made, kept, edited in place with comments, quotes, CRLF and a byte order mark), the key that ignores it
 (nothing is imported again; a real setting still does), a deleted sidecar, copies and the file that moved with its UID, authored files, `assets.xml`, read-only roots, packages, and an asset that is renamed and
 still resolves.
+
+`Tests/Apogee.Content.Tests/AssetReferencesTests.cs` covers finding and rewriting references (by path and by a stale path's UID, comments, quotes, CRLF and a byte order mark kept, similar paths left alone, packages, read-only
+roots, hostile and cooked files, a failed write put back, a file saved in between, previews) and `Move` (sidecar, artifact and lists, a model used by two scenes that still resolves through its UID, refusals, a failed move put back).
 
 `Tests/Apogee.Ecs.Tests/SceneAssetTests.cs` covers asset fields in scenes (saved as path and UID, loaded from either, a moved asset found through its UID, an unregistered type), `GamePackerTests` the path-only reference in a cooked pack,
 `Tests/Apogee.Rendering.Tests/ModelLibraryPathTests.cs` `uid://` in `ModelLibrary.Load`, and `RuntimeTests.AModelLoadsByUidAndASavedSceneFindsAModelThatWasMoved` the `assets` global and a scene saved by a script that loads after the model moved.

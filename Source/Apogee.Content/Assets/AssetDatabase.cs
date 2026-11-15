@@ -19,7 +19,7 @@ namespace Apogee.Content.Assets;
 /// Results are remembered until <see cref="Refresh"/> (call it after an import, or when files change on disk). Safe to use from several threads.
 /// </para>
 /// </summary>
-public sealed class AssetDatabase(VirtualFileSystem files)
+public sealed partial class AssetDatabase(VirtualFileSystem files)
 {
     /// <summary>The name of the project's list of UIDs, in the <c>imported</c> folder of a root.</summary>
     public const string ListFileName = "assets.xml";
@@ -331,35 +331,26 @@ public sealed class AssetDatabase(VirtualFileSystem files)
         _pathOfUid.Clear(); // the list was only a guess; what is found below replaces it
         var groups = new Dictionary<AssetUid, List<string>>();
         List<string> roots = RootList();
-        foreach (string root in roots)
+        foreach (string file in EnumerateRootFiles())
         {
-            foreach (string file in files.EnumerateFiles(root, "*", recursive: true))
+            string asset = file.EndsWith(ImportSidecar.Suffix, StringComparison.Ordinal) ? file[..^ImportSidecar.Suffix.Length] : AuthoredAssets.IsAuthored(file) ? file : "";
+            if (asset.Length == 0)
             {
-                string relative = file[root.Length..];
-                if (IsCacheOrHidden(relative) || (root == "res://" && IsMountedPackageFile(relative, roots)))
-                {
-                    continue;
-                }
-
-                string asset = file.EndsWith(ImportSidecar.Suffix, StringComparison.Ordinal) ? file[..^ImportSidecar.Suffix.Length] : AuthoredAssets.IsAuthored(file) ? file : "";
-                if (asset.Length == 0)
-                {
-                    continue;
-                }
-
-                AssetUid uid = UidOfCanonical(asset);
-                if (uid.IsNone)
-                {
-                    continue;
-                }
-
-                if (!groups.TryGetValue(uid, out List<string>? group))
-                {
-                    groups[uid] = group = [];
-                }
-
-                group.Add(asset);
+                continue;
             }
+
+            AssetUid uid = UidOfCanonical(asset);
+            if (uid.IsNone)
+            {
+                continue;
+            }
+
+            if (!groups.TryGetValue(uid, out List<string>? group))
+            {
+                groups[uid] = group = [];
+            }
+
+            group.Add(asset);
         }
 
         _duplicates = [];
@@ -379,6 +370,56 @@ public sealed class AssetDatabase(VirtualFileSystem files)
     }
 
     // ---- Paths ------------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>The virtual file system the database reads (for <see cref="AssetReferences"/> and <c>Move</c>, which work on the files of the same roots).</summary>
+    internal VirtualFileSystem Files => files;
+
+    /// <summary>
+    /// Every file of the <see cref="Roots"/>, each once: the files of the import cache (<c>imported/</c>) and of hidden folders are left out, and so is a package's file under <c>res://packages/id/</c>
+    /// when that package is a root of its own (it is listed under <c>mod://id/</c>). This is the set of files the database and the reference search both look at.
+    /// </summary>
+    internal IEnumerable<string> EnumerateRootFiles()
+    {
+        List<string> roots = RootList();
+        foreach (string root in roots)
+        {
+            foreach (string file in files.EnumerateFiles(root, "*", recursive: true))
+            {
+                string relative = file[root.Length..];
+                if (!IsCacheOrHidden(relative) && !(root == "res://" && IsMountedPackageFile(relative, roots)))
+                {
+                    yield return file;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Every way the engine writes the path of a file: the path itself and, for a file of a package, its other address (<c>res://packages/id/x</c> is also <c>mod://id/x</c>, and the other way round;
+    /// <c>mod://id/x</c> could be in either of the two package folders). Paths are canonical.
+    /// </summary>
+    internal static List<string> SpellingsOf(string canonical)
+    {
+        List<string> spellings = [canonical];
+        if (canonical.StartsWith("mod://", StringComparison.Ordinal))
+        {
+            string inside = canonical["mod://".Length..];
+            spellings.AddRange(s_packageFolders.Select(folder => "res://" + folder + inside));
+            return spellings;
+        }
+
+        foreach (string folder in s_packageFolders)
+        {
+            string prefix = "res://" + folder;
+            int slash = canonical.StartsWith(prefix, StringComparison.Ordinal) ? canonical.IndexOf('/', prefix.Length) : -1;
+            if (slash > prefix.Length)
+            {
+                spellings.Add($"mod://{canonical[prefix.Length..slash]}/{canonical[(slash + 1)..]}");
+            }
+        }
+
+        return spellings;
+    }
 
     private List<string> RootList() => [.. Roots.Select(r => r.EndsWith('/') ? r : r + "/").Distinct(StringComparer.Ordinal)];
 
