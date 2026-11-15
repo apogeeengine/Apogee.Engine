@@ -228,7 +228,21 @@ public sealed unsafe partial class LuauVm
 
                 break;
             case ValueKind.Table:
-                if (value.ToTable() is LuauTable table && table.Vm == this)
+                if (value.ToTable() is ScriptRecord record)
+                {
+                    if (depth >= MaxDepth)
+                    {
+                        throw new ValueException("the record is nested too deep");
+                    }
+
+                    Lua.Createtable(L, 0, 8);
+                    foreach (KeyValuePair<string, Value> field in record.Fields)
+                    {
+                        PushValue(L, field.Value, depth + 1);
+                        SetField(L, field.Key);
+                    }
+                }
+                else if (value.ToTable() is LuauTable table && table.Vm == this)
                 {
                     _ = Stack.RawGetI(L, Lua.Registryindex, table.Reference);
                 }

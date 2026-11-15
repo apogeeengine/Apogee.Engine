@@ -92,6 +92,31 @@ public class ValueTests
          System.Runtime.CompilerServices.Unsafe.SizeOf<Value>());
 }
 
+public class ScriptRecordTests
+{
+    [Fact]
+    public void AnEngineMadeTableHasNamedFieldsAndNoNils()
+    {
+        ScriptRecord record = new ScriptRecord()
+            .With("type", Value.String("int"))
+            .With("min", Value.Float(1))
+            .With("choices", Value.ListOf(["a", "b"], Value.String))
+            .With("help", default)
+            .With("gone", Value.Int(1))
+            .With("gone", default);
+
+        Assert.Equal(["choices", "min", "type"], record.Fields.Select(f => f.Key)); // by name, nil fields left out
+        Assert.Equal(ScriptDataKind.Struct, record.KindAt([]));
+        Assert.Equal(ScriptDataKind.Scalar, record.KindAt([DataPathSegment.Field("type")]));
+        Assert.Equal(ScriptDataKind.Array, record.KindAt([DataPathSegment.Field("choices")]));
+        Assert.Equal(ScriptDataKind.Missing, record.KindAt([DataPathSegment.Field("help")]));
+        Assert.Equal("int", record.GetAt([DataPathSegment.Field("type")]).ToStringValue());
+        Assert.Equal(2, record.LengthAt([DataPathSegment.Field("choices")]));
+        Assert.Equal(["choices", "min", "type"], record.KeysAt([]));
+        Assert.False(record.SetAt([DataPathSegment.Field("type")], Value.String("x"))); // read-only
+    }
+}
+
 public sealed class Probe : EngineObject
 {
     public override ClassInfo Class { get; } = new("Probe", null, typeof(Probe), [], [], []);

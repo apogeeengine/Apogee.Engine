@@ -36,7 +36,7 @@ internal static class TypeMapper
             return inner;
         }
 
-        string display = type.ToDisplayString();
+        string display = type.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString(); // ScriptTable? is a ScriptTable
         string qualified = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).TrimEnd('?');
 
         TypeModel Make(Shape shape) => new() { Shape = shape, CsType = qualified, Nullable = nullable, IsValueType = type.IsValueType };
