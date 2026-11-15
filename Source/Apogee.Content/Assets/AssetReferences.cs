@@ -156,10 +156,25 @@ public static class AssetReferences
             throw new ContentException($"'{from}' is already the path: there is nothing to rename.");
         }
 
+        if (files.DirectoryExists(to))
+        {
+            throw new ContentException($"'{to}' is a folder: an asset cannot be renamed to it. Name the file.");
+        }
+
+        if (files.DirectoryExists(from))
+        {
+            throw new ContentException($"'{from}' is a folder: rename the files in it, one at a time.");
+        }
+
         bool oldExists = files.FileExists(from);
         bool newExists = files.FileExists(to);
         if (oldExists && newExists)
         {
+            if (!IsListed(files, from) || !IsListed(files, to))
+            {
+                throw new ContentException($"'{from}' and '{to}' differ only in case and are the same file on this file system. Rename it in two steps, through a name that differs by more than case.");
+            }
+
             throw new ContentException($"Both '{from}' and '{to}' exist: renaming would make two assets one.");
         }
 
@@ -169,6 +184,13 @@ public static class AssetReferences
         }
 
         return (from, to);
+    }
+
+    // Paths are compared with their case in the virtual file system, and a file system that ignores case finds a file under a spelling it is not listed with.
+    private static bool IsListed(VirtualFileSystem files, string path)
+    {
+        string name = VfsPath.FileName(path);
+        return files.EnumerateFiles(VfsPath.DirectoryOf(path)).Any(f => VfsPath.FileName(f) == name);
     }
 
     /// <summary>Stops a rename before anything is written when a document that could have been rewritten was skipped (see <see cref="SkippedDocument.Blocking"/>), unless the caller allowed it.</summary>

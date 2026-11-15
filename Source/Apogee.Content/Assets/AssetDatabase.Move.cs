@@ -82,6 +82,26 @@ public sealed partial class AssetDatabase
 
     // ---- The request ------------------------------------------------------------------------------------------------------------------
 
+    // A package's own import cache, res://packages/id/imported/ (or dev_mods): the cache of a package that is imported as a folder of its own.
+    private static bool InPackageCache(string relative)
+    {
+        foreach (string folder in s_packageFolders)
+        {
+            if (relative.StartsWith(folder, StringComparison.Ordinal))
+            {
+                int slash = relative.IndexOf('/', folder.Length);
+                if (slash > 0 && relative.AsSpan(slash + 1).StartsWith(Import.AssetImporter.CacheFolder + "/", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsManifestPath(string path) => path == GameRoot + "game.xml" || VfsPath.FileName(path) == "mod.xml";
+
     // The UID of the asset being moved: from the file where it is (at the old path, or at the new one when it has moved), or from the .import.xml an interrupted move left behind.
     private AssetUid UidForMove(string source, string target)
     {
@@ -113,9 +133,24 @@ public sealed partial class AssetDatabase
             throw new ContentException($"An {ImportSidecar.Suffix} follows its asset and cannot be moved on its own: move the asset.");
         }
 
-        if (IsCacheOrHidden(source[GameRoot.Length..]) || IsCacheOrHidden(target[GameRoot.Length..]))
+        if (IsCacheOrHidden(source[GameRoot.Length..]) || IsCacheOrHidden(target[GameRoot.Length..]) || InPackageCache(source[GameRoot.Length..]) || InPackageCache(target[GameRoot.Length..]))
         {
-            throw new ContentException($"'{source}' to '{target}': assets are not kept in the import cache ({Import.AssetImporter.CacheFolder}/) or in hidden folders.");
+            throw new ContentException($"'{source}' to '{target}': assets are not kept in the import cache ({Import.AssetImporter.CacheFolder}/, also a package's own) or in hidden folders.");
+        }
+
+        if (IsManifestPath(source) || IsManifestPath(target))
+        {
+            throw new ContentException($"'{source}' to '{target}': game.xml and mod.xml are read from where they are, not found by their path. They are not assets and are not moved here.");
+        }
+
+        for (string? above = VfsPath.ParentOf(target); above is not null; above = VfsPath.ParentOf(above))
+        {
+            if (above == source || files.FileExists(above))
+            {
+                throw new ContentException(above == source
+                    ? $"'{target}' is inside '{source}', which is a file: nothing was moved."
+                    : $"'{above}' is a file, so '{target}' cannot be made inside it: nothing was moved.");
+            }
         }
 
         if (!files.FileExists(source))

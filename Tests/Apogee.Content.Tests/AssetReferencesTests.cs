@@ -1116,6 +1116,121 @@ public class AssetReferencesTests
     }
 
     [Fact]
+    public void MoveRefusesATargetInsideItsSourceOrInsideAFileBeforeAnythingIsWritten()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        project.Write("models/bike.dat", "bike");
+        string scene = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
+        project.Write("scenes/a.ascene", scene);
+
+        var inside = Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://models/car.dat/sub/car.dat"));
+        var file = Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://models/bike.dat/car.dat"));
+
+        Assert.Contains("inside", inside.Message, StringComparison.Ordinal);
+        Assert.Contains("is a file", file.Message, StringComparison.Ordinal);
+        Assert.Equal(scene, project.Read("scenes/a.ascene")); // the documents were not written and put back: they were never touched
+        Assert.True(project.Has("models/car.dat"));
+    }
+
+    [Theory]
+    [InlineData("game.xml", "res://game.xml", "res://elsewhere/game.xml")]
+    [InlineData("packages/core/mod.xml", "res://packages/core/mod.xml", "res://packages/core/x/mod.xml")]
+    [InlineData("data/a.dat", "res://data/a.dat", "res://game.xml")]
+    [InlineData("data/a.dat", "res://data/a.dat", "res://data/mod.xml")]
+    [InlineData("packages/core/imported/index.xml", "res://packages/core/imported/index.xml", "res://x/index.xml")]
+    [InlineData("data/a.dat", "res://data/a.dat", "res://packages/core/imported/a.dat")]
+    [InlineData("data/a.dat", "res://data/a.dat", "res://dev_mods/core/imported/a.dat")]
+    public void MoveRefusesTheManifestsAndAPackagesOwnCache(string file, string from, string to)
+    {
+        using var project = new Project();
+        project.Write(file, "x");
+
+        Assert.Throws<ContentException>(() => project.Assets.Move(from, to));
+
+        Assert.True(project.Has(file));
+    }
+
+    [Fact]
+    public void RewriteRefusesAFolderAsTheNewPathAndAsTheOldOne()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        project.Write("models/sub/x.dat", "x");
+
+        var target = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/sub"));
+        var source = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(project.Assets, "res://models/sub", "res://models/other"));
+
+        Assert.Contains("folder", target.Message, StringComparison.Ordinal);
+        Assert.Contains("folder", source.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A folder that finds a file under any case, the way the file system of Windows and (by default) macOS does; the listings keep the case the file was made with.</summary>
+    private sealed class CaseInsensitiveSource(DirectorySource inner) : IFileSource
+    {
+        public string Description => inner.Description;
+
+        public bool CanWrite => true;
+
+        private string Real(string path)
+        {
+            string real = "";
+            foreach (string segment in path.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var entries = new List<(string Name, FileKind Kind)>();
+                inner.List(real, entries);
+                string found = entries.Find(e => string.Equals(e.Name, segment, StringComparison.OrdinalIgnoreCase)).Name ?? segment;
+                real = real.Length == 0 ? found : real + "/" + found;
+            }
+
+            return real;
+        }
+
+        public FileKind Kind(string path) => inner.Kind(Real(path));
+
+        public byte[] ReadAllBytes(string path) => inner.ReadAllBytes(Real(path));
+
+        public Stream OpenRead(string path) => inner.OpenRead(Real(path));
+
+        public void List(string directory, List<(string Name, FileKind Kind)> into) => inner.List(Real(directory), into);
+
+        public void WriteAllBytes(string path, ReadOnlySpan<byte> bytes) => inner.WriteAllBytes(Real(path), bytes);
+
+        public void Delete(string path) => inner.Delete(Real(path));
+
+        public void CreateDirectory(string path) => inner.CreateDirectory(Real(path));
+
+        public void Move(string source, string target) => inner.Move(Real(source), target);
+    }
+
+    [Fact]
+    public void ARenameThatOnlyChangesTheCaseOnAFileSystemThatIgnoresCaseSaysSo()
+    {
+        using var folder = new TempFolder();
+        folder.Write("models/Car.dat", "car");
+        var files = new VirtualFileSystem();
+        files.Mount("res://", new CaseInsensitiveSource(new DirectorySource(folder.Root, writable: true)));
+        var assets = new AssetDatabase(files);
+        Assert.True(files.FileExists("res://models/car.dat")); // the same file under another case
+
+        var rewrite = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(assets, "res://models/Car.dat", "res://models/car.dat"));
+        var move = Assert.Throws<ContentException>(() => assets.Move("res://models/Car.dat", "res://models/car.dat"));
+
+        Assert.Contains("only in case", rewrite.Message, StringComparison.Ordinal);
+        Assert.Contains("two steps", move.Message, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(folder.Root, "models", "Car.dat")));
+
+        // Two real files whose names differ in case (a file system that tells them apart) are still "two assets would become one".
+        using var distinct = new Project();
+        distinct.Write("models/a.dat", "a");
+        distinct.Write("models/A.dat", "b");
+        if (distinct.Files.FileExists("res://models/A.dat") && Directory.GetFiles(Path.Combine(distinct.Root, "models")).Length == 2)
+        {
+            Assert.Contains("two assets", Assert.Throws<ContentException>(() => AssetReferences.Rewrite(distinct.Assets, "res://models/a.dat", "res://models/A.dat")).Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void AMovePreviewChangesNothing()
     {
         using var project = new Project();
