@@ -120,6 +120,6 @@ Merged into the scene above, `crate` keeps its rotation and scale and its `Ticke
 
 The merged tree loads with `world.LoadScene(node)`.
 
-## Scenes from before XML
+## JSON scenes
 
-Scenes were JSON before they were XML. The engine does not read them any more: loading one is a `FormatException` that names `Apogee.Runtime --migrate-scenes <folder>`, the converter for a folder of them.
+Scenes were JSON in an earlier version of the engine. They are not read any more: loading JSON text is a `FormatException`. Write the scene again as XML (the format above), or load it in the version of the engine that wrote it and save it again.

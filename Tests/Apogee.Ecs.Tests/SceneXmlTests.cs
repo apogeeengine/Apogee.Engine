@@ -221,12 +221,12 @@ public sealed class SceneXmlTests : IDisposable
     }
 
     [Fact]
-    public void JsonTextFromBeforeScenesWereXmlIsAnErrorThatNamesTheMigration()
+    public void JsonTextIsAnErrorThatSaysTheFormatIsNotReadAnyMore()
     {
         const string json = "{ \"entities\": [] }";
 
         FormatException e = Assert.Throws<FormatException>(() => _world.LoadScene(json));
-        Assert.Contains("--migrate-scenes", e.Message, StringComparison.Ordinal);
+        Assert.Contains("JSON", e.Message, StringComparison.Ordinal);
         Assert.Throws<FormatException>(() => _world.LoadScene("\uFEFF  \n" + json));   // a BOM and blank lines before it make no difference
         Assert.Empty(_world.Roots());
     }

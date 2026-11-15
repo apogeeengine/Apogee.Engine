@@ -263,7 +263,7 @@ public sealed unsafe partial class World
         // A BOM or blank lines may come before the first character; a scene written before the format was XML starts with a brace.
         if (text.AsSpan().TrimStart("\uFEFF \t\r\n").StartsWith("{", StringComparison.Ordinal))
         {
-            throw new FormatException("the scene is JSON text from before scenes were XML; convert it with 'Apogee.Runtime --migrate-scenes <folder>'");
+            throw new FormatException("the scene is JSON text; scenes are XML now and the JSON format is no longer read");
         }
 
         XmlNode root;
