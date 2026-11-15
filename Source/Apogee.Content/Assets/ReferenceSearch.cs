@@ -163,7 +163,8 @@ internal static class ReferenceSearch
         }
         catch (DecoderFallbackException)
         {
-            return Failed(path, false, "not valid UTF-8 text");
+            // It cannot be edited. It is only worth a report when it could name the asset: a name in ASCII survives a lossy reading, so this finds a Latin-1 scene that has the path in it.
+            return matcher.MightMention(Encoding.UTF8.GetString(bytes)) ? Failed(path, false, "not valid UTF-8 text") : null;
         }
 
         if (!matcher.MightMention(text))

@@ -37,8 +37,9 @@ public sealed partial class AssetDatabase
     /// <param name="to">The new path. Nothing may be there, neither a file nor a folder, and no <c>.import.xml</c>.</param>
     /// <param name="defFolders">Virtual folders whose <c>.xml</c> files are searched for references as well as the authored files.</param>
     /// <param name="dryRun">Report what would happen and change nothing.</param>
-    /// <exception cref="ContentException">Something is wrong with the request (a path, a read-only file, a target that exists), a document changed while it was being prepared, or a write failed. Nothing is left half done: the message says if something could not be put back.</exception>
-    public MoveReport Move(string from, string to, IReadOnlyList<string>? defFolders = null, bool dryRun = false)
+    /// <param name="allowSkipped">Go on although a writable document could not be used (not well-formed, not UTF-8, too big, cooked…) and its references to the asset will therefore break. By default that refuses the move before anything is written; see <see cref="SkippedDocument.Blocking"/>.</param>
+    /// <exception cref="ContentException">Something is wrong with the request (a path, a read-only file, a target that exists), a writable document was skipped and <paramref name="allowSkipped"/> is false, a document changed while it was being prepared, or a write failed. Nothing is left half done: the message says if something could not be put back.</exception>
+    public MoveReport Move(string from, string to, IReadOnlyList<string>? defFolders = null, bool dryRun = false, bool allowSkipped = false)
     {
         Refresh(); // the files are the truth, and the caller may have changed them since the last question
         (string source, string target) = AssetReferences.CheckMove(files, from, to);
@@ -60,6 +61,7 @@ public sealed partial class AssetDatabase
             return new MoveReport(source, target, moved, plan.Report, warnings, Applied: false);
         }
 
+        AssetReferences.RefuseSkipped(plan.Report, allowSkipped);
         AssetReferences.Apply(files, plan.Edits);
         MoveFiles(moves, plan);
         warnings.AddRange(UpdateImportData(source, target, entry, artifact));

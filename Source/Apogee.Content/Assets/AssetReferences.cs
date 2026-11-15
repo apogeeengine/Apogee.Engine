@@ -20,7 +20,10 @@ public sealed record AssetReferenceSite(string Document, int Line, string Elemen
 public sealed record ReferenceChange(AssetReferenceSite Site, AssetRef NewValue);
 
 /// <summary>A file the search could not use, and why: the reason is written for a person (<c>read-only</c>, <c>not valid UTF-8</c>…).</summary>
-public sealed record SkippedDocument(string Document, string Reason);
+/// <param name="Document">The document, as the virtual path it was found at.</param>
+/// <param name="Reason">Why it was not used.</param>
+/// <param name="Blocking">True when the document could be written: its references (if it has any) are then <em>not</em> rewritten and will break, so a rename that is applied is refused unless the caller allows it (<c>allowSkipped</c>). False for a document in a read-only root, which nothing could have rewritten.</param>
+public sealed record SkippedDocument(string Document, string Reason, bool Blocking = false);
 
 /// <summary>What <see cref="AssetReferences.Rewrite"/> did, or in a preview would do.</summary>
 /// <param name="Changes">The attributes that are rewritten to the new path (a reference that carries a UID keeps it).</param>
@@ -83,8 +86,9 @@ public static class AssetReferences
     /// <param name="defFolders">Virtual folders whose <c>.xml</c> files are rewritten as well as the authored files.</param>
     /// <param name="dryRun">Report and write nothing.</param>
     /// <param name="includeScripts">List the scripts that mention the asset in <see cref="RewriteReport.ScriptMentions"/> (never rewritten).</param>
-    /// <exception cref="ContentException">A path is not valid, they are the same, neither or both have a file, a file changed while the references were being prepared, or a write failed (the files already written were put back, and the message says so; if one could not be put back it is named).</exception>
-    public static RewriteReport Rewrite(AssetDatabase assets, string oldPath, string newPath, IReadOnlyList<string>? defFolders = null, bool dryRun = false, bool includeScripts = true)
+    /// <param name="allowSkipped">Go on although a writable document could not be used (it is not well-formed, not UTF-8, too big, cooked…): its references to the asset will not be rewritten. By default that refuses the rename (before anything is written), because the references would break silently; an editor passes true after it showed <see cref="RewriteReport.Skipped"/> to the user and they agreed.</param>
+    /// <exception cref="ContentException">A path is not valid, they are the same, neither or both have a file, a writable document was skipped and <paramref name="allowSkipped"/> is false, a file changed while the references were being prepared, or a write failed (the files already written were put back, and the message says so; if one could not be put back it is named).</exception>
+    public static RewriteReport Rewrite(AssetDatabase assets, string oldPath, string newPath, IReadOnlyList<string>? defFolders = null, bool dryRun = false, bool includeScripts = true, bool allowSkipped = false)
     {
         ArgumentNullException.ThrowIfNull(assets);
         assets.Refresh();
@@ -96,6 +100,11 @@ public static class AssetReferences
         }
 
         ReferencePlan plan = Plan(assets, uid, from, to, defFolders, includeScripts);
+        if (!dryRun)
+        {
+            RefuseSkipped(plan.Report, allowSkipped);
+        }
+
         if (dryRun || plan.Edits.Count == 0)
         {
             return plan.Report with { Applied = !dryRun };
@@ -130,6 +139,21 @@ public static class AssetReferences
         return (from, to);
     }
 
+    /// <summary>Stops a rename before anything is written when a document that could have been rewritten was skipped (see <see cref="SkippedDocument.Blocking"/>), unless the caller allowed it.</summary>
+    /// <exception cref="ContentException">There is such a document and <paramref name="allowSkipped"/> is false.</exception>
+    internal static void RefuseSkipped(RewriteReport report, bool allowSkipped)
+    {
+        List<SkippedDocument> blocking = [.. report.Skipped.Where(s => s.Blocking)];
+        if (allowSkipped || blocking.Count == 0)
+        {
+            return;
+        }
+
+        string shown = string.Join("; ", blocking.Take(5).Select(s => $"{s.Document} ({s.Reason})"));
+        string more = blocking.Count > 5 ? $" and {blocking.Count - 5} more" : "";
+        throw new ContentException($"{blocking.Count} document(s) that can be written could not be searched or rewritten, so references to the asset in them would break: {shown}{more}. Nothing was changed. Fix them, or go on with allowSkipped.");
+    }
+
     private static string Canonical(string path) =>
         VfsPath.TryParse(path, out string canonical, out string? problem) ? canonical : throw new ContentException($"'{path}' is not a valid path: {problem}.");
 
@@ -154,7 +178,7 @@ public static class AssetReferences
         {
             if (document.Problem is not null)
             {
-                plan.Skipped.Add(new SkippedDocument(document.Path, document.Problem));
+                plan.Skip(document.Path, document.Problem);
             }
             else if (document.IsScript)
             {
@@ -210,7 +234,7 @@ public static class AssetReferences
 
             if (Unwritable(document, changes.Count) is { } reason)
             {
-                Skipped.Add(new SkippedDocument(document.Path, reason));
+                Skip(document.Path, reason);
                 return;
             }
 
@@ -222,9 +246,12 @@ public static class AssetReferences
             }
             catch (ContentException e)
             {
-                Skipped.Add(new SkippedDocument(document.Path, e.Message));
+                Skip(document.Path, e.Message);
             }
         }
+
+        /// <summary>Records a document that was not used; it blocks the rename when the document could have been written.</summary>
+        public void Skip(string path, string reason) => Skipped.Add(new SkippedDocument(path, reason, Blocking: files.CanWrite(path)));
 
         private string? Unwritable(ReferenceSearch.DocumentResult document, int count)
         {

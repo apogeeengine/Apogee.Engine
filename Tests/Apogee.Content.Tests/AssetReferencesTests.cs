@@ -360,9 +360,10 @@ public class AssetReferencesTests
         project.WriteBytes("scenes/cooked.ascene", cooked);
         project.Write("scenes/good.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
 
-        RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat");
+        RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat", allowSkipped: true);
 
         Assert.Equal(["res://scenes/good.ascene"], report.Documents);
+        Assert.All(report.Skipped, s => Assert.True(s.Blocking)); // these could have been written, and their references were not
         Dictionary<string, string> reasons = report.Skipped.ToDictionary(s => s.Document, s => s.Reason);
         Assert.Contains("UTF-8", reasons["res://scenes/utf.ascene"], StringComparison.Ordinal);
         Assert.Contains("well-formed", reasons["res://scenes/bad.ascene"], StringComparison.Ordinal);
@@ -372,6 +373,56 @@ public class AssetReferencesTests
         Assert.Equal(notWellFormed, project.Read("scenes/bad.ascene"));
         Assert.Equal(withDoctype, project.Read("scenes/dtd.ascene"));
         Assert.Equal(cooked, File.ReadAllBytes(Path.Combine(project.Root, "scenes", "cooked.ascene")));
+    }
+
+    [Fact]
+    public void AWritableDocumentThatWasSkippedRefusesTheRenameBeforeAnythingIsWritten()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        AssetUid car = project.Imported("models/car.dat");
+        string broken = "<Scene version=\"1\"><A p=\"res://models/car.dat\"></Scene>";
+        string good = SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"));
+        project.Write("scenes/broken.ascene", broken);
+        project.Write("scenes/good.ascene", good);
+
+        RewriteReport preview = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat", dryRun: true);
+        var rewriteError = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat"));
+        var moveError = Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://vehicles/truck.dat"));
+
+        SkippedDocument skipped = Assert.Single(preview.Skipped); // a preview does not throw: it says what would be refused
+        Assert.True(skipped.Blocking);
+        Assert.Contains("res://scenes/broken.ascene", rewriteError.Message, StringComparison.Ordinal);
+        Assert.Contains("well-formed", rewriteError.Message, StringComparison.Ordinal);
+        Assert.Contains("res://scenes/broken.ascene", moveError.Message, StringComparison.Ordinal);
+        Assert.Contains("Nothing was changed", moveError.Message, StringComparison.Ordinal);
+        Assert.Equal(good, project.Read("scenes/good.ascene"));
+        Assert.Equal(broken, project.Read("scenes/broken.ascene"));
+        Assert.True(project.Has("models/car.dat")); // nothing moved
+        Assert.False(project.Has("vehicles/truck.dat"));
+
+        // The editor asked the user, who agreed: the good scene is rewritten, the broken one is reported and left alone.
+        MoveReport moved = project.Assets.Move("res://models/car.dat", "res://vehicles/truck.dat", allowSkipped: true);
+
+        Assert.True(moved.Applied);
+        Assert.True(Assert.Single(moved.References.Skipped).Blocking);
+        Assert.Contains("res://vehicles/truck.dat", project.Read("scenes/good.ascene"), StringComparison.Ordinal);
+        Assert.Equal(broken, project.Read("scenes/broken.ascene"));
+        Assert.True(project.Has("vehicles/truck.dat"));
+    }
+
+    [Fact]
+    public void ADocumentThatCannotBeReadAsUtf8AndDoesNotNameTheAssetIsNotInTheWay()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        project.WriteBytes("scenes/latin1.ascene", [.. Encoding.UTF8.GetBytes("<Scene version=\"1\"><Name text=\"caf"), 0xE9, .. Encoding.UTF8.GetBytes("\"/></Scene>")]);
+
+        RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat");
+
+        Assert.Empty(report.Skipped);
+        Assert.Equal(["res://scenes/a.ascene"], report.Documents);
     }
 
     [Fact]
