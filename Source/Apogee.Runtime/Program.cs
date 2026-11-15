@@ -1,8 +1,16 @@
 using System;
+using System.IO;
+using Apogee.Content.FileSystem;
+using Apogee.Core.Diagnostics;
 using Apogee.Core.Logging;
 using Apogee.Runtime;
 
 Log.AddSink(new ConsoleSink());
+
+// An exception that nothing catches is written to a report from here on. A game moves the reports to its own folder when it starts (RunDiagnostics).
+var recent = new RecentLogSink();
+Log.AddSink(recent);
+CrashHandler.Install(Path.Combine(VirtualFileSystem.DefaultUserDirectory("Apogee", "Runtime"), "crashes"), recent);
 
 // A shipped game is this program with a game.xml and its packs beside it (or in a macOS bundle's Resources).
 string? gameRoot = GameLocator.Find(AppContext.BaseDirectory);

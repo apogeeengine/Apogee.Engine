@@ -112,8 +112,11 @@ internal static class Commands
             options.ApplyWindow(manifest.Window);
         }
 
+        FileLogSink? logFile = null;
         try
         {
+            // A game writes its log into its user folder; a single script (--run) is a dev tool and has none.
+            logFile = root is null ? null : RunDiagnostics.Start(ScriptSession.UserDirectoryFor(root, options.UserFolder, manifest), manifest?.Name ?? name, manifest?.Version.ToString());
             ScriptSession.RegisterLibraries();
             using var host = new ImGuiHost();
             using ScriptSession session = start();
@@ -142,14 +145,24 @@ internal static class Commands
         }
         catch (ScriptException e)
         {
-            Console.Error.WriteLine(e.Message);
-            return 2;
+            return Fail(e, logFile);
         }
         catch (Exception e) when (e is Apogee.Graphics.GraphicsException or ShaderCompileException or ContentException or PlatformException or IOException or FormatException)
         {
-            Console.Error.WriteLine(e.Message);
-            return 2;
+            return Fail(e, logFile);
         }
+        finally
+        {
+            logFile?.Dispose();
+        }
+    }
+
+    /// <summary>Says why the run failed, on stderr and in the run's log file (which is still open).</summary>
+    private static int Fail(Exception e, FileLogSink? logFile)
+    {
+        Console.Error.WriteLine(e.Message);
+        logFile?.Write(new LogEntry(DateTimeOffset.Now, LogLevel.Error, "Runtime", e.Message));
+        return 2;
     }
 
     /// <summary>

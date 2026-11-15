@@ -275,6 +275,23 @@ public sealed class ScriptSession : IDisposable
         StartGame(new GameStart { Folder = folder, UserFolder = userFolder, Watch = watch, RealAudio = realAudio, RealSteam = realSteam, RunScripts = runScripts, Scene = scene });
 
     /// <summary>
+    /// The folder of the player's files (<c>user://</c>) of the game in <paramref name="folder"/>: <paramref name="userFolder"/> when one is given, else the one <paramref name="manifest"/> names
+    /// (<see cref="GameManifest.UserDirectory"/>), else one named after the game folder.
+    /// </summary>
+    /// <param name="manifest">The game's <c>game.xml</c>; null when it has none.</param>
+    public static string UserDirectoryFor(string folder, string? userFolder, GameManifest? manifest)
+    {
+        if (userFolder is not null)
+        {
+            return userFolder;
+        }
+
+        return manifest is not null
+            ? manifest.UserDirectory()
+            : VirtualFileSystem.DefaultUserDirectory("Apogee", Path.GetFileName(Path.GetFullPath(folder).TrimEnd('/', '\\')));
+    }
+
+    /// <summary>
     /// Starts a game as <see cref="StartGame(string, string?, bool, bool, bool, bool, string?)"/> does, and reads its <c>game.xml</c> if it has one: the user folder (unless one is given),
     /// the Steam app id and the version that the packages' <c>gameVersion</c> are checked against come from it, and so does the entry scene.
     /// </summary>
@@ -314,18 +331,9 @@ public sealed class ScriptSession : IDisposable
             Log.Info("Packs", $"{Path.GetFileName(pack)}: {source.FileCount} files in {source.PartCount} part(s){(source.IsEncrypted ? ", encrypted" : "")}");
         }
 
-        string user;
-        if (start.UserFolder is not null)
+        string user = UserDirectoryFor(folder, start.UserFolder, manifest);
+        if (start.UserFolder is null && manifest is null)
         {
-            user = start.UserFolder;
-        }
-        else if (manifest is not null)
-        {
-            user = manifest.UserDirectory();
-        }
-        else
-        {
-            user = VirtualFileSystem.DefaultUserDirectory("Apogee", Path.GetFileName(Path.GetFullPath(folder).TrimEnd('/', '\\')));
             Log.Info("Runtime", $"No {GameManifest.FileName} in {folder}: the player's files go in {user}, named after the folder.");
         }
 

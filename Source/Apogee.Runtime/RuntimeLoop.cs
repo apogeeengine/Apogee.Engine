@@ -6,6 +6,7 @@ using System.IO;
 using System.Numerics;
 using Apogee.Content;
 using Apogee.Content.Packages;
+using Apogee.Core.Diagnostics;
 using Apogee.Core.Logging;
 using Apogee.DevTools;
 using Apogee.Graphics;
@@ -54,6 +55,7 @@ internal static class RuntimeLoop
     public static int Offscreen(RuntimeOptions options, ImGuiHost host, ScriptSession session, out int frames)
     {
         using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Apogee runtime", PreferredDeviceName = options.Gpu });
+        CrashHandler.SetContext("GPU", device.Name);
         using var loop = device.CreateFrameLoop();
         using var pool = new TransientPool(device);
         ShaderLibrary shaders = session.CreateShaderLibrary(ShaderCache);
@@ -121,6 +123,7 @@ internal static class RuntimeLoop
             }
 
             using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Apogee runtime", Window = window, PreferredDeviceName = options.Gpu });
+            CrashHandler.SetContext("GPU", device.Name);
             using var swapchain = device.CreateSwapchain();
             using var loop = device.CreateFrameLoop(swapchain);
             using var pool = new TransientPool(device);

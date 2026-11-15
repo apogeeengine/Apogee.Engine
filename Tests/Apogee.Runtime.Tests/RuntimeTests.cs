@@ -246,6 +246,40 @@ public class CommandTests
     }
 
     [Fact]
+    public void AGameRunWritesALogInItsUserFolder()
+    {
+        using var scratch = new Scratch();
+        Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "print('hello from the log test')"));
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+
+        Assert.Equal(0, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", user, "--headless", "--frames", "2")));
+
+        string log = File.ReadAllText(Assert.Single(Directory.GetFiles(System.IO.Path.Combine(user, "logs"), "*.log")));
+        Assert.Contains("[Packages] core 1.0.0", log, StringComparison.Ordinal);
+        Assert.Contains("[Runtime] game:", log, StringComparison.Ordinal);
+        Assert.EndsWith("End of run." + Environment.NewLine, log, StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFiles(System.IO.Path.Combine(user, "logs"), "*.running")); // it ended cleanly
+    }
+
+    [Fact]
+    public void AGameStartFindsThePreviousRunThatDidNotEnd()
+    {
+        using var scratch = new Scratch();
+        Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "-- nothing"));
+        string logs = System.IO.Path.Combine(scratch.Root, "user", "logs");
+        Directory.CreateDirectory(logs);
+        File.WriteAllText(System.IO.Path.Combine(logs, "20260101-000000-7.log"), "12:00:00.000 INF [Game] the last line of a dead run\n");
+        // A pid that no process has: the largest a pid can be on every OS here.
+        File.WriteAllText(System.IO.Path.Combine(logs, "20260101-000000-7.running"), "pid=2147483646\nstart=0\nlog=20260101-000000-7.log\n");
+
+        Assert.Equal(0, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", System.IO.Path.Combine(scratch.Root, "user"), "--headless", "--frames", "1")));
+
+        string report = File.ReadAllText(Assert.Single(Directory.GetFiles(System.IO.Path.Combine(scratch.Root, "user", "crashes"), "crash-*-unclean-exit*.txt")));
+        Assert.Contains("did not end cleanly", report, StringComparison.Ordinal);
+        Assert.Contains("the last line of a dead run", report, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AModelLoadsByUidAndASavedSceneFindsAModelThatWasMoved()
     {
         using var scratch = new Scratch();

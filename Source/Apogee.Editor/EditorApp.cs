@@ -4,11 +4,13 @@ using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Apogee.Content.FileSystem;
+using Apogee.Core.Diagnostics;
 using Apogee.Core.Logging;
 using Apogee.DevTools;
 using Apogee.Editor.Editing;
 using Apogee.Editor.Panels;
 using Apogee.Graphics;
+using Apogee.Host;
 using Apogee.Graphics.Shaders;
 using Apogee.Native.CImGui;
 using Apogee.Native.ImGuizmo;
@@ -80,12 +82,20 @@ public static unsafe class EditorApp
         Directory.CreateDirectory(EditorFolder);
         var log = new EditorLog { EchoToConsole = true };
         Log.AddSink(log);
+
+        // The editor's own log and crash reports, in its folder (the game being edited has its own when it runs).
+        var recent = new RecentLogSink();
+        Log.AddSink(recent);
+        CrashHandler.Install(Path.Combine(EditorFolder, "crashes"), recent);
+        CrashHandler.SetContext("Edited game", Path.GetFullPath(gameFolder));
+        using FileLogSink logFile = RunDiagnostics.Start(EditorFolder, "Apogee Editor");
         PlatformHost.Initialize();
         nint ini = Marshal.StringToCoTaskMemUTF8(Path.Combine(EditorFolder, "imgui.ini"));
         try
         {
             using var window = new Window("Apogee Editor: " + Path.GetFileName(Path.GetFullPath(gameFolder)), 1600, 900, WindowOptions.Resizable | WindowOptions.HighPixelDensity | GraphicsDevice.RequiredWindowOptions());
             using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Apogee editor", Window = window });
+            CrashHandler.SetContext("GPU", device.Name);
             using var swapchain = device.CreateSwapchain();
             using var loop = device.CreateFrameLoop(swapchain);
             using var pool = new TransientPool(device);
