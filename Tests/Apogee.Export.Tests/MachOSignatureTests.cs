@@ -425,10 +425,18 @@ public class MachOSignatureTests
         // Signed with a certificate (Developer ID), so refused: not ad hoc.
         string[] certificateSigned = ["libsteam_api.dylib", "libslang-compiler", "libslang-glslang"];
         var verified = new List<string>();
+        var notChecked = new List<string>();
         foreach (string library in Directory.EnumerateFiles(thirdParty, "*.dylib", SearchOption.AllDirectories).Where(f => f.Contains("osx-", StringComparison.Ordinal)))
         {
+            byte[] bytes = File.ReadAllBytes(library);
+            if (!LooksLikeMachO(bytes))
+            {
+                notChecked.Add(Path.GetFileName(library)); // a Git LFS pointer (a checkout without the LFS content, as on CI): text, not a library
+                continue;
+            }
+
             int sliceNumber = 0;
-            foreach (byte[] slice in Slices(File.ReadAllBytes(library)))
+            foreach (byte[] slice in Slices(bytes))
             {
                 string label = $"{Path.GetFileName(library)}#{sliceNumber++}";
                 using var stream = new CountingStream(slice);
@@ -458,10 +466,36 @@ public class MachOSignatureTests
             }
         }
 
+        if (verified.Count == 0)
+        {
+            Assert.Skip($"no vendored macOS library is a real Mach-O file in this checkout (Git LFS pointers: {string.Join(", ", notChecked)})");
+            return;
+        }
+
         // libSDL3 was signed by codesign -s - (an empty wrapper, CS_ADHOC): both its slices are among those checked; the others were signed by the linker.
-        Assert.Contains("libSDL3.dylib#0", verified);
-        Assert.Contains("libSDL3.dylib#1", verified);
-        Assert.True(verified.Count >= 4, string.Join(", ", verified));
+        if (!notChecked.Contains("libSDL3.dylib"))
+        {
+            Assert.Contains("libSDL3.dylib#0", verified);
+            Assert.Contains("libSDL3.dylib#1", verified);
+        }
+
+        Assert.True(verified.Count >= 1, string.Join(", ", verified));
+        if (notChecked.Count == 0)
+        {
+            Assert.True(verified.Count >= 4, string.Join(", ", verified));
+        }
+    }
+
+    /// <summary>Whether the file starts with a Mach-O or a universal (fat) magic number, in either byte order: a Git LFS pointer, which is a few lines of text, does not.</summary>
+    private static bool LooksLikeMachO(byte[] bytes)
+    {
+        if (bytes.Length < 4096)
+        {
+            return false;
+        }
+
+        uint magic = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(bytes);
+        return magic is 0xFEEDFACE or 0xFEEDFACF or 0xCEFAEDFE or 0xCFFAEDFE or 0xCAFEBABE or 0xCAFEBABF or 0xBEBAFECA or 0xBFBAFECA;
     }
 
     private static string? FindThirdParty()
