@@ -14,6 +14,9 @@ namespace Apogee.Content.Assets;
 /// </summary>
 internal static class ReferenceSearch
 {
+    /// <summary>The most mentions listed for one script. Rewrite and Move search every script, mods' too: one that spells a path millions of times must not fill the memory.</summary>
+    internal const int MaxMentionsPerScript = 10_000;
+
     /// <summary>A reference found in a document. <see cref="Ordinal"/> is the attribute's place among all the attributes of the document (see <see cref="ReferenceText.Attributes"/>); -1 for a script.</summary>
     internal readonly record struct Hit(int Ordinal, AssetReferenceSite Site);
 
@@ -181,6 +184,10 @@ internal static class ReferenceSearch
         {
             return Failed(path, false, $"not well-formed XML: {e.Reason} (line {e.Line})");
         }
+        catch (ContentException e)
+        {
+            return Failed(path, false, e.Message);
+        }
     }
 
     private static DocumentResult? ParseCooked(string path, byte[] bytes, Matcher matcher)
@@ -210,6 +217,11 @@ internal static class ReferenceSearch
             (XmlNode element, XmlProperty attribute) = attributes[ordinal];
             if (AssetRef.TryParse(attribute.Value, out AssetRef value) && !value.IsEmpty && matcher.Matches(value))
             {
+                if (hits.Count >= AssetReferences.MaxReferencesPerDocument)
+                {
+                    throw new ContentException($"it names the asset more than {AssetReferences.MaxReferencesPerDocument} times");
+                }
+
                 hits.Add(new Hit(ordinal, new AssetReferenceSite(path, element.Line, element.Name, attribute.Name, value)));
             }
         }
@@ -233,15 +245,17 @@ internal static class ReferenceSearch
     }
 
     /// <summary>
-    /// Every place the text spells the asset's path (any of its spellings) or its UID, in text order. A path counts only when it is not part of a longer name (<c>a.glb</c> is not in
-    /// <c>a.glb.bak</c> or <c>a.glbx</c>); a UID that follows a path as <c>path|uid://…</c> is part of that mention and not another one.
+    /// Every place the text spells the asset's path (any of its spellings) or its UID, in text order, at most <see cref="MaxMentionsPerScript"/> of them (the first ones: a script that spells a
+    /// path a million times is not read as a million rows). A path counts only when it is not part of a longer name (<c>a.glb</c> is not in <c>a.glb.bak</c> or <c>a.glbx</c>); a UID that follows a
+    /// path as <c>path|uid://…</c> is part of that mention and not another one. One pass over the text for each thing looked for, and one for the line numbers: the time is linear in its length.
     /// </summary>
     private static List<Hit> Mentions(string path, string text, Matcher matcher)
     {
         var found = new List<(int Index, int Length, AssetRef Value)>();
         foreach (string spelling in matcher.Paths)
         {
-            for (int at = text.IndexOf(spelling, StringComparison.Ordinal); at >= 0; at = text.IndexOf(spelling, at + 1, StringComparison.Ordinal))
+            int count = 0;
+            for (int at = text.IndexOf(spelling, StringComparison.Ordinal); at >= 0 && count < MaxMentionsPerScript; at = text.IndexOf(spelling, at + 1, StringComparison.Ordinal))
             {
                 int end = at + spelling.Length;
                 if (!IsWholeName(text, at, end))
@@ -251,12 +265,29 @@ internal static class ReferenceSearch
 
                 int uidLength = LengthOfUidAfter(text, end, matcher.Uid);
                 found.Add((at, spelling.Length + uidLength, new AssetRef(spelling, uidLength > 0 ? matcher.Uid : AssetUid.None)));
+                count++;
             }
         }
 
         AddUidMentions(text, matcher, found);
         found.Sort((a, b) => a.Index.CompareTo(b.Index));
-        return [.. found.Select(f => new Hit(-1, new AssetReferenceSite(path, LineOf(text, f.Index), "", "", f.Value)))];
+        if (found.Count > MaxMentionsPerScript)
+        {
+            found.RemoveRange(MaxMentionsPerScript, found.Count - MaxMentionsPerScript);
+        }
+
+        // The line numbers in one pass: count the line ends between one mention and the next.
+        var hits = new List<Hit>(found.Count);
+        int line = 1;
+        int position = 0;
+        foreach ((int index, _, AssetRef value) in found)
+        {
+            line += text.AsSpan(position, index - position).Count('\n');
+            position = index;
+            hits.Add(new Hit(-1, new AssetReferenceSite(path, line, "", "", value)));
+        }
+
+        return hits;
     }
 
     // The length of a "|uid://…" right after the path (0 when there is none) when it is the asset's UID.
@@ -279,14 +310,26 @@ internal static class ReferenceSearch
         }
 
         string uidText = matcher.Uid.ToString();
-        for (int at = text.IndexOf(uidText, StringComparison.OrdinalIgnoreCase); at >= 0; at = text.IndexOf(uidText, at + 1, StringComparison.OrdinalIgnoreCase))
+
+        // Where the UID of each "path|uid://…" mention starts: that UID is part of the mention and is not found again.
+        var startsOfPathMentions = new HashSet<int>();
+        foreach ((int index, int length, AssetRef value) in found)
+        {
+            if (value.Uid == matcher.Uid)
+            {
+                startsOfPathMentions.Add(index + length - uidText.Length);
+            }
+        }
+
+        int count = 0;
+        for (int at = text.IndexOf(uidText, StringComparison.OrdinalIgnoreCase); at >= 0 && count < MaxMentionsPerScript; at = text.IndexOf(uidText, at + 1, StringComparison.OrdinalIgnoreCase))
         {
             int end = at + uidText.Length;
             bool partOfLonger = end < text.Length && char.IsAsciiLetterOrDigit(text[end]);
-            bool partOfPathMention = found.Exists(f => f.Value.Uid == matcher.Uid && at == f.Index + f.Length - uidText.Length);
-            if (!partOfLonger && !partOfPathMention)
+            if (!partOfLonger && !startsOfPathMentions.Contains(at))
             {
                 found.Add((at, uidText.Length, AssetRef.FromUid(matcher.Uid)));
+                count++;
             }
         }
     }
@@ -312,16 +355,5 @@ internal static class ReferenceSearch
 
         // A dot ends a sentence ("see res://a.glb.") unless a name goes on after it ("res://a.glb.bak").
         return next != '.' || end + 1 >= text.Length || !char.IsAsciiLetterOrDigit(text[end + 1]);
-    }
-
-    private static int LineOf(string text, int index)
-    {
-        int line = 1;
-        for (int i = text.IndexOf('\n', StringComparison.Ordinal); i >= 0 && i < index; i = text.IndexOf('\n', i + 1))
-        {
-            line++;
-        }
-
-        return line;
     }
 }

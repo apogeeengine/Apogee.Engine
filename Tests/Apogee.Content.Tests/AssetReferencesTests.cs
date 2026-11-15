@@ -882,6 +882,65 @@ public class AssetReferencesTests
         Assert.DoesNotContain(AssetReferences.Find(project.Assets, project.Assets.RefOf("res://models/car.dat")), s => s.Attribute == "");
     }
 
+    [Fact]
+    public void AHugeScriptFullOfThePathIsSearchedInLinearTime()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        AssetUid car = project.Imported("models/car.dat");
+        const int lines = 500_000;
+        // A mention of the path on every line, then one with its UID, and the UID alone: about 40 MB of text, the sort of file a hostile mod can ship.
+        string script = string.Concat(Enumerable.Repeat($"local m = \"res://models/car.dat\" local n = \"res://models/car.dat|{car}\" local u = \"{car}\"\n", lines));
+        project.Write("scripts/huge.luau", script);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat", dryRun: true);
+        IReadOnlyList<AssetReferenceSite> found = AssetReferences.Find(project.Assets, project.Assets.RefOf("res://models/car.dat"), includeScripts: true);
+        watch.Stop();
+
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}"); // quadratic, it took hours
+        Assert.Equal(6_667, report.ScriptMentions.Count); // the first 10,000 mentions, minus the UIDs alone (they follow the file and need no one); the rest are not listed
+        Assert.Equal(1, report.ScriptMentions[0].Line);
+        Assert.Equal(1, report.ScriptMentions[1].Line);
+        Assert.Equal(2, report.ScriptMentions[2].Line);
+        Assert.Equal(10_000, found.Count);
+        Assert.Equal(new AssetRef("res://models/car.dat", car), report.ScriptMentions[1].Value);
+    }
+
+    [Fact]
+    public void TheMemoryOfAPlanIsBoundedAndTheDocumentsOverTheBoundAreSkippedWithTheReason()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        foreach (string name in new[] { "a", "b", "c" })
+        {
+            project.Write($"scenes/{name}.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        }
+
+        int one = project.Files.ReadAllBytes("res://scenes/a.ascene").Length;
+        AssetReferences.ReferencePlan plan = AssetReferences.Plan(project.Assets, AssetUid.None, "res://models/car.dat", "res://models/truck.dat", null, includeScripts: false, maxPlannedBytes: (4L * one) + 8);
+
+        Assert.Equal(["res://scenes/a.ascene", "res://scenes/b.ascene"], plan.Edits.Select(e => e.Path)); // two documents, old and new text, fit
+        SkippedDocument skipped = Assert.Single(plan.Report.Skipped);
+        Assert.Equal("res://scenes/c.ascene", skipped.Document);
+        Assert.True(skipped.Blocking);
+        Assert.Contains("memory", skipped.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ADocumentThatNamesTheAssetAbsurdlyOftenIsSkipped()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), [.. Enumerable.Repeat(Model("res://models/car.dat"), AssetReferences.MaxReferencesPerDocument + 1)]));
+
+        RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat", dryRun: true);
+
+        SkippedDocument skipped = Assert.Single(report.Skipped);
+        Assert.Contains("more than", skipped.Reason, StringComparison.Ordinal);
+        Assert.Empty(report.Documents);
+    }
+
     // ---- Move ---------------------------------------------------------------------------------------------------------------------
 
     [Fact]

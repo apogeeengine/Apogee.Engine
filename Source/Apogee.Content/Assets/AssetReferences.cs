@@ -60,6 +60,12 @@ public static class AssetReferences
     /// <summary>Documents and scripts larger than this are skipped (a hostile or mistaken file must not make a rename read gigabytes).</summary>
     public const long MaxDocumentBytes = 64L * 1024 * 1024;
 
+    /// <summary>The most references to one asset that one document may hold to be rewritten; a document with more is skipped (a plan keeps a record of each).</summary>
+    public const int MaxReferencesPerDocument = 100_000;
+
+    /// <summary>The most memory the texts of all the documents of one rewrite may take (the old and the new bytes of each): a document that would go over it is skipped, with the reason.</summary>
+    public const long MaxPlannedBytes = 256L * 1024 * 1024;
+
     /// <summary>
     /// The places in the documents of the database's roots that name <paramref name="target"/>: by its UID when it has one (also when the path in the reference is out of date), and by its path.
     /// Files that cannot be read or are not well-formed are left out here (<see cref="Rewrite"/> reports them). Each site is a reference, in document order.
@@ -193,10 +199,10 @@ public static class AssetReferences
     /// Works out every edit without writing anything: the documents that name the asset, the new text of each, and the ones that cannot be used. <paramref name="from"/> and <paramref name="to"/> are
     /// canonical. Both spellings are targets of the search: a reference that already says the new path is found, and is left as it is.
     /// </summary>
-    internal static ReferencePlan Plan(AssetDatabase assets, AssetUid uid, string from, string to, IReadOnlyList<string>? defFolders, bool includeScripts)
+    internal static ReferencePlan Plan(AssetDatabase assets, AssetUid uid, string from, string to, IReadOnlyList<string>? defFolders, bool includeScripts, long maxPlannedBytes = MaxPlannedBytes)
     {
         var matcher = new ReferenceSearch.Matcher(assets.Files, uid, [.. AssetDatabase.SpellingsOf(from), .. AssetDatabase.SpellingsOf(to)]);
-        var plan = new PlanBuilder(assets.Files, to);
+        var plan = new PlanBuilder(assets.Files, to, maxPlannedBytes);
         List<string> newSpellings = AssetDatabase.SpellingsOf(to);
         foreach (ReferenceSearch.DocumentResult document in ReferenceSearch.Search(assets, matcher, defFolders, includeScripts))
         {
@@ -218,8 +224,10 @@ public static class AssetReferences
         return plan.Build();
     }
 
-    private sealed class PlanBuilder(VirtualFileSystem files, string newPath)
+    private sealed class PlanBuilder(VirtualFileSystem files, string newPath, long maxPlannedBytes)
     {
+        private long _plannedBytes;
+
         public List<ReferenceChange> Changes { get; } = [];
 
         public List<AssetReferenceSite> Unchanged { get; } = [];
@@ -262,10 +270,18 @@ public static class AssetReferences
                 return;
             }
 
+            if (_plannedBytes + (2L * document.Bytes!.Length) > maxPlannedBytes)
+            {
+                Skip(document.Path, $"the documents to rewrite together would take more than {maxPlannedBytes / (1024 * 1024)} MB of memory");
+                return;
+            }
+
             try
             {
                 string text = ReferenceText.Replace(document.Text!, document.Tree!, newValues, document.Path);
-                _edits.Add(new DocumentEdit(document.Path, document.Bytes!, new UTF8Encoding(false).GetBytes(text)));
+                var edit = new DocumentEdit(document.Path, document.Bytes!, new UTF8Encoding(false).GetBytes(text));
+                _plannedBytes += edit.Original.Length + edit.Updated.Length;
+                _edits.Add(edit);
                 Changes.AddRange(changes);
             }
             catch (ContentException e)
