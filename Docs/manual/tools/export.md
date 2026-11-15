@@ -106,8 +106,8 @@ its sections (an installer, an attached archive), and one that is damaged: the m
 - **Signing.** Signing the game (Authenticode, `signtool sign`) is outside the export: sign `<executable>.exe`, and
   the DLLs if you like, after the export. An unsigned program from the internet is held by Windows SmartScreen until enough people have run it, or until it is signed with a certificate that has a reputation;
   a game on Steam is not affected by that.
-- **Version suffixes.** The version in `game.xml` is read as `major.minor.patch`: a suffix such as `-beta` or `+build` is dropped when the manifest is read, so the file version, the product version and the
-  strings `FileVersion` and `ProductVersion` all say `1.2.3.0`; the suffix is not in the executable. Put the label in the `description` if players should see it.
+- **Version suffixes.** The version in `game.xml` is `major.minor.patch` and nothing else: a suffix such as `-beta` or `+build` is an error when the manifest is read. The file version, the product version and the
+  strings `FileVersion` and `ProductVersion` all say `1.2.3.0`. Put a label such as "beta" in the `description` if players should see it.
 - **Signed runtimes.** A signed runtime loses its signature (the changes invalidate it) and the export warns. A runtime with `IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY`, which Windows loads only when signed,
   is refused instead, because the unsigned result could not start.
 
