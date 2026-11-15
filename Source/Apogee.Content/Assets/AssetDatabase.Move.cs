@@ -69,7 +69,7 @@ public sealed partial class AssetDatabase
         List<(string From, string To)> moves = MovesOf(source, target, entry is not null);
 
         AssetReferences.ReferencePlan plan = AssetReferences.Plan(this, UidForMove(source, target), source, target, defFolders, includeScripts: true);
-        List<string> warnings = ImportWarnings(index, entry, source, target);
+        List<string> warnings = [.. ImportWarnings(index, entry, source, target), .. plan.Report.Unrewritable.Select(u => UnrewritableWarning(u, source))];
         string? artifact = entry is null ? null : MovedArtifact(entry, source, target);
         List<string> moved = [.. moves.Select(m => m.To)];
         if (entry is not null && artifact != entry.Artifact)
@@ -233,6 +233,15 @@ public sealed partial class AssetDatabase
         return entry.Artifact.StartsWith(oldPrefix, StringComparison.Ordinal)
             ? $"{Import.AssetImporter.CacheFolder}/{target[GameRoot.Length..]}{entry.Artifact[oldPrefix.Length..]}"
             : entry.Artifact;
+    }
+
+    // A place that names the moved file and that nothing here rewrites: the manifests' paths, and text inside an element.
+    private static string UnrewritableWarning(AssetReferenceSite site, string source)
+    {
+        string where = site.Line > 0 ? $"{site.Document}:{site.Line}" : site.Document;
+        return site.Attribute.Length > 0
+            ? $"{where}: <{site.Element} {site.Attribute}> names {source}, which moved; edit it by hand, it is not rewritten."
+            : $"{where}: the text of <{site.Element}> names {source}, which moved; edit it by hand, element text is not rewritten.";
     }
 
     // Other assets that read this one (a glTF's image) will not find it under the old path; and an asset that reads others by relative path may not find them from its new folder.

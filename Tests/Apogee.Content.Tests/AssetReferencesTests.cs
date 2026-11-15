@@ -1240,6 +1240,65 @@ public class AssetReferencesTests
     }
 
     [Fact]
+    public void AMovedFileThatTheGameManifestNamesIsReportedAndNotRewritten()
+    {
+        using var project = new Project();
+        string game = "<Game name=\"G\" organization=\"O\" version=\"1.0.0\">\n  <EntryScene path=\"scenes/main.ascene\"/>\n  <Icon path=\"icon.png\"/>\n</Game>\n";
+        project.Write("game.xml", game);
+        project.Write("scenes/main.ascene", SceneOf(AssetUid.New()));
+        project.Write("scenes/other.ascene", SceneOf(AssetUid.New()));
+        project.Write("icon.png", "png");
+
+        MoveReport entry = project.Assets.Move("res://scenes/main.ascene", "res://levels/main.ascene");
+        MoveReport icon = project.Assets.Move("res://icon.png", "res://art/icon.png");
+        MoveReport unrelated = project.Assets.Move("res://scenes/other.ascene", "res://levels/other.ascene");
+
+        AssetReferenceSite site = Assert.Single(entry.References.Unrewritable);
+        Assert.Equal(("res://game.xml", 2, "EntryScene", "path"), (site.Document, site.Line, site.Element, site.Attribute));
+        Assert.Equal("res://scenes/main.ascene", site.Value.Path);
+        Assert.Contains("res://game.xml:2", Assert.Single(entry.Warnings), StringComparison.Ordinal);
+        Assert.Contains("EntryScene", entry.Warnings[0], StringComparison.Ordinal);
+        Assert.Contains("res://game.xml:3", Assert.Single(icon.Warnings), StringComparison.Ordinal);
+        Assert.Empty(unrelated.Warnings);
+        Assert.Equal(game, project.Read("game.xml")); // never rewritten
+    }
+
+    [Fact]
+    public void AMovedScriptThatAPackageManifestNamesIsReported()
+    {
+        using var project = new Project();
+        project.Write("packages/core/mod.xml", "<Mod id=\"core\" name=\"c\" version=\"1.0.0\" apiVersion=\"1\">\n  <Script path=\"main.luau\"/>\n  <Content path=\"data\"/>\n</Mod>\n");
+        project.Write("packages/core/main.luau", "return 1");
+        project.Write("packages/core/util.luau", "return 2");
+
+        RewriteReport preview = AssetReferences.Rewrite(project.Assets, "res://packages/core/main.luau", "res://packages/core/ui/main.luau", dryRun: true);
+        MoveReport other = project.Assets.Move("res://packages/core/util.luau", "res://packages/core/lib/util.luau");
+
+        AssetReferenceSite site = Assert.Single(preview.Unrewritable);
+        Assert.Equal(("res://packages/core/mod.xml", 2, "Script"), (site.Document, site.Line, site.Element));
+        Assert.Empty(other.References.Unrewritable);
+        Assert.Empty(other.Warnings);
+    }
+
+    [Fact]
+    public void TextInsideAnElementThatNamesTheAssetIsReportedAndNotRewritten()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        string defs = "<Units>\n  <Unit name=\"car\" mesh=\"res://models/car.dat\">\n    <Model>res://models/car.dat</Model>\n    <Tag>fragile</Tag>\n  </Unit>\n</Units>\n";
+        project.Write("data/units.xml", defs);
+
+        MoveReport move = project.Assets.Move("res://models/car.dat", "res://models/truck.dat", ["res://data"]);
+
+        Assert.Single(move.References.Changes); // the attribute is rewritten...
+        AssetReferenceSite text = Assert.Single(move.References.Unrewritable); // ...the text of the element is only reported
+        Assert.Equal(("res://data/units.xml", 3, "Model", ""), (text.Document, text.Line, text.Element, text.Attribute));
+        Assert.Contains("<Model>res://models/car.dat</Model>", project.Read("data/units.xml"), StringComparison.Ordinal);
+        Assert.Contains("mesh=\"res://models/truck.dat\"", project.Read("data/units.xml"), StringComparison.Ordinal);
+        Assert.Contains("the text of <Model>", Assert.Single(move.Warnings), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MoveWarnsWhenOneAssetReadsAnotherByPath()
     {
         using var project = new Project();

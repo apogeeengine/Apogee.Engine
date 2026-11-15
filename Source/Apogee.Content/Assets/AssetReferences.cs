@@ -29,6 +29,7 @@ public sealed record SkippedDocument(string Document, string Reason, bool Blocki
 /// <param name="Changes">The attributes that are rewritten to the new path (a reference that carries a UID keeps it).</param>
 /// <param name="Unchanged">References to the asset that need no change: a <c>uid://</c> alone follows the file by itself, and a reference that already says the new path.</param>
 /// <param name="ScriptMentions">Script strings that mention the asset (a path, or its UID). They are reported and never rewritten: a script is code, and a string in it may be built or compared.</param>
+/// <param name="Unrewritable">Other places that name the old path and are not rewritten, for the editor to show: the paths in <c>game.xml</c> (<c>&lt;EntryScene&gt;</c>, <c>&lt;Icon&gt;</c>) and <c>mod.xml</c> (<c>&lt;Script&gt;</c>), whose <see cref="AssetReferenceSite.Value"/> is the full path they name, and text inside an element of a document (<see cref="AssetReferenceSite.Attribute"/> is empty). They break if the file moves and nothing here fixes them.</param>
 /// <param name="Skipped">The documents that were not used, each with the reason. A document in a read-only root that refers to the asset is here: its references were found and not rewritten. A file that is not well-formed is here too; it may or may not have held references.</param>
 /// <param name="Documents">The files that were changed (in a preview, that would be).</param>
 /// <param name="Applied">False for a preview: nothing was written.</param>
@@ -36,6 +37,7 @@ public sealed record RewriteReport(
     IReadOnlyList<ReferenceChange> Changes,
     IReadOnlyList<AssetReferenceSite> Unchanged,
     IReadOnlyList<AssetReferenceSite> ScriptMentions,
+    IReadOnlyList<AssetReferenceSite> Unrewritable,
     IReadOnlyList<SkippedDocument> Skipped,
     IReadOnlyList<string> Documents,
     bool Applied);
@@ -209,8 +211,16 @@ public static class AssetReferences
             if (document.Problem is not null)
             {
                 plan.Skip(document.Path, document.Problem);
+                continue;
             }
-            else if (document.IsScript)
+
+            // What cannot be rewritten is for a person; one that already says the new path is right, and a UID alone follows the file.
+            if (document.Unrewritable is { } others)
+            {
+                plan.Unrewritable.AddRange(others.Where(s => s.Value.HasPath && !newSpellings.Contains(VfsPath.IsVirtual(s.Value.Path) ? VfsPath.Normalize(s.Value.Path) : s.Value.Path)));
+            }
+
+            if (document.IsScript)
             {
                 // A UID in a script follows the file by itself, and a script that already says the new path is right: only the old path needs a person.
                 plan.Mentions.AddRange(document.Hits.Select(h => h.Site).Where(s => s.Value.HasPath && !newSpellings.Contains(s.Value.Path)));
@@ -234,12 +244,14 @@ public static class AssetReferences
 
         public List<AssetReferenceSite> Mentions { get; } = [];
 
+        public List<AssetReferenceSite> Unrewritable { get; } = [];
+
         public List<SkippedDocument> Skipped { get; } = [];
 
         private readonly List<DocumentEdit> _edits = [];
 
         public ReferencePlan Build() =>
-            new(new RewriteReport(Changes, Unchanged, Mentions, Skipped, [.. _edits.Select(e => e.Path)], Applied: false), _edits);
+            new(new RewriteReport(Changes, Unchanged, Mentions, Unrewritable, Skipped, [.. _edits.Select(e => e.Path)], Applied: false), _edits);
 
         /// <summary>Decides what to do with a document that has references: nothing to change, cannot be changed (and why), or its new text.</summary>
         public void Add(ReferenceSearch.DocumentResult document)
