@@ -90,6 +90,26 @@ world.LoadScene(document);
 
 `LoadScene` returns the entities it made, so a caller can move or select them. `SaveScene` and `LoadScene` read and write text; the editor and the host decide where it is kept.
 
+## Scene files and their UID
+
+A scene kept as a file has an identity, a [UID](assets.md#where-a-uid-lives) in the `uid` attribute of its root, that survives renaming and moving the file. The world reads and writes files through
+`World.Files` and `World.Assets`, which the host sets (a game's session and the editor do; a bare `new World()` has neither and cannot load a file).
+
+```csharp
+world.SaveSceneFile("res://scenes/level.ascene");              // every user entity
+world.SaveSceneFile("res://prefabs/crate.ascene", crate);      // one entity and everything under it
+List<Entity> made = world.LoadSceneFile("res://scenes/level.ascene", parent);
+world.LoadSceneFile("uid://4k2m9x7q1w3ze");                    // the file that has that UID, wherever it is now
+```
+
+- **`SaveSceneFile`** keeps the UID of the file it overwrites: the old file's `uid` is read and written again, so a reference to the scene keeps meaning the same asset after every save. A new file gets a
+  new UID. `SaveScene()` makes text with no `uid`, because a copy must not carry the identity of a file.
+- **`LoadSceneFile`** takes a path or `uid://…`. It reads the file as [`XmlFile`](defs.md) does, so a scene cooked into a pack (`--pack --cooked` keeps its path) loads the same as the text one. A `uid://` that no
+  file has is a `ContentException`, a missing file a `FileNotFoundException` and a file that is not a scene a `FormatException`.
+- A scene that is renamed or moved keeps its UID, so `LoadSceneFile` and `SaveSceneFile` find it by `uid://…`; the [asset database](assets.md) is read again with `Refresh()` after files move on disk (an import does it).
+
+The game's [entry scene](game-manifest.md) is loaded with `LoadSceneFile`.
+
 ## From Luau
 
 ```lua
@@ -97,10 +117,13 @@ local text = world:save_scene()
 for _, entity in world:load_scene(text, parent) do   -- parent is optional
     print(world:get_name(entity))
 end
+
+local made = world:load_scene_file("res://scenes/level.ascene", parent)   -- or "uid://…"; parent is optional
 ```
 
-`save_scene` returns the text and `load_scene` the list of entities it made; text that is not a scene is an error. A script reads and writes the file itself with `fs.read_text` and `fs.write_text`, which
-keep the confinement of a mod's files.
+`save_scene` returns the text and `load_scene` the list of entities it made; text that is not a scene is an error. `load_scene_file` returns the same list from a file. It reads without the per-mod confinement check of `fs.read_text`, as `models.load` and `ui:load_document` do:
+a script can load a scene of any package or of the game by its path or UID. There is no Luau call that writes a scene file; a script saves text with `fs.write_text`, which
+keeps the confinement of a mod's files (and a file written that way has no UID until the next import gives it one).
 
 ## Patching a scene
 

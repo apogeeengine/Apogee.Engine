@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using Apogee.Content;
+using Apogee.Content.Assets;
+using Apogee.Content.FileSystem;
 using Apogee.Content.Xml;
 using Apogee.Core.Assets;
 using Apogee.Core.Logging;
@@ -51,6 +53,12 @@ public sealed unsafe partial class World
         ArgumentNullException.ThrowIfNull(fromRef);
         _assetTypes[type] = (toRef, fromRef);
     }
+
+    /// <summary>The files scene files are read from and written to (<see cref="LoadSceneFile"/>, <see cref="SaveSceneFile(string)"/>); set by whatever hosts the world. Null in a bare world, which has no files.</summary>
+    public VirtualFileSystem? Files { get; set; }
+
+    /// <summary>Which file a <c>uid://</c> names (<see cref="LoadSceneFile"/> accepts one in place of a path). Null: only paths are understood.</summary>
+    public AssetDatabase? Assets { get; set; }
 
     /// <summary>Leaves a component out of scenes: what is derived (<c>WorldTransform</c>, which is always left out) or only means something in this run (physics bodies).</summary>
     public void IgnoreInScenes(string component) => _sceneIgnored.Add(component);
@@ -337,6 +345,68 @@ public sealed unsafe partial class World
 
         return created;
     }
+
+    /// <summary>
+    /// Creates the entities of the scene file at <paramref name="path"/> (a path, or <c>uid://…</c> for the file that has that UID, wherever it moved to), under <paramref name="parent"/> when given.
+    /// The file is read as <see cref="XmlFile"/> reads it, so a scene cooked into a pack loads like the text one. From a script this reads without the per-mod confinement of <c>fs.read_text</c>,
+    /// as <c>models.load</c> and <c>ui:load_document</c> do. See <see cref="LoadScene(string, Entity)"/>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The world has no <see cref="Files"/>.</exception>
+    /// <exception cref="ContentException">The path is a <c>uid://</c> that no file has.</exception>
+    /// <exception cref="FileNotFoundException">There is no such file.</exception>
+    /// <exception cref="FormatException">The file is not a scene.</exception>
+    [Method]
+    public List<Entity> LoadSceneFile(string path, Entity parent = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        VirtualFileSystem files = Files ?? throw new InvalidOperationException("this world has no files to load a scene from");
+        string resolved = ResolveScenePath(path);
+        XmlNode root;
+        try
+        {
+            root = XmlFile.Read(files, resolved);
+        }
+        catch (ContentException e)
+        {
+            throw new FormatException($"the scene {resolved} cannot be read: {e.Message}", e);
+        }
+
+        return LoadScene(root, parent);
+    }
+
+    /// <summary>
+    /// Writes every user entity as the scene file at <paramref name="path"/>. The file keeps its UID: when one is already there its <c>uid</c> is written again, and a new file gets a new one,
+    /// so saving over a scene never changes what references to it mean (<see cref="SaveScene()"/> makes text with no UID, for copies).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The world has no <see cref="Files"/>.</exception>
+    /// <exception cref="UnauthorizedAccessException">The path is not in a writable source.</exception>
+    public void SaveSceneFile(string path) => WriteSceneFile(path, SaveSceneDocument(Roots()));
+
+    /// <summary>One entity and everything below it as the scene file at <paramref name="path"/>. See <see cref="SaveSceneFile(string)"/>.</summary>
+    public void SaveSceneFile(string path, Entity root) => WriteSceneFile(path, SaveSceneDocument([root]));
+
+    private void WriteSceneFile(string path, XmlNode document)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        VirtualFileSystem files = Files ?? throw new InvalidOperationException("this world has no files to save a scene to");
+        string resolved = ResolveScenePath(path);
+
+        AssetUid uid = files.FileExists(resolved) ? AuthoredAssets.ReadUid(files.ReadAllBytes(resolved)) : AssetUid.None;
+        bool minted = uid.IsNone;
+        if (minted)
+        {
+            uid = AssetUid.New();
+        }
+
+        document.SetAttribute("uid", uid.ToString());
+        files.WriteAllText(resolved, SceneText(document));
+        if (minted)
+        {
+            Assets?.Refresh(); // the database remembers what it found: this file has a UID now
+        }
+    }
+
+    private string ResolveScenePath(string path) => Assets is { } assets ? assets.ResolvePath(path) : path;
 
     // The <Entity> children of a node, depth first and in order (the order the ids of a scene count in). Recursion is bounded by XmlNode.MaxDepth, which the parser and the cooked reader enforce.
     private void CreateSceneEntities(XmlNode container, Entity parent, List<Entity> created, List<XmlNode> nodes, List<Entity> under, Dictionary<int, Entity> byLocal)

@@ -47,8 +47,10 @@ public sealed class ScriptSession : IDisposable
     }
 
     /// <summary>A scene holds a model's path and UID, not its number in this run's library; and a physics body only exists in the run that made it (scripts make them again).</summary>
-    private static void RegisterSceneSupport(World world, ModelLibrary models, ContentLoader content)
+    private static void RegisterSceneSupport(World world, VirtualFileSystem files, ModelLibrary models, ContentLoader content)
     {
+        world.Files = files;
+        world.Assets = content.Assets;
         world.RegisterAssetType("model", id => models.PathOf(id) is { } path ? content.Assets.RefOf(path) : null, reference => content.Assets.Resolve(reference) is { } path ? models.Load(path) : 0);
         world.IgnoreInScenes("Body");
     }
@@ -243,7 +245,7 @@ public sealed class ScriptSession : IDisposable
             var nothingContent = new ContentLoader(nothing);
             models = InstallModels(vm, nothing, nothingContent);
             ui = InstallUi(vm, nothing, nothingContent);
-            RegisterSceneSupport(world, models, nothingContent);
+            RegisterSceneSupport(world, nothing, models, nothingContent);
             AssetLibrary assets = InstallAssets(vm, nothingContent);
             vm.Execute(vm.BaseOwner, "@" + path, File.ReadAllText(path, Encoding.UTF8));
             return new ScriptSession(world, vm, input, physics, audio, steam, net, models, ui, assets);
@@ -415,7 +417,7 @@ public sealed class ScriptSession : IDisposable
             var content = new ContentLoader(files);
             models = InstallModels(vm, files, content);
             uiSystem = InstallUi(vm, files, content);
-            RegisterSceneSupport(world, models, content);
+            RegisterSceneSupport(world, files, models, content);
             assets = InstallAssets(vm, content, packages);
             if (start.Scene is not null)
             {
@@ -429,7 +431,7 @@ public sealed class ScriptSession : IDisposable
                     throw new ContentException($"The entry scene {entryPath} of {GameManifest.FileName} does not exist.");
                 }
 
-                world.LoadScene(files.ReadAllText(entryPath));
+                world.LoadSceneFile(entryPath);
             }
 
             if (start.RunScripts)

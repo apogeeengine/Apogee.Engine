@@ -293,6 +293,46 @@ public class CommandTests
     }
 
     [Fact]
+    public void AGameLoadsASceneFileAndFindsAMovedModelThroughItsUidAfterAnImport()
+    {
+        using var scratch = new Scratch();
+        var modelUid = Apogee.Core.Assets.AssetUid.New();
+        scratch.Write("game/models/thing.glb", "stands in for a model: loading one only needs the file");
+        scratch.Write("game/models/thing.glb.import.xml", $"<Import uid=\"{modelUid}\"/>");
+        scratch.Write("game/scenes/level.ascene", $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <Scene version="1">
+              <Entity id="1" name="thing"><ModelRenderer Model="res://models/thing.glb|{modelUid}"/></Entity>
+            </Scene>
+            """);
+        string game = System.IO.Path.Combine(scratch.Root, "game");
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+
+        // The import gives the scene its UID (it fails on the stand-in model, which is no glTF: that does not stop the UIDs).
+        Assert.Equal(2, Commands.Import(Options("--import", game)));
+        Apogee.Core.Assets.AssetUid sceneUid = Apogee.Content.Assets.AuthoredAssets.ReadUid(File.ReadAllBytes(System.IO.Path.Combine(game, "scenes", "level.ascene")));
+        Assert.False(sceneUid.IsNone);
+
+        // The scene and the model are both renamed and moved: nothing at the old paths, only the UIDs lead on.
+        Directory.CreateDirectory(System.IO.Path.Combine(game, "props"));
+        Directory.CreateDirectory(System.IO.Path.Combine(game, "levels"));
+        File.Move(System.IO.Path.Combine(game, "models", "thing.glb"), System.IO.Path.Combine(game, "props", "vehicle.glb"));
+        File.Move(System.IO.Path.Combine(game, "models", "thing.glb.import.xml"), System.IO.Path.Combine(game, "props", "vehicle.glb.import.xml"));
+        File.Move(System.IO.Path.Combine(game, "scenes", "level.ascene"), System.IO.Path.Combine(game, "levels", "first.ascene"));
+        Game(scratch, "check", "<Script path=\"main.luau\"/>", user: false, ("main.luau", $$"""
+            local ModelRenderer = world:component("ModelRenderer")
+            assert(not pcall(function() world:load_scene_file("res://scenes/level.ascene") end), "the old path leads nowhere")
+            assert(not pcall(function() world:load_scene_file("uid://0000000000zzz") end), "an unknown uid is an error")
+            local made = world:load_scene_file("{{sceneUid}}")
+            local model = world:get(world:lookup("thing"), ModelRenderer).Model
+            fs.write_text("user://loaded.txt", #made .. " " .. tostring(model == models:load("res://props/vehicle.glb")) .. " " .. tostring(model ~= 0))
+            """));
+
+        Assert.Equal(0, Commands.Run(Options("--game", game, "--user", user, "--headless", "--frames", "1")));
+        Assert.Equal("1 true true", File.ReadAllText(System.IO.Path.Combine(user, "loaded.txt")));
+    }
+
+    [Fact]
     public void AGameCanEndTheRunAndIsToldBySetEscapeQuitsWhatEscapeDoes()
     {
         using var scratch = new Scratch();

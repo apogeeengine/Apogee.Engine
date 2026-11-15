@@ -37,11 +37,12 @@ own and is mounted at `mod://id/` is read with its paths under `mod://id/`. In a
 - **`Apogee.Runtime --import`** (`AssetImporter.Run`) gives a UID to every imported file that has none, by creating or editing its `.import.xml`, and to every authored file that has none, by adding the attribute to its root.
   Only those two attributes are written: comments, indentation, quote style, line endings and a byte order mark in the file stay as they were, and an attribute that is already there is never changed.
   The editor's single-asset `Reimport` does the same for its asset.
-- **Never at run time.** A game, a mod, a pack or a read-only folder is never written to. Their assets without a UID simply have none, and a reference to them is by path.
+- **Never at run time, except when a scene is saved.** A game, a mod, a pack or a read-only folder is never written to by the engine. Their assets without a UID simply have none, and a reference to them is by path.
 - A file that is not XML (a damaged document) has nowhere to hold a UID and is left alone.
 
 Something that rewrites a `.import.xml` (a settings panel) must keep the UID: `ImportSidecar.SetUid(newText, ImportSidecar.ReadUid(oldText))`. Likewise `AuthoredAssets.SetUid` for a document that is saved
-over an existing one.
+over an existing one. `World.SaveSceneFile` does this for scenes: it mints a UID for a new file and keeps the one an existing file has (see [scene files](scenes.md#scene-files-and-their-uid)), and a scene that is saved
+from the editor is therefore an authored asset with a UID from its first save, without waiting for an import.
 
 ### The UID does not change the import key
 
