@@ -445,12 +445,25 @@ public class AssetReferencesTests
 
     // ---- All or nothing -----------------------------------------------------------------------------------------------------------------
 
-    /// <summary>A folder source that fails when told to: the Nth write, or the Nth move, throws (once).</summary>
+    /// <summary>A folder source that fails when told to: the Nth write, or the Nth move, throws (once, or for good with <see cref="Sticky"/>).</summary>
     private sealed class FlakySource(DirectorySource inner) : IFileSource
     {
+        private bool _failed;
+
         public int WritesBeforeFailure { get; set; } = int.MaxValue;
 
         public int MovesBeforeFailure { get; set; } = int.MaxValue;
+
+        /// <summary>After the first failure everything of that kind keeps failing (a disk that stays full, a file that stays locked).</summary>
+        public bool Sticky { get; set; }
+
+        /// <summary>What a failing write throws.</summary>
+        public Func<Exception> WriteFailure { get; set; } = () => new IOException("the disk is full");
+
+        /// <summary>Runs before a write, with the path and the number of writes before this one: a person saving a file in between.</summary>
+        public Action<string, int>? BeforeWrite { get; set; }
+
+        private int _writes;
 
         public string Description => inner.Description;
 
@@ -466,10 +479,17 @@ public class AssetReferencesTests
 
         public void WriteAllBytes(string path, ReadOnlySpan<byte> bytes)
         {
+            BeforeWrite?.Invoke(path, _writes++);
+            if (_failed && Sticky)
+            {
+                throw WriteFailure();
+            }
+
             if (WritesBeforeFailure-- <= 0)
             {
-                WritesBeforeFailure = int.MaxValue; // it fails once, and the repair that follows works
-                throw new IOException("the disk is full");
+                _failed = true;
+                WritesBeforeFailure = Sticky ? 0 : int.MaxValue; // it fails once, and the repair that follows works
+                throw WriteFailure();
             }
 
             inner.WriteAllBytes(path, bytes);
@@ -483,7 +503,7 @@ public class AssetReferencesTests
         {
             if (MovesBeforeFailure-- <= 0)
             {
-                MovesBeforeFailure = int.MaxValue;
+                MovesBeforeFailure = Sticky ? 0 : int.MaxValue;
                 throw new IOException("the file is locked");
             }
 
@@ -519,6 +539,116 @@ public class AssetReferencesTests
         Assert.Equal(a, File.ReadAllText(Path.Combine(folder.Root, "scenes", "a.ascene")));
         Assert.Equal(b, File.ReadAllText(Path.Combine(folder.Root, "scenes", "b.ascene")));
         Assert.Equal(c, File.ReadAllText(Path.Combine(folder.Root, "scenes", "c.ascene")));
+    }
+
+    private static (TempFolder Folder, VirtualFileSystem Files, FlakySource Source, string[] Scenes) ThreeScenes()
+    {
+        var folder = new TempFolder();
+        folder.Write("models/car.dat", "car");
+        string[] scenes = ["a", "b", "c"];
+        for (int i = 0; i < scenes.Length; i++)
+        {
+            folder.Write($"scenes/{scenes[i]}.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        }
+
+        (VirtualFileSystem files, FlakySource source) = FlakyProject(folder);
+        return (folder, files, source, scenes);
+    }
+
+    private static string ReadAllText(TempFolder folder, string relative) => File.ReadAllText(Path.Combine(folder.Root, relative));
+
+    private static string ReadScene(TempFolder folder, string name) => File.ReadAllText(Path.Combine(folder.Root, "scenes", name + ".ascene"));
+
+    [Fact]
+    public void AFileThatCannotBePutBackIsNamedAndStaysValid()
+    {
+        (TempFolder folder, VirtualFileSystem files, FlakySource source, _) = ThreeScenes();
+        using (folder)
+        {
+            string c = ReadScene(folder, "c");
+            source.WritesBeforeFailure = 2; // the third write fails...
+            source.Sticky = true; // ...and so does every write after it, the repairs included
+
+            var error = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(new AssetDatabase(files), "res://models/car.dat", "res://models/truck.dat"));
+
+            Assert.Contains("could not be put back", error.Message, StringComparison.Ordinal);
+            Assert.Contains("res://scenes/a.ascene", error.Message, StringComparison.Ordinal);
+            Assert.Contains("res://scenes/b.ascene", error.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("res://scenes/c.ascene", error.Message, StringComparison.Ordinal); // never written, nothing to put back
+            Assert.IsType<IOException>(error.InnerException);
+            Assert.Equal(c, ReadScene(folder, "c"));
+            Assert.Contains("res://models/truck.dat", ReadScene(folder, "a"), StringComparison.Ordinal); // whole, new text: valid, only half done
+            XmlNode.Parse(ReadScene(folder, "b"));
+        }
+    }
+
+    [Fact]
+    public void AnExceptionThatIsNotAnIoExceptionStillPutsTheFilesBack()
+    {
+        (TempFolder folder, VirtualFileSystem files, FlakySource source, _) = ThreeScenes();
+        using (folder)
+        {
+            string a = ReadScene(folder, "a");
+            source.WritesBeforeFailure = 1;
+            source.WriteFailure = () => new InvalidOperationException("a source of its own failed");
+
+            var error = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(new AssetDatabase(files), "res://models/car.dat", "res://models/truck.dat"));
+
+            Assert.Contains("nothing was changed", error.Message, StringComparison.Ordinal);
+            Assert.IsType<InvalidOperationException>(error.InnerException);
+            Assert.Equal(a, ReadScene(folder, "a")); // written first, put back
+        }
+    }
+
+    [Fact]
+    public void AFileSavedSinceItWasWrittenIsNotOverwrittenByTheRepair()
+    {
+        (TempFolder folder, VirtualFileSystem files, FlakySource source, _) = ThreeScenes();
+        using (folder)
+        {
+            string saved = SceneOf(AssetUid.New(), Model("res://models/car.dat"), "<Edited/>");
+            source.WritesBeforeFailure = 1; // the second write fails
+            source.BeforeWrite = (path, count) =>
+            {
+                if (count == 1)
+                {
+                    // the editor's auto-save writes a.ascene (already rewritten by this code) just before b's write goes wrong
+                    File.WriteAllText(Path.Combine(folder.Root, "scenes", "a.ascene"), saved);
+                }
+            };
+
+            var error = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(new AssetDatabase(files), "res://models/car.dat", "res://models/truck.dat"));
+
+            Assert.Equal(saved, ReadScene(folder, "a")); // what the person saved stays
+            Assert.Contains("saved since", error.Message, StringComparison.Ordinal);
+            Assert.Contains("res://scenes/a.ascene", error.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void AFileSavedBetweenTheCheckAndItsOwnWriteStopsTheRewriteAndPutsTheEarlierOnesBack()
+    {
+        (TempFolder folder, VirtualFileSystem files, FlakySource source, _) = ThreeScenes();
+        using (folder)
+        {
+            string a = ReadScene(folder, "a");
+            string saved = SceneOf(AssetUid.New(), Model("res://models/car.dat"), "<Edited/>");
+            source.BeforeWrite = (path, count) =>
+            {
+                if (count == 0)
+                {
+                    // everything was checked; while a is being written, the editor saves c
+                    File.WriteAllText(Path.Combine(folder.Root, "scenes", "c.ascene"), saved);
+                }
+            };
+
+            var error = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(new AssetDatabase(files), "res://models/car.dat", "res://models/truck.dat"));
+
+            Assert.Contains("res://scenes/c.ascene was saved", error.Message, StringComparison.Ordinal);
+            Assert.Equal(saved, ReadScene(folder, "c")); // not overwritten
+            Assert.Equal(a, ReadScene(folder, "a")); // written, then put back
+            Assert.Contains("res://models/car.dat", ReadScene(folder, "b"), StringComparison.Ordinal); // never reached
+        }
     }
 
     [Fact]
@@ -730,6 +860,86 @@ public class AssetReferencesTests
         Assert.True(File.Exists(Path.Combine(folder.Root, "models", "car.dat.import.xml")));
         Assert.False(File.Exists(Path.Combine(folder.Root, "vehicles", "truck.dat")));
         Assert.Equal(scene, File.ReadAllText(Path.Combine(folder.Root, "scenes", "a.ascene")));
+    }
+
+    [Fact]
+    public void AMoveThatCannotBeUndoneKeepsTheDocumentsNamingTheNewPathAndRunningItAgainFinishesIt()
+    {
+        using var folder = new TempFolder();
+        folder.Write("models/car.dat", "car");
+        (VirtualFileSystem files, FlakySource source) = FlakyProject(folder);
+        new AssetImporter(files, [new DatImporter()]).Run();
+        AssetUid car = ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(folder.Root, "models", "car.dat.import.xml")));
+        folder.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"), Model("res://models/car.dat")));
+        source.MovesBeforeFailure = 1; // the asset moves, its sidecar cannot...
+        source.Sticky = true; // ...and the asset cannot go back either
+
+        var error = Assert.Throws<ContentException>(() => new AssetDatabase(files).Move("res://models/car.dat", "res://vehicles/truck.dat"));
+
+        Assert.Contains("run the same move again", error.Message, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(folder.Root, "vehicles", "truck.dat"))); // the asset is where the documents say
+        Assert.True(File.Exists(Path.Combine(folder.Root, "models", "car.dat.import.xml")));
+        Assert.Equal(2, ReadAllText(folder, "scenes/a.ascene").Split("res://vehicles/truck.dat").Length - 1);
+
+        source.Sticky = false;
+        source.MovesBeforeFailure = int.MaxValue; // the lock is gone
+        MoveReport done = new AssetDatabase(files).Move("res://models/car.dat", "res://vehicles/truck.dat");
+
+        Assert.True(done.Applied);
+        Assert.Equal(["res://vehicles/truck.dat.import.xml", "res://imported/vehicles/truck.dat.up"], done.Files);
+        Assert.False(File.Exists(Path.Combine(folder.Root, "models", "car.dat.import.xml")));
+        Assert.Equal(car, new AssetDatabase(files).UidOf("res://vehicles/truck.dat"));
+        Assert.Equal("vehicles/truck.dat", Assert.Single(AssetImporter.LoadIndex(files)).Source);
+        Assert.Empty(done.References.Changes);
+        Assert.Equal(2, done.References.Unchanged.Count);
+    }
+
+    [Fact]
+    public void RunningTheSameMoveAgainFinishesOneThatWasInterrupted()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        AssetUid car = project.Imported("models/car.dat");
+        string scene = SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"));
+        project.Write("scenes/a.ascene", scene);
+
+        // The process died after the documents were written and before the first file moved.
+        AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://vehicles/truck.dat");
+        Assert.True(project.Has("models/car.dat"));
+
+        MoveReport done = project.Assets.Move("res://models/car.dat", "res://vehicles/truck.dat");
+
+        Assert.Empty(done.References.Changes); // the documents already say it
+        Assert.Single(done.References.Unchanged);
+        Assert.False(project.Has("models/car.dat"));
+        Assert.Equal("car", project.Read("vehicles/truck.dat"));
+        Assert.Equal(car, project.Assets.UidOf("res://vehicles/truck.dat"));
+        Assert.Equal("vehicles/truck.dat", Assert.Single(AssetImporter.LoadIndex(project.Files)).Source);
+        Assert.Contains($"Model=\"res://vehicles/truck.dat|{car}\"", project.Read("scenes/a.ascene"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RunningTheSameMoveAgainFinishesOneThatDiedBetweenTheAssetAndItsSidecar()
+    {
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        AssetUid car = project.Imported("models/car.dat");
+        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
+        AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://vehicles/truck.dat");
+        Directory.CreateDirectory(Path.Combine(project.Root, "vehicles"));
+        File.Move(Path.Combine(project.Root, "models", "car.dat"), Path.Combine(project.Root, "vehicles", "truck.dat")); // only the asset had moved
+
+        MoveReport done = project.Assets.Move("res://models/car.dat", "res://vehicles/truck.dat");
+
+        Assert.Equal(["res://vehicles/truck.dat.import.xml", "res://imported/vehicles/truck.dat.up"], done.Files);
+        Assert.False(project.Has("models/car.dat.import.xml"));
+        Assert.Equal(car, project.Assets.UidOf("res://vehicles/truck.dat"));
+        Assert.Equal("CAR", project.Read("imported/vehicles/truck.dat.up"));
+        Assert.Contains($"uid=\"{car}\" path=\"res://vehicles/truck.dat\"", project.Read("imported/assets.xml"), StringComparison.Ordinal);
+        Assert.Empty(project.Import().Imported); // nothing imports again
+
+        // Once it is finished, the same call is an ordinary mistake again.
+        Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://vehicles/truck.dat"));
     }
 
     [Fact]

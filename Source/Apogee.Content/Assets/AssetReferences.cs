@@ -288,8 +288,10 @@ public static class AssetReferences
     // ---- Applying -------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// Writes every edit, or none. First every file is read again and has to be what the plan was made from (something saved it in between: stop, nothing is written); then the files are written one
-    /// by one (each write puts the new file in place whole), and if one fails the ones already written get their old bytes back.
+    /// Writes every edit, or none. First every file is read again and has to be what the plan was made from (something saved it in between: stop, nothing is written); then the files are written
+    /// one by one, each checked once more right before its own write (the first check only makes a mistake cheap: the last file would otherwise wait for all the writes before it), each write puts
+    /// the new file in place whole, and if anything goes wrong, whatever the exception, the files already written get their old bytes back. A file is put back only if it still holds what was
+    /// written: one saved since (by the user, or the editor's auto-save) is left as it is and named in the error, never overwritten with older text.
     /// </summary>
     /// <exception cref="ContentException">A file changed, or a write failed.</exception>
     internal static void Apply(VirtualFileSystem files, IReadOnlyList<DocumentEdit> edits)
@@ -303,21 +305,39 @@ public static class AssetReferences
         }
 
         var touched = new List<DocumentEdit>();
+        string? failure = null;
+        Exception? cause = null;
         try
         {
             foreach (DocumentEdit edit in edits)
             {
+                if (!IsUnchanged(files, edit))
+                {
+                    failure = $"{edit.Path} was saved while the references were being written";
+                    break;
+                }
+
                 touched.Add(edit); // before the write: a write that fails half way is put back too
                 files.WriteAllBytes(edit.Path, edit.Updated);
             }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e)
         {
-            List<string> stuck = Restore(files, touched);
-            throw new ContentException(stuck.Count == 0
-                ? $"Writing the references failed ({e.Message}): the files written so far were put back, nothing was changed."
-                : $"Writing the references failed ({e.Message}) and these files could not be put back, restore them from version control: {string.Join(", ", stuck)}.", e);
+            // Any exception: a source that is not a folder may throw anything, and the files written so far must be put back whatever it was.
+            failure = $"writing the references failed ({e.Message})";
+            cause = e;
         }
+
+        if (failure is null)
+        {
+            return;
+        }
+
+        List<string> stuck = Restore(files, touched);
+        string message = stuck.Count == 0
+            ? $"{failure}: the files written so far were put back, nothing was changed."
+            : $"{failure}, and these files could not be put back, restore them from version control: {string.Join(", ", stuck)}.";
+        throw cause is null ? new ContentException(message) : new ContentException(message, cause);
     }
 
     private static bool IsUnchanged(VirtualFileSystem files, DocumentEdit edit)
@@ -326,13 +346,16 @@ public static class AssetReferences
         {
             return files.ReadAllBytes(edit.Path).AsSpan().SequenceEqual(edit.Original);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception)
         {
-            return false;
+            return false; // a file that cannot be read is not the file the plan was made from
         }
     }
 
-    /// <summary>Writes the original bytes of every edit back; returns the paths that could not be.</summary>
+    /// <summary>
+    /// Writes the original bytes of every edit back, but only into a file that still holds the new bytes this code wrote; returns what could not be put back, each with a reason when it was not a failure
+    /// to write (a file that was saved since is left as the person saved it). A file that already holds its original bytes needs nothing.
+    /// </summary>
     internal static List<string> Restore(VirtualFileSystem files, IReadOnlyList<DocumentEdit> edits)
     {
         var stuck = new List<string>();
@@ -340,9 +363,21 @@ public static class AssetReferences
         {
             try
             {
+                byte[] now = files.ReadAllBytes(edit.Path);
+                if (now.AsSpan().SequenceEqual(edit.Original))
+                {
+                    continue;
+                }
+
+                if (!now.AsSpan().SequenceEqual(edit.Updated))
+                {
+                    stuck.Add($"{edit.Path} (saved since, left as it is)");
+                    continue;
+                }
+
                 files.WriteAllBytes(edit.Path, edit.Original);
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            catch (Exception)
             {
                 stuck.Add(edit.Path);
             }

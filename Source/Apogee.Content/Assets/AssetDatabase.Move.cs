@@ -43,11 +43,11 @@ public sealed partial class AssetDatabase
     {
         Refresh(); // the files are the truth, and the caller may have changed them since the last question
         (string source, string target) = AssetReferences.CheckMove(files, from, to);
-        List<(string From, string To)> moves = MovesOf(source, target);
         ImportIndex index = ImportIndex.Load(files);
         ImportEntry? entry = index.Find(source[GameRoot.Length..]);
+        List<(string From, string To)> moves = MovesOf(source, target, entry is not null);
 
-        AssetReferences.ReferencePlan plan = AssetReferences.Plan(this, UidOf(source), source, target, defFolders, includeScripts: true);
+        AssetReferences.ReferencePlan plan = AssetReferences.Plan(this, UidForMove(source, target), source, target, defFolders, includeScripts: true);
         List<string> warnings = ImportWarnings(index, entry, source, target);
         string? artifact = entry is null ? null : MovedArtifact(entry, source, target);
         List<string> moved = [.. moves.Select(m => m.To)];
@@ -71,19 +71,30 @@ public sealed partial class AssetDatabase
 
     // ---- The request ------------------------------------------------------------------------------------------------------------------
 
+    // The UID of the asset being moved: from the file where it is (at the old path, or at the new one when it has moved), or from the .import.xml an interrupted move left behind.
+    private AssetUid UidForMove(string source, string target)
+    {
+        AssetUid uid = UidOf(source);
+        if (uid.IsNone)
+        {
+            uid = UidOf(target);
+        }
+
+        if (uid.IsNone && files.FileExists(source + ImportSidecar.Suffix))
+        {
+            uid = ImportSidecar.ReadUid(files.ReadAllText(source + ImportSidecar.Suffix));
+        }
+
+        return uid;
+    }
+
     // The asset, and its .import.xml when it has one: each moves from the first path to the second. Checks everything that can be checked without changing a file.
-    private List<(string From, string To)> MovesOf(string source, string target)
+    // A move that was interrupted after the asset moved (its .import.xml or its import data was left behind) is finished: only what is left is moved.
+    private List<(string From, string To)> MovesOf(string source, string target, bool imported)
     {
         if (!source.StartsWith(GameRoot, StringComparison.Ordinal) || !target.StartsWith(GameRoot, StringComparison.Ordinal))
         {
             throw new ContentException($"Only assets of the game folder ({GameRoot}) can be moved: '{source}' to '{target}'. Packs and mods are read-only.");
-        }
-
-        if (!files.FileExists(source))
-        {
-            throw new ContentException(files.DirectoryExists(source)
-                ? $"'{source}' is a folder: move the files in it, one at a time."
-                : $"There is no file at '{source}' to move (is it already at '{target}'?).");
         }
 
         if (source.EndsWith(ImportSidecar.Suffix, StringComparison.Ordinal) || target.EndsWith(ImportSidecar.Suffix, StringComparison.Ordinal))
@@ -94,6 +105,18 @@ public sealed partial class AssetDatabase
         if (IsCacheOrHidden(source[GameRoot.Length..]) || IsCacheOrHidden(target[GameRoot.Length..]))
         {
             throw new ContentException($"'{source}' to '{target}': assets are not kept in the import cache ({Import.AssetImporter.CacheFolder}/) or in hidden folders.");
+        }
+
+        if (!files.FileExists(source))
+        {
+            if (files.FileExists(target) && (files.FileExists(source + ImportSidecar.Suffix) || imported))
+            {
+                return ResumedMoves(source, target);
+            }
+
+            throw new ContentException(files.DirectoryExists(source)
+                ? $"'{source}' is a folder: move the files in it, one at a time."
+                : $"There is no file at '{source}' to move (is it already at '{target}'?).");
         }
 
         var moves = new List<(string, string)> { (source, target) };
@@ -123,7 +146,32 @@ public sealed partial class AssetDatabase
         return moves;
     }
 
-    // Moves the files one after the other; if one fails, the ones moved go back and the documents are written as they were, and the exception says what could not be undone.
+    // What is left of a move whose asset is already at the target: its .import.xml, when that was left behind. Nothing else to move (the import data is brought up to date after).
+    private List<(string From, string To)> ResumedMoves(string source, string target)
+    {
+        var moves = new List<(string, string)>();
+        string sidecar = source + ImportSidecar.Suffix;
+        if (files.FileExists(sidecar))
+        {
+            if (files.Exists(target + ImportSidecar.Suffix))
+            {
+                throw new ContentException($"'{sidecar}' is left over from an earlier move, but '{target + ImportSidecar.Suffix}' exists too: nothing was moved.");
+            }
+
+            if (!files.CanWrite(sidecar) || !files.CanWrite(target + ImportSidecar.Suffix))
+            {
+                throw new ContentException($"'{sidecar}' or '{target + ImportSidecar.Suffix}' is in a read-only place: nothing was moved.");
+            }
+
+            moves.Add((sidecar, target + ImportSidecar.Suffix));
+        }
+
+        return moves;
+    }
+
+    // Moves the files one after the other. If one fails, the ones moved go back (the last first) and then the documents are written as they were; the exception says what could not be undone.
+    // The asset moves first, so it is the last to go back: if a file cannot be put back, the undoing stops there, the asset is still at the new path, and the documents (which name that path) are left
+    // as they are. A document never names a file that did not move, and running the same move again finishes it.
     private void MoveFiles(List<(string From, string To)> moves, AssetReferences.ReferencePlan plan)
     {
         var done = new List<(string From, string To)>();
@@ -135,23 +183,30 @@ public sealed partial class AssetDatabase
                 done.Add((from, to));
             }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e)
         {
-            // Back in the reverse order, and the files before the documents: a document may be the file that was moved.
-            var stuck = new List<string>();
+            // Any exception: a source that is not a folder may throw anything.
+            string? stoppedAt = null;
             foreach ((string from, string to) in Enumerable.Reverse(done))
             {
                 try
                 {
                     files.Move(to, from);
                 }
-                catch (Exception undo) when (undo is IOException or UnauthorizedAccessException)
+                catch (Exception)
                 {
-                    stuck.Add(to);
+                    stoppedAt = to;
+                    break;
                 }
             }
 
-            stuck.AddRange(AssetReferences.Restore(files, plan.Edits));
+            if (stoppedAt is not null)
+            {
+                throw new ContentException(
+                    $"Moving failed ({e.Message}) and '{stoppedAt}' could not be put back. The references name the new path, which the asset has: run the same move again to finish it, or restore the files from version control.", e);
+            }
+
+            List<string> stuck = AssetReferences.Restore(files, plan.Edits);
             throw new ContentException(stuck.Count == 0
                 ? $"Moving failed ({e.Message}): the references and the files were put back, nothing was changed."
                 : $"Moving failed ({e.Message}) and these files could not be put back, restore them from version control: {string.Join(", ", stuck)}.", e);
