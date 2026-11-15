@@ -34,6 +34,20 @@ hardware.
 | **Controllers, high-DPI, multi-monitor, fullscreen.** The input and window code is checked on Linux only. | what breaks is reported or fixed |
 | **NativeAOT on Windows.** `./build.sh aot` and the games' commands in [Building](../getting-started/building.md). | the fixture game and the Luau tests run from the published binary |
 
+## Game export on real hardware
+
+**What exists.** `Apogee.Runtime --export <game folder> <out dir> --target <linux-x64|win-x64|osx-arm64|osx-x64>` (wrapper: `./build.sh export`) copies the platform's runtime, native libraries and cooked packs into a folder that runs on its own. The exporter writes Windows icon/version resources into the .exe, switches it to the windowed subsystem, builds a macOS .app bundle with an ad-hoc code signature repair, and for Linux sets the executable bit and writes an icon and a .desktop file. Everything is tested from Linux with synthesized and vendored binaries; nothing has been run on Windows or macOS.
+
+**Needs:** a Windows 10/11 machine, a Mac with Apple silicon, and a Linux distribution older than the one the runtime was built on.
+
+| Task | Where to look | Done when |
+| --- | --- | --- |
+| Windows: export `Tests/Fixtures/ShippedGame` for win-x64 from a published NativeAOT runtime and double-click the .exe. | `Docs/manual/tools/export.md`, `Source/Apogee.Export/Windows/` | it starts with no console window, Explorer shows the icon, the Details tab shows the version, and the loader accepts the rewritten image (or the problem is reported). |
+| macOS: export for osx-arm64, copy the executable out of the bundle and run `codesign --verify --strict --verbose=4` on the copy, run `plutil -lint` on `Contents/Info.plist`, then launch the .app on Apple silicon. | `Source/Apogee.Export/Mac/`, the macOS section of `Docs/manual/tools/export.md` | the signature verifies and the game starts, or the failure is reported. |
+| Linux: run an exported folder on the oldest distribution you can (the runtime needs the glibc of the machine that built it). | the Linux section of `Docs/manual/tools/export.md` | it starts without LD_LIBRARY_PATH, or the missing library or glibc version is reported. |
+
+Building the release runtimes in CI on the oldest supported distribution is part of this work.
+
 ## Reviewing
 
 The maintainer works alone, so every kind of review helps: the `unsafe` and interop code (`Apogee.Interop`, the generated bindings' layout checks, the native shims in `Native/`), the public APIs (naming, ownership, what throws),
