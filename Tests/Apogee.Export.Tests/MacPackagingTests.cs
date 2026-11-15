@@ -65,7 +65,7 @@ public class MacPackagingTests
 
         ExportResult result = Export(scratch, s_arm64, FakeRuntime.Executable(s_arm64));
 
-        string contents = scratch.Path("out/Fixture Game.app/Contents");
+        string contents = Path.GetFullPath(scratch.Path("out/Fixture Game.app/Contents")); // with the OS's separators, as the result has
         Assert.Equal(Path.Combine(contents, "MacOS", "FixtureGame"), result.Executable);
         Assert.Equal(Path.Combine(contents, "Resources"), result.GameRoot);
         Assert.Equal(

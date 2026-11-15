@@ -88,7 +88,7 @@ public class LinuxPackagingTests
         Assert.Equal(new byte[] { 0x89, (byte)'P', (byte)'N', (byte)'G' }, file[..4]);
         Assert.Equal(256, System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(file.AsSpan(16))); // IHDR width
         Assert.Equal(256, System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(file.AsSpan(20))); // IHDR height
-        Assert.Empty(context.Warnings);
+        Assert.DoesNotContain(context.Warnings, static w => !w.Contains("Unix file modes", StringComparison.Ordinal)); // a Windows host also warns that it cannot mark the executable
     }
 
     [Fact]

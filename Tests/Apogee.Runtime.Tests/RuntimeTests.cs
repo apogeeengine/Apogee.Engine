@@ -922,23 +922,26 @@ public class CommandTests
         Assert.Equal(0, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", System.IO.Path.Combine(scratch.Root, "user"), "--headless", "--frames", "2")));
     }
 
+    private static string Slashes(string path) => path.Replace('\\', '/');
+
     [Fact]
     public void TheGameIsFoundNextToTheProgramOrInTheBundlesResources()
     {
         using var scratch = new Scratch();
         string beside = System.IO.Path.Combine(scratch.Root, "beside");
         scratch.Write("beside/game.xml", "<Game name=\"Beside\" organization=\"Test\" version=\"1.0.0\"/>");
-        Assert.Equal(beside, GameLocator.Find(beside));
-        Assert.Equal(beside, GameLocator.Find(beside + "/"));
+        // The locator answers with forward slashes on every OS.
+        Assert.Equal(Slashes(beside), GameLocator.Find(beside));
+        Assert.Equal(Slashes(beside), GameLocator.Find(beside + "/"));
 
         string bundle = System.IO.Path.Combine(scratch.Root, "Beside.app", "Contents");
         scratch.Write("Beside.app/Contents/Resources/game.xml", "<Game name=\"Bundled\" organization=\"Test\" version=\"1.0.0\"/>");
         Directory.CreateDirectory(System.IO.Path.Combine(bundle, "MacOS"));
-        Assert.Equal(System.IO.Path.Combine(bundle, "Resources"), GameLocator.Find(System.IO.Path.Combine(bundle, "MacOS")));
+        Assert.Equal(Slashes(System.IO.Path.Combine(bundle, "Resources")), GameLocator.Find(System.IO.Path.Combine(bundle, "MacOS")));
 
         // The program's own folder wins over the bundle's Resources, and a folder with neither has no game.
         scratch.Write("Beside.app/Contents/MacOS/game.xml", "<Game name=\"Own\" organization=\"Test\" version=\"1.0.0\"/>");
-        Assert.Equal(System.IO.Path.Combine(bundle, "MacOS"), GameLocator.Find(System.IO.Path.Combine(bundle, "MacOS")));
+        Assert.Equal(Slashes(System.IO.Path.Combine(bundle, "MacOS")), GameLocator.Find(System.IO.Path.Combine(bundle, "MacOS")));
         Directory.CreateDirectory(System.IO.Path.Combine(scratch.Root, "empty"));
         Assert.Null(GameLocator.Find(System.IO.Path.Combine(scratch.Root, "empty")));
     }
