@@ -32,6 +32,10 @@ public sealed partial class AssetDatabase(VirtualFileSystem files)
     // Where the game's own packages and development mods live under res://: a file there is also at mod://<id>/ when that package is mounted (see PackageSet).
     private static readonly string[] s_packageFolders = ["packages/", "dev_mods/"];
 
+    // A project is not nested deeper than this, or made of more folders than this; a link that leads back to a folder above it would otherwise make a tree without end.
+    private const int MaxFolderDepth = 64;
+    private const int MaxFolders = 100_000;
+
     private readonly Lock _lock = new();
 
     // The UID of each file looked at (None for "has none"), the file a UID names, and the files that share a UID.
@@ -383,7 +387,7 @@ public sealed partial class AssetDatabase(VirtualFileSystem files)
         List<string> roots = RootList();
         foreach (string root in roots)
         {
-            foreach (string file in files.EnumerateFiles(root, "*", recursive: true))
+            foreach (string file in files.EnumerateFiles(root, "*", recursive: true, MaxFolderDepth, MaxFolders))
             {
                 string relative = file[root.Length..];
                 if (!IsCacheOrHidden(relative) && !(root == "res://" && IsMountedPackageFile(relative, roots)))

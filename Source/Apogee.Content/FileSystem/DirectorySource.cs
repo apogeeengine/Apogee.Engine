@@ -61,9 +61,16 @@ public sealed class DirectorySource : IFileSource
             return;
         }
 
-        foreach (FileSystemInfo entry in new DirectoryInfo(full).EnumerateFileSystemInfos())
+        try
         {
-            into.Add((entry.Name, entry is DirectoryInfo ? FileKind.Directory : FileKind.File));
+            foreach (FileSystemInfo entry in new DirectoryInfo(full).EnumerateFileSystemInfos())
+            {
+                into.Add((entry.Name, entry is DirectoryInfo ? FileKind.Directory : FileKind.File));
+            }
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // The folder was deleted since it was found: it has nothing in it now. (A folder that cannot be read is an error, and says so.)
         }
     }
 

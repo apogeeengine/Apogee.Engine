@@ -446,6 +446,31 @@ public class VirtualFileSystemTests
     }
 
     [Fact]
+    public void ALimitStopsAListingOfFoldersThatLoopBack()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating a symbolic link needs a privilege on Windows.");
+        using var folder = new TempFolder();
+        folder.Write("a.txt", "");
+        folder.Write("sub/b.txt", "");
+        File.CreateSymbolicLink(Path.Combine(folder.Root, "sub", "up"), "..");
+        var vfs = new VirtualFileSystem();
+        vfs.Mount("res://", new DirectorySource(folder.Root));
+
+        var deep = Assert.Throws<VfsException>(() => vfs.EnumerateFiles("res://", "*", recursive: true, maxDepth: 10));
+        Assert.Contains("deep", deep.Message, StringComparison.Ordinal);
+
+        File.CreateSymbolicLink(Path.Combine(folder.Root, "sub", "again"), "..");
+        var many = Assert.Throws<VfsException>(() => vfs.EnumerateFiles("res://", "*", recursive: true, maxDirectories: 200)); // two links back: the tree doubles at every level
+        Assert.Contains("200 folders", many.Message, StringComparison.Ordinal);
+
+        // Without a loop the same limits are no obstacle, and a call that gives none is as it was.
+        File.Delete(Path.Combine(folder.Root, "sub", "up"));
+        File.Delete(Path.Combine(folder.Root, "sub", "again"));
+        Assert.Equal(["res://a.txt", "res://sub/b.txt"], vfs.EnumerateFiles("res://", "*", recursive: true, maxDepth: 1, maxDirectories: 2));
+        Assert.Equal(["res://a.txt", "res://sub/b.txt"], vfs.EnumerateFiles("res://", "*", recursive: true));
+    }
+
+    [Fact]
     public void PatternsUseStarAndQuestionMarkAndAreCaseSensitive()
     {
         using var folder = new TempFolder();

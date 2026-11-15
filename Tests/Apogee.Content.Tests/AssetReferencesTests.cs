@@ -688,6 +688,175 @@ public class AssetReferencesTests
         Assert.Equal(edited, project.Read("scenes/b.ascene"));
     }
 
+    // ---- Reading goes wrong ---------------------------------------------------------------------------------------------------------
+
+    /// <summary>A folder source whose reads and listings throw what a test tells them to.</summary>
+    private sealed class FaultySource(DirectorySource inner) : IFileSource
+    {
+        /// <summary>Called with the operation (<c>list</c>, <c>read</c>, <c>open</c>) and the path; it throws to make that fail.</summary>
+        public Action<string, string>? Fault { get; set; }
+
+        public string Description => inner.Description;
+
+        public bool CanWrite => true;
+
+        public FileKind Kind(string path) => inner.Kind(path);
+
+        public byte[] ReadAllBytes(string path)
+        {
+            Fault?.Invoke("read", path);
+            return inner.ReadAllBytes(path);
+        }
+
+        public Stream OpenRead(string path)
+        {
+            Fault?.Invoke("open", path);
+            return inner.OpenRead(path);
+        }
+
+        public void List(string directory, List<(string Name, FileKind Kind)> into)
+        {
+            Fault?.Invoke("list", directory);
+            inner.List(directory, into);
+        }
+
+        public void WriteAllBytes(string path, ReadOnlySpan<byte> bytes) => inner.WriteAllBytes(path, bytes);
+
+        public void Delete(string path) => inner.Delete(path);
+
+        public void CreateDirectory(string path) => inner.CreateDirectory(path);
+
+        public void Move(string source, string target) => inner.Move(source, target);
+    }
+
+    private static (AssetDatabase Assets, FaultySource Source) FaultyProject(TempFolder folder)
+    {
+        var source = new FaultySource(new DirectorySource(folder.Root, writable: true));
+        var files = new VirtualFileSystem();
+        files.Mount("res://", source);
+        return (new AssetDatabase(files), source);
+    }
+
+    [Theory]
+    [InlineData("list", "scenes", typeof(DirectoryNotFoundException), "FRM")] // a folder deleted while the scan was under way
+    [InlineData("list", "scenes", typeof(UnauthorizedAccessException), "FRM")] // a folder that cannot be read
+    [InlineData("list", "scenes", typeof(NotSupportedException), "FRM")] // whatever else a source of its own throws
+    [InlineData("open", "scenes/a.ascene", typeof(InvalidOperationException), "FRM")]
+    [InlineData("read", "models/car.dat.import.xml", typeof(IOException), "RM")] // the UID of the asset
+    [InlineData("read", "imported/index.xml", typeof(IOException), "M")] // the import index
+    public void ASourceThatFailsWhileReadingGivesAContentExceptionAndChangesNothing(string operation, string at, Type exception, string entryPoints)
+    {
+        using var folder = new TempFolder();
+        folder.Write("models/car.dat", "car");
+        string scene = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
+        folder.Write("scenes/a.ascene", scene);
+        (AssetDatabase assets, FaultySource source) = FaultyProject(folder);
+        new AssetImporter(assets.Files, [new DatImporter()]).Run();
+        AssetRef target = assets.RefOf("res://models/car.dat");
+        source.Fault = (op, path) =>
+        {
+            if (op == operation && path == at)
+            {
+                throw (Exception)Activator.CreateInstance(exception, "it went wrong")!;
+            }
+        };
+
+        if (entryPoints.Contains('F', StringComparison.Ordinal))
+        {
+            Assert.Throws<ContentException>(() => AssetReferences.Find(assets, target));
+        }
+
+        if (entryPoints.Contains('R', StringComparison.Ordinal))
+        {
+            Assert.Throws<ContentException>(() => AssetReferences.Rewrite(assets, "res://models/car.dat", "res://models/truck.dat"));
+        }
+
+        var error = Assert.Throws<ContentException>(() => assets.Move("res://models/car.dat", "res://models/truck.dat"));
+
+        Assert.Contains("Nothing was changed", error.Message, StringComparison.Ordinal);
+        Assert.NotNull(error.InnerException);
+        Assert.Equal(scene, File.ReadAllText(Path.Combine(folder.Root, "scenes", "a.ascene")));
+        Assert.True(File.Exists(Path.Combine(folder.Root, "models", "car.dat")));
+    }
+
+    [Fact]
+    public void AFolderThatCannotBeReadIsAContentExceptionAndNothingIsChanged()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("A folder is made unreadable with Unix modes here.");
+            return;
+        }
+
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        string scene = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
+        project.Write("scenes/a.ascene", scene);
+        string locked = Path.Combine(project.Root, "locked");
+        Directory.CreateDirectory(locked);
+        File.SetUnixFileMode(locked, UnixFileMode.None);
+        try
+        {
+            Assert.SkipWhen(CanList(locked), "The folder is still readable (running as root?).");
+
+            Assert.Throws<ContentException>(() => AssetReferences.Find(project.Assets, project.Assets.RefOf("res://models/car.dat")));
+            Assert.Throws<ContentException>(() => AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat"));
+            Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://models/truck.dat"));
+        }
+        finally
+        {
+            File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        Assert.Equal(scene, project.Read("scenes/a.ascene"));
+        Assert.True(project.Has("models/car.dat"));
+    }
+
+    private static bool CanList(string folder)
+    {
+        try
+        {
+            _ = Directory.GetFileSystemEntries(folder);
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    [Fact]
+    public void ALinkThatLeadsBackToAFolderAboveItEndsInAContentExceptionAndNotInATreeWithoutEnd()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating a symbolic link needs a privilege on Windows.");
+        using var project = new Project();
+        project.Write("models/car.dat", "car");
+        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        // Two links to the folder they are in: below each of them the same tree again, twice, without end.
+        File.CreateSymbolicLink(Path.Combine(project.Root, "scenes", "again"), ".");
+        File.CreateSymbolicLink(Path.Combine(project.Root, "scenes", "twice"), ".");
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var error = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat"));
+
+        Assert.Contains("folders", error.Message, StringComparison.Ordinal);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), $"took {watch.Elapsed}");
+        Assert.Contains("res://models/car.dat", project.Read("scenes/a.ascene"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARequestWithoutPathsIsANullArgumentAndNotAContentException()
+    {
+        using var project = new Project();
+
+        Assert.Throws<ArgumentNullException>(() => AssetReferences.Rewrite(project.Assets, null!, "res://a.dat"));
+        Assert.Throws<ArgumentNullException>(() => AssetReferences.Rewrite(project.Assets, "res://a.dat", null!));
+        Assert.Throws<ArgumentNullException>(() => AssetReferences.Rewrite(null!, "res://a.dat", "res://b.dat"));
+        Assert.Throws<ArgumentNullException>(() => AssetReferences.Find(null!, default));
+        Assert.Throws<ArgumentNullException>(() => project.Assets.Move(null!, "res://b.dat"));
+        Assert.Throws<ArgumentNullException>(() => project.Assets.Move("res://a.dat", null!));
+    }
+
     // ---- Scripts ------------------------------------------------------------------------------------------------------------------
 
     [Fact]

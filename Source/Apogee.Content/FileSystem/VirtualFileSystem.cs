@@ -154,15 +154,27 @@ public sealed class VirtualFileSystem
     }
 
     /// <summary>The files directly in <paramref name="directory"/> (or under it with <paramref name="recursive"/>) whose name matches <paramref name="pattern"/> (<c>*</c> and <c>?</c>), as full paths, sorted.</summary>
-    public List<string> EnumerateFiles(string directory, string pattern = "*", bool recursive = false)
+    /// <param name="directory">The folder to list.</param>
+    /// <param name="pattern">The names to keep.</param>
+    /// <param name="recursive">Also list the folders below.</param>
+    /// <param name="maxDepth">With <paramref name="recursive"/>: the deepest folder to enter (the folder itself is level 0). A link that points back at a folder above it makes a tree without end; a caller that does not trust its folders gives a limit.</param>
+    /// <param name="maxDirectories">With <paramref name="recursive"/>: the most folders to enter. Two links back to the same folder make a tree that grows by a power of two for each level, which a depth limit alone does not stop.</param>
+    /// <exception cref="VfsException">A limit was passed.</exception>
+    public List<string> EnumerateFiles(string directory, string pattern = "*", bool recursive = false, int maxDepth = int.MaxValue, int maxDirectories = int.MaxValue)
     {
         string root = VfsPath.Parse(directory);
         var result = new List<string>();
-        var pending = new Stack<string>();
-        pending.Push(root);
+        var pending = new Stack<(string Path, int Depth)>();
+        pending.Push((root, 0));
+        int entered = 0;
         while (pending.Count > 0)
         {
-            string current = pending.Pop();
+            (string current, int depth) = pending.Pop();
+            if (++entered > maxDirectories)
+            {
+                throw new VfsException($"'{root}' has more than {maxDirectories} folders (a link that leads back to a folder above it?).");
+            }
+
             foreach ((string name, FileKind kind) in Children(current))
             {
                 string child = Join(current, name);
@@ -170,7 +182,12 @@ public sealed class VirtualFileSystem
                 {
                     if (recursive)
                     {
-                        pending.Push(child);
+                        if (depth >= maxDepth)
+                        {
+                            throw new VfsException($"'{child}' is more than {maxDepth} folders deep (a link that leads back to a folder above it?).");
+                        }
+
+                        pending.Push((child, depth + 1));
                     }
                 }
                 else if (Matches(pattern, name))

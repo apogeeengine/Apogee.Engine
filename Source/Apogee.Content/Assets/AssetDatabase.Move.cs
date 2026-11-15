@@ -41,6 +41,27 @@ public sealed partial class AssetDatabase
     /// <exception cref="ContentException">Something is wrong with the request (a path, a read-only file, a target that exists), a writable document was skipped and <paramref name="allowSkipped"/> is false, a document changed while it was being prepared, or a write failed. Nothing is left half done: the message says if something could not be put back.</exception>
     public MoveReport Move(string from, string to, IReadOnlyList<string>? defFolders = null, bool dryRun = false, bool allowSkipped = false)
     {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(to);
+        Prepared move = AssetReferences.Guard("Preparing the move", () => Prepare(from, to, defFolders));
+        if (dryRun)
+        {
+            return new MoveReport(move.Source, move.Target, move.Moved, move.Plan.Report, move.Warnings, Applied: false);
+        }
+
+        AssetReferences.RefuseSkipped(move.Plan.Report, allowSkipped);
+        AssetReferences.Apply(files, move.Plan.Edits);
+        MoveFiles(move.Moves, move.Plan);
+        List<string> warnings = [.. move.Warnings, .. UpdateImportData(move.Source, move.Target, move.Entry, move.Artifact)];
+        Refresh();
+        return new MoveReport(move.Source, move.Target, move.Moved, move.Plan.Report with { Applied = true }, warnings, Applied: true);
+    }
+
+    /// <summary>Everything a move needs, worked out before the first write.</summary>
+    private sealed record Prepared(string Source, string Target, List<(string From, string To)> Moves, ImportEntry? Entry, AssetReferences.ReferencePlan Plan, List<string> Warnings, string? Artifact, List<string> Moved);
+
+    private Prepared Prepare(string from, string to, IReadOnlyList<string>? defFolders)
+    {
         Refresh(); // the files are the truth, and the caller may have changed them since the last question
         (string source, string target) = AssetReferences.CheckMove(files, from, to);
         ImportIndex index = ImportIndex.Load(files);
@@ -56,17 +77,7 @@ public sealed partial class AssetDatabase
             moved.Add(GameRoot + artifact);
         }
 
-        if (dryRun)
-        {
-            return new MoveReport(source, target, moved, plan.Report, warnings, Applied: false);
-        }
-
-        AssetReferences.RefuseSkipped(plan.Report, allowSkipped);
-        AssetReferences.Apply(files, plan.Edits);
-        MoveFiles(moves, plan);
-        warnings.AddRange(UpdateImportData(source, target, entry, artifact));
-        Refresh();
-        return new MoveReport(source, target, moved, plan.Report with { Applied = true }, warnings, Applied: true);
+        return new Prepared(source, target, moves, entry, plan, warnings, artifact, moved);
     }
 
     // ---- The request ------------------------------------------------------------------------------------------------------------------
@@ -257,8 +268,9 @@ public sealed partial class AssetDatabase
             RenameListRow(source, target);
             return [];
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ContentException)
+        catch (Exception e)
         {
+            // Whatever it was: the files are moved and the documents say so, and this is only the cache.
             return [$"The import data could not be updated ({e.Message}): import the project again to repair it."];
         }
     }

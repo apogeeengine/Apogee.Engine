@@ -71,9 +71,28 @@ public static class AssetReferences
     public static IReadOnlyList<AssetReferenceSite> Find(AssetDatabase assets, AssetRef target, IReadOnlyList<string>? defFolders = null, bool includeScripts = false)
     {
         ArgumentNullException.ThrowIfNull(assets);
-        List<string> paths = target.HasPath && VfsPath.TryParse(target.Path, out string canonical, out _) ? AssetDatabase.SpellingsOf(canonical) : [];
-        var matcher = new ReferenceSearch.Matcher(assets.Files, target.Uid, paths);
-        return [.. ReferenceSearch.Search(assets, matcher, defFolders, includeScripts).Where(d => d.Problem is null).SelectMany(d => d.Hits).Select(h => h.Site)];
+        return Guard("Looking for the references", () =>
+        {
+            List<string> paths = target.HasPath && VfsPath.TryParse(target.Path, out string canonical, out _) ? AssetDatabase.SpellingsOf(canonical) : [];
+            var matcher = new ReferenceSearch.Matcher(assets.Files, target.Uid, paths);
+            return (IReadOnlyList<AssetReferenceSite>)[.. ReferenceSearch.Search(assets, matcher, defFolders, includeScripts).Where(d => d.Problem is null).SelectMany(d => d.Hits).Select(h => h.Site)];
+        });
+    }
+
+    /// <summary>
+    /// Runs the part of an operation that only reads. A folder that cannot be listed, a file that cannot be opened, a link that loops, a source of its own that throws: whatever the cause, the
+    /// caller gets a <see cref="ContentException"/> (and nothing was changed, since nothing here writes). A null argument is a mistake of the caller and stays an <see cref="ArgumentNullException"/>.
+    /// </summary>
+    internal static T Guard<T>(string what, Func<T> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception e) when (e is not (ContentException or ArgumentNullException or OutOfMemoryException))
+        {
+            throw new ContentException($"{what} failed: {e.Message} Nothing was changed.", e);
+        }
     }
 
     /// <summary>
@@ -91,15 +110,20 @@ public static class AssetReferences
     public static RewriteReport Rewrite(AssetDatabase assets, string oldPath, string newPath, IReadOnlyList<string>? defFolders = null, bool dryRun = false, bool includeScripts = true, bool allowSkipped = false)
     {
         ArgumentNullException.ThrowIfNull(assets);
-        assets.Refresh();
-        (string from, string to) = CheckMove(assets.Files, oldPath, newPath);
-        AssetUid uid = assets.UidOf(from);
-        if (uid.IsNone)
+        ArgumentNullException.ThrowIfNull(oldPath);
+        ArgumentNullException.ThrowIfNull(newPath);
+        ReferencePlan plan = Guard("Preparing the references", () =>
         {
-            uid = assets.UidOf(to);
-        }
+            assets.Refresh();
+            (string from, string to) = CheckMove(assets.Files, oldPath, newPath);
+            AssetUid uid = assets.UidOf(from);
+            if (uid.IsNone)
+            {
+                uid = assets.UidOf(to);
+            }
 
-        ReferencePlan plan = Plan(assets, uid, from, to, defFolders, includeScripts);
+            return Plan(assets, uid, from, to, defFolders, includeScripts);
+        });
         if (!dryRun)
         {
             RefuseSkipped(plan.Report, allowSkipped);
