@@ -38,6 +38,7 @@ public sealed class AssetDatabase(VirtualFileSystem files)
     private readonly Dictionary<string, AssetUid> _uidOfPath = new(StringComparer.Ordinal);
     private readonly Dictionary<AssetUid, string> _pathOfUid = [];
     private readonly Dictionary<AssetUid, string> _listed = [];
+    private readonly Dictionary<string, HashSet<string>> _shippedSources = new(StringComparer.Ordinal); // per root: the sources a cooked root's index names (empty for a root that is not cooked)
     private readonly HashSet<AssetUid> _shipped = []; // listed by a cooked list: the sources are not in the pack, so the files cannot vouch for them
     private List<(AssetUid Uid, IReadOnlyList<string> Paths)> _duplicates = [];
     private bool _seeded;
@@ -74,6 +75,7 @@ public sealed class AssetDatabase(VirtualFileSystem files)
             _pathOfUid.Clear();
             _listed.Clear();
             _shipped.Clear();
+            _shippedSources.Clear();
             _duplicates = [];
             _seeded = false;
             _scanned = false;
@@ -123,12 +125,13 @@ public sealed class AssetDatabase(VirtualFileSystem files)
     }
 
     /// <summary>
-    /// The file the reference means: its path when that file exists (the path is what people wrote, and it wins), otherwise the file that has its UID (logged, so that whoever saves the document that
+    /// The file the reference means: its path when that file exists (the path is what people wrote, and it wins; an imported asset of a cooked pack counts as existing, since the pack holds its artifact and
+    /// not the source), otherwise the file that has its UID (logged, so that whoever saves the document that
     /// holds the reference writes the new path), otherwise null.
     /// </summary>
     public string? Resolve(AssetRef reference)
     {
-        if (reference.HasPath && TryCanonical(reference.Path, out string canonical) && files.FileExists(canonical))
+        if (reference.HasPath && TryCanonical(reference.Path, out string canonical) && (files.FileExists(canonical) || IsShippedSource(canonical)))
         {
             return canonical;
         }
@@ -251,6 +254,26 @@ public sealed class AssetDatabase(VirtualFileSystem files)
                     }
                 }
             }
+        }
+    }
+
+    /// <summary>Whether <paramref name="path"/> is a source that a cooked root imported: its file is not in the pack, but its artifact is, and the index says so.</summary>
+    private bool IsShippedSource(string path)
+    {
+        if (!Import.ImportIndex.TryRootOf(path, out string root) || !path.StartsWith(root, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        lock (_lock)
+        {
+            if (!_shippedSources.TryGetValue(root, out HashSet<string>? sources))
+            {
+                sources = IsCooked(root) ? [.. Import.ImportIndex.Load(files, root).Entries.Select(e => e.Source)] : [];
+                _shippedSources[root] = sources;
+            }
+
+            return sources.Contains(path[root.Length..]);
         }
     }
 

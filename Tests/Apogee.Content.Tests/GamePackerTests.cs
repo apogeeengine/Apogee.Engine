@@ -196,6 +196,27 @@ public class GamePackerTests
     }
 
     [Fact]
+    public void ACookedPackResolvesAPathOnlyReferenceToAnImportedAssetWhoseSourceIsNotThere()
+    {
+        using var game = new Game();
+        game.Populate();
+        game.Import();
+        PackReport report = GamePacker.Pack(game.Request(cooked: true));
+
+        using var pack = PackSource.Open(report.Parts[0]);
+        VirtualFileSystem files = Mount(pack);
+        Assert.False(files.FileExists("res://models/a.dat")); // the source stayed out of the pack
+        var database = new AssetDatabase(files);
+        Assert.Equal("res://models/a.dat", database.Resolve(AssetRef.FromPath("res://models/a.dat")));
+        Assert.Null(database.Resolve(AssetRef.FromPath("res://models/never.dat"))); // only what the index names
+        Assert.Null(database.Resolve(AssetRef.FromPath("res://models/a.dat.up")));
+
+        // The folder before cooking is not a cooked root: a source that is gone there is gone.
+        File.Delete(Path.Combine(game.Root, "models", "a.dat"));
+        Assert.Null(new AssetDatabase(game.Files).Resolve(AssetRef.FromPath("res://models/a.dat")));
+    }
+
+    [Fact]
     public void ExcludedPrefixesAreLeftOut()
     {
         using var game = new Game();
