@@ -45,6 +45,12 @@ internal sealed class TinyPe
     /// <summary>Bytes after the sections that are not a certificate.</summary>
     public byte[]? Overlay { get; init; }
 
+    /// <summary><c>DllCharacteristics</c>; 0x80 is "force integrity".</summary>
+    public ushort DllCharacteristics { get; init; }
+
+    /// <summary>Data directories to set besides the resource and certificate tables: index to (address, size), as a linker would have for imports, exceptions and so on.</summary>
+    public IReadOnlyDictionary<int, (uint Address, uint Size)> Directories { get; init; } = new Dictionary<int, (uint, uint)>();
+
     /// <summary>A stored checksum, which a rewrite must replace.</summary>
     public uint CheckSum { get; init; }
 
@@ -133,9 +139,16 @@ internal sealed class TinyPe
         BinaryPrimitives.WriteUInt32LittleEndian(optional[60..], headers);
         BinaryPrimitives.WriteUInt32LittleEndian(optional[64..], CheckSum);
         BinaryPrimitives.WriteUInt16LittleEndian(optional[68..], Subsystem);
+        BinaryPrimitives.WriteUInt16LittleEndian(optional[70..], DllCharacteristics);
         BinaryPrimitives.WriteUInt32LittleEndian(optional[(Pe32Plus ? 108 : 92)..], 16); // NumberOfRvaAndSizes
 
         Span<byte> directories = optional[(Pe32Plus ? 112 : 96)..];
+        foreach ((int index, (uint address, uint size)) in Directories)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(directories[(8 * index)..], address);
+            BinaryPrimitives.WriteUInt32LittleEndian(directories[((8 * index) + 4)..], size);
+        }
+
         if (_resourceIndex >= 0)
         {
             BinaryPrimitives.WriteUInt32LittleEndian(directories[16..], placed[_resourceIndex].Va);

@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace Apogee.Export.Windows;
@@ -202,6 +203,13 @@ internal sealed class ResourceTree
         {
             directory.Offset = position;
             position += DirectorySize + (EntrySize * directory.Children!.Count);
+
+            // The counts of named and numbered entries are 16 bit fields.
+            int named = directory.Children.Count(static c => c.Id.IsNamed);
+            if (named > ushort.MaxValue || directory.Children.Count - named > ushort.MaxValue)
+            {
+                throw new ExportException("A resource directory would have more than 65535 entries.");
+            }
         }
 
         var strings = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -235,6 +243,12 @@ internal sealed class ResourceTree
             }
         }
 
+        // The data entries hold RVAs (32 bit): the section must end inside the 4 GiB the format can address.
+        if ((long)baseRva + position > uint.MaxValue)
+        {
+            throw new ExportException("The resource section would end past 4 GiB of address space.");
+        }
+
         // Pass 2: write it down.
         byte[] output = new byte[position];
         foreach (Node directory in directories)
@@ -245,7 +259,7 @@ internal sealed class ResourceTree
         foreach (Node leaf in leaves)
         {
             Span<byte> entry = output.AsSpan((int)leaf.Offset, DataEntrySize);
-            BinaryPrimitives.WriteUInt32LittleEndian(entry, checked(baseRva + (uint)leaf.DataOffset));
+            BinaryPrimitives.WriteUInt32LittleEndian(entry, baseRva + (uint)leaf.DataOffset);
             BinaryPrimitives.WriteUInt32LittleEndian(entry[4..], (uint)leaf.Data.Bytes.Length);
             BinaryPrimitives.WriteUInt32LittleEndian(entry[8..], leaf.Data.CodePage);
             leaf.Data.Bytes.CopyTo(output.AsSpan((int)leaf.DataOffset));

@@ -33,15 +33,24 @@ internal static class PeResourceWriter
         }
 
         byte[] result = Rewrite(original, replace, removeTypes, guiSubsystem, warnings);
+        string temporary = path + ".tmp";
         try
         {
             // Through a second file, so that a failure leaves the executable as it was.
-            string temporary = path + ".tmp";
             File.WriteAllBytes(temporary, result);
             File.Move(temporary, path, overwrite: true);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
+            try
+            {
+                File.Delete(temporary);
+            }
+            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+            {
+                // The leftover is not worth hiding the error that matters.
+            }
+
             throw new ExportException($"{path} could not be written: {e.Message}", e);
         }
     }
@@ -73,6 +82,12 @@ internal static class PeResourceWriter
         foreach ((ResourceKey key, byte[] data) in replace)
         {
             tree.Set(key, data);
+        }
+
+        if (image.ForcesIntegrity && image.GetDirectory(PeImage.CertificateDirectory).Size != 0)
+        {
+            // Stripping the signature of such an image would leave one that Windows refuses to load.
+            throw new ExportException("The executable requires a valid signature to load (it has IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY), and changing it invalidates the signature. Export from an unsigned runtime.");
         }
 
         if (image.RemoveOverlay())
@@ -113,11 +128,27 @@ internal static class PeResourceWriter
     {
         PeSection section = image.Sections[index];
         uint size = section.VirtualSize != 0 ? section.VirtualSize : section.SizeOfRawData;
-        return index == image.Sections.Count - 1
-            && section.SizeOfRawData != 0
-            && rva == section.VirtualAddress
-            && directorySize >= size
-            && section.RawEnd == image.SectionsEnd;
+        if (index != image.Sections.Count - 1 || section.SizeOfRawData == 0 || rva != section.VirtualAddress || directorySize < size || section.RawEnd != image.SectionsEnd)
+        {
+            return false;
+        }
+
+        // Nothing else may live in the section: no other data directory (the certificate table's "address" is a file offset, not an RVA) points into it.
+        for (int directory = 0; directory < image.DirectoryCount; directory++)
+        {
+            if (directory is PeImage.ResourceDirectory or PeImage.CertificateDirectory)
+            {
+                continue;
+            }
+
+            (uint address, _) = image.GetDirectory(directory);
+            if (address != 0 && address >= section.VirtualAddress && address < section.VirtualEnd)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static void RewriteInPlace(PeImage image, int index, ResourceTree tree)
@@ -139,13 +170,20 @@ internal static class PeResourceWriter
 
     private static void AppendSection(PeImage image, int existing, ResourceTree tree)
     {
-        long virtualEnd = image.SizeOfImage;
+        // The new section follows the last one with no gap (the loader maps sections one right after the other), so the image's declared size must be exactly where the last section ends.
+        long virtualEnd = 0;
         foreach (PeSection section in image.Sections)
         {
             virtualEnd = Math.Max(virtualEnd, section.VirtualEnd);
         }
 
-        uint virtualAddress = CheckedUInt(PeImage.AlignUp(virtualEnd, image.SectionAlignment), "The image would be bigger than 4 GiB.");
+        virtualEnd = PeImage.AlignUp(virtualEnd, image.SectionAlignment);
+        if (image.SizeOfImage > virtualEnd)
+        {
+            throw new ExportException($"The executable's SizeOfImage (0x{image.SizeOfImage:X}) is larger than where its last section ends (0x{virtualEnd:X}): it is damaged, or reserves address space that a new section would leave a gap before.");
+        }
+
+        uint virtualAddress = CheckedUInt(virtualEnd, "The image would be bigger than 4 GiB.");
         long pointer = PeImage.AlignUp(image.SectionsEnd, image.FileAlignment);
         byte[] data = tree.Serialize(virtualAddress);
         uint rawSize = CheckedUInt(PeImage.AlignUp(data.Length, image.FileAlignment), "The resources are too big.");

@@ -27,67 +27,6 @@ public class PeResourceWriterTests
     private static byte[] Rewrite(byte[] file, IReadOnlyDictionary<ResourceKey, byte[]>? replace = null, IReadOnlyCollection<int>? remove = null, bool gui = true, List<string>? warnings = null) =>
         PeResourceWriter.Rewrite(file, replace ?? s_version, remove ?? s_none, gui, warnings ?? []);
 
-    /// <summary>The checksum of a file as imagehlp defines it, written again here with the carries added at the end instead of after each word.</summary>
-    private static uint CheckSumOf(byte[] file, int field)
-    {
-        ulong sum = 0;
-        for (int i = 0; i < file.Length; i += 2)
-        {
-            if (i == field || i == field + 2)
-            {
-                continue;
-            }
-
-            sum += i + 1 < file.Length ? BinaryPrimitives.ReadUInt16LittleEndian(file.AsSpan(i)) : file[i];
-        }
-
-        while (sum > 0xFFFF)
-        {
-            sum = (sum & 0xFFFF) + (sum >> 16);
-        }
-
-        return (uint)sum + (uint)file.Length;
-    }
-
-    /// <summary>Everything a loader checks about the layout: sections in order, aligned, not overlapping, inside the file and the image; the resource directory inside its section; the checksum.</summary>
-    private static PEHeaders AssertConsistent(byte[] file)
-    {
-        using var reader = new PEReader(new MemoryStream(file));
-        PEHeaders headers = reader.PEHeaders;
-        PEHeader pe = headers.PEHeader!;
-        long previousVirtualEnd = 0;
-        long previousRawEnd = pe.SizeOfHeaders;
-        foreach (SectionHeader section in headers.SectionHeaders)
-        {
-            Assert.Equal(0, section.VirtualAddress % pe.SectionAlignment);
-            Assert.True(section.VirtualAddress >= previousVirtualEnd, $"section {section.Name} overlaps the one before it in memory");
-            previousVirtualEnd = (long)section.VirtualAddress + section.VirtualSize;
-            if (section.SizeOfRawData != 0)
-            {
-                Assert.Equal(0, section.PointerToRawData % pe.FileAlignment);
-                Assert.Equal(0, section.SizeOfRawData % pe.FileAlignment);
-                Assert.True(section.PointerToRawData >= previousRawEnd, $"section {section.Name} overlaps the one before it in the file");
-                previousRawEnd = (long)section.PointerToRawData + section.SizeOfRawData;
-                Assert.True(previousRawEnd <= file.Length);
-            }
-        }
-
-        Assert.Equal(previousRawEnd, file.Length);
-        Assert.Equal(TinyPe.AlignUp(previousVirtualEnd, pe.SectionAlignment), pe.SizeOfImage);
-
-        DirectoryEntry resources = pe.ResourceTableDirectory;
-        if (resources.Size != 0)
-        {
-            SectionHeader holder = headers.SectionHeaders.Single(s => resources.RelativeVirtualAddress >= s.VirtualAddress && resources.RelativeVirtualAddress < s.VirtualAddress + s.VirtualSize);
-            Assert.True((long)resources.RelativeVirtualAddress + resources.Size <= (long)holder.VirtualAddress + holder.VirtualSize);
-            Assert.Equal(".rsrc", holder.Name);
-        }
-
-        int field = headers.PEHeaderStartOffset + 64;
-        Assert.Equal(CheckSumOf(file, field), pe.CheckSum);
-        return headers;
-    }
-
     private static Dictionary<string, byte[]> Resources(byte[] file) => TestResources.Read(file).ToDictionary(r => r.Key, r => r.Data);
 
     [Fact]
@@ -107,15 +46,15 @@ public class PeResourceWriterTests
     [Fact]
     public void TheImageStaysConsistent()
     {
-        AssertConsistent(Rewrite(Typical())); // .rsrc is not last: a section is added
-        AssertConsistent(Rewrite(Typical(), Replace((3, 1, 0x409, new byte[5000]), (14, 1, 0x409, new byte[40])))); // a bigger section
-        AssertConsistent(Rewrite(new TinyPe { MinHeaderSize = 0x400 }.Section(".text", new byte[10], TinyPe.TextFlags).Build())); // no resources at all
-        AssertConsistent(Rewrite(new TinyPe { MinHeaderSize = 0x400, Pe32Plus = false }.Section(".text", new byte[10], TinyPe.TextFlags).Build())); // PE32
-        AssertConsistent(Rewrite(new TinyPe { MinHeaderSize = 0x400, FileAlignment = 0x1000, SectionAlignment = 0x2000 }.Section(".text", new byte[10], TinyPe.TextFlags).Build())); // another alignment
+        PeChecks.AssertConsistent(Rewrite(Typical())); // .rsrc is not last: a section is added
+        PeChecks.AssertConsistent(Rewrite(Typical(), Replace((3, 1, 0x409, new byte[5000]), (14, 1, 0x409, new byte[40])))); // a bigger section
+        PeChecks.AssertConsistent(Rewrite(new TinyPe { MinHeaderSize = 0x400 }.Section(".text", new byte[10], TinyPe.TextFlags).Build())); // no resources at all
+        PeChecks.AssertConsistent(Rewrite(new TinyPe { MinHeaderSize = 0x400, Pe32Plus = false }.Section(".text", new byte[10], TinyPe.TextFlags).Build())); // PE32
+        PeChecks.AssertConsistent(Rewrite(new TinyPe { MinHeaderSize = 0x400, FileAlignment = 0x1000, SectionAlignment = 0x2000 }.Section(".text", new byte[10], TinyPe.TextFlags).Build())); // another alignment
 
         // The input of a linker that is already consistent keeps being so when rewritten again and again.
         byte[] twice = Rewrite(Rewrite(Typical()), Replace((16, 1, 0x409, new byte[999])));
-        AssertConsistent(twice);
+        PeChecks.AssertConsistent(twice);
     }
 
     [Fact]
@@ -158,11 +97,11 @@ public class PeResourceWriterTests
         Assert.Equal(before.SectionHeaders[1].VirtualAddress, after.SectionHeaders[1].VirtualAddress);
         Assert.Equal(before.SectionHeaders[1].PointerToRawData, after.SectionHeaders[1].PointerToRawData);
         Assert.True(output.Length < input.Length);
-        AssertConsistent(output);
+        PeChecks.AssertConsistent(output);
 
         byte[] bigger = Rewrite(input, Replace((3, 5, 0x409, new byte[20000])));
         Assert.True(bigger.Length > input.Length);
-        AssertConsistent(bigger);
+        PeChecks.AssertConsistent(bigger);
         Assert.Equal(20000, Resources(bigger)["#3/#5/1033"].Length);
     }
 
@@ -241,7 +180,7 @@ public class PeResourceWriterTests
 
         byte[] output = Rewrite(input);
 
-        AssertConsistent(output); // compares with the independent sum
+        PeChecks.AssertConsistent(output); // compares with the independent sum
         Assert.NotEqual(0xDEADBEEFu, new PEReader(new MemoryStream(output)).PEHeaders.PEHeader!.CheckSum);
 
     }
@@ -257,7 +196,7 @@ public class PeResourceWriterTests
 
         image.UpdateCheckSum();
 
-        Assert.Equal(CheckSumOf(image.Bytes, 0x40 + 24 + 64), BinaryPrimitives.ReadUInt32LittleEndian(image.Bytes.AsSpan(0x40 + 24 + 64)));
+        Assert.Equal(PeChecks.CheckSumOf(image.Bytes, 0x40 + 24 + 64), BinaryPrimitives.ReadUInt32LittleEndian(image.Bytes.AsSpan(0x40 + 24 + 64)));
     }
 
     [Fact]
@@ -270,7 +209,7 @@ public class PeResourceWriterTests
 
         Assert.Contains(warnings, w => w.Contains("signature", StringComparison.Ordinal));
         Assert.True(output.Length < input.Length);
-        PEHeaders headers = AssertConsistent(output);
+        PEHeaders headers = PeChecks.AssertConsistent(output);
         Assert.Equal(0, headers.PEHeader!.CertificateTableDirectory.Size);
         Assert.Equal(0, headers.PEHeader.CertificateTableDirectory.RelativeVirtualAddress);
         Assert.Equal(-1, output.AsSpan().IndexOf(Enumerable.Repeat((byte)0x5A, 600).ToArray()));
@@ -316,7 +255,7 @@ public class PeResourceWriterTests
             .Resources([(24, 1, 0x409, new byte[10])])
             .Section(".reloc", new byte[10], TinyPe.RelocFlags)
             .Build();
-        AssertConsistent(Rewrite(roomy));
+        PeChecks.AssertConsistent(Rewrite(roomy));
 
         // And a resource section that is last needs no room at all.
         byte[] inPlace = new TinyPe()
@@ -325,11 +264,11 @@ public class PeResourceWriterTests
             .Section(".pdata", new byte[100], TinyPe.DataFlags)
             .Resources([(24, 1, 0x409, new byte[10])])
             .Build();
-        AssertConsistent(Rewrite(inPlace));
+        PeChecks.AssertConsistent(Rewrite(inPlace));
     }
 
     [Fact]
-    public void ARealAssemblyIsReadLikeThePEReaderReadsIt()
+    public void ARealCompilerMadeAssemblyIsReadRightAndHasNoRoomForAHeader()
     {
         // The test assembly is a PE32 file made by the compiler: .text, .rsrc and .reloc, the resource section not last, and headers with no spare room (SizeOfHeaders 0x200).
         byte[] input = File.ReadAllBytes(typeof(PeResourceWriterTests).Assembly.Location);
@@ -344,22 +283,9 @@ public class PeResourceWriterTests
             Assert.Equal(resource.Data, tree.Entries.Single(e => e.Key.Type.ToString() == resource.Type.TrimStart('#') && e.Key.Name.ToString() == resource.Name.TrimStart('#') && e.Key.Language == resource.Language).Value.Bytes);
         }
 
-        // Written out and read back, with the independent reader, the same resources come out; the file is not changed (it is read from a copy).
+        // The compiler leaves no room in the headers for another section header (the section table ends at 0x1F0 of 0x200), and the resources are not last: said so, not guessed.
         byte[] copy = [.. input];
-        try
-        {
-            byte[] output = Rewrite(input, Replace((16, 1, 0x409, [8])), [16]);
-            AssertConsistent(output);
-            Assert.Equal(expected.Count(r => r.Type != "#16") + 1, TestResources.Read(output).Count);
-            using var reader = new PEReader(new MemoryStream(output));
-            MetadataReader metadata = reader.GetMetadataReader(); // the managed code is where its metadata says
-            Assert.Equal("Apogee.Export.Tests", metadata.GetString(metadata.GetAssemblyDefinition().Name));
-        }
-        catch (ExportException e)
-        {
-            Assert.Contains("room", e.Message, StringComparison.Ordinal); // the compiler leaves no room for a header: said so, not guessed
-        }
-
+        Assert.Contains("room", Assert.Throws<ExportException>(() => Rewrite(input, Replace((16, 1, 0x409, [8])), [16])).Message, StringComparison.Ordinal);
         Assert.Equal(copy, input);
     }
 
@@ -394,6 +320,8 @@ public class PeResourceWriterTests
     [InlineData("SectionRawSizeHuge")]
     [InlineData("SectionRawPointerHuge")]
     [InlineData("SectionsOutOfOrder")]
+    [InlineData("SizeOfImageNear4GiB")]
+    [InlineData("SizeOfImageBeyondTheLastSection")]
     [InlineData("ResourceDirectoryNowhere")]
     [InlineData("RootEntryCountHuge")]
     [InlineData("EntryPointsToItself")]
@@ -430,6 +358,8 @@ public class PeResourceWriterTests
             case "HeadersPastTheEnd": BinaryPrimitives.WriteUInt32LittleEndian(bytes[(optional + 60)..], 0xFFFFFFFF); break;
             case "SectionRawSizeHuge": BinaryPrimitives.WriteUInt32LittleEndian(bytes[(table + 16)..], 0xFFFFFFFF); break;
             case "SectionRawPointerHuge": BinaryPrimitives.WriteUInt32LittleEndian(bytes[(table + 20)..], 0xFFFFFFFF); break;
+            case "SizeOfImageNear4GiB": BinaryPrimitives.WriteUInt32LittleEndian(bytes[(optional + 56)..], 0xFFFFF000); break;
+            case "SizeOfImageBeyondTheLastSection": BinaryPrimitives.WriteUInt32LittleEndian(bytes[(optional + 56)..], BinaryPrimitives.ReadUInt32LittleEndian(bytes[(optional + 56)..]) + 0x1000); break;
             case "SectionsOutOfOrder": BinaryPrimitives.WriteUInt32LittleEndian(bytes[(table + 12)..], 0x40000); break;
             case "ResourceDirectoryNowhere": BinaryPrimitives.WriteUInt32LittleEndian(bytes[(optional + 112 + 16)..], 0x7000_0000); break;
             case "RootEntryCountHuge": BinaryPrimitives.WriteUInt16LittleEndian(bytes[(rsrcAt + 14)..], 0xFFFF); break;
@@ -527,5 +457,107 @@ public class PeResourceWriterTests
 
         Assert.True(refused > 100, "the damage should be noticed often");
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60), $"took {watch.Elapsed}");
+    }
+
+    [Fact]
+    public void WhateverIsWrittenIntoTheHeadersOnlyAnExportExceptionComesOut()
+    {
+        // Whole fields (not single bytes) set to the values that break arithmetic: 0, 1, powers of two, the edges of 16, 31 and 32 bits, a size near 4 GiB. With resources big enough (an icon is 100 KB)
+        // that the offsets of the new section matter. Anything but an ExportException would escape the export command as a crash.
+        uint[] values = [0, 1, 2, 3, 4, 8, 0x40, 0x7F, 0x80, 0xFF, 0x100, 0x1000, 0x7FFF, 0x8000, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000, 0xFFFFF000, 0xFFFFFFF0, 0xFFFFFFFF];
+        byte[][] originals =
+        [
+            Typical(),
+            Typical(certificate: new byte[100]),
+            new TinyPe { MinHeaderSize = 0x400 }.Section(".text", new byte[100], TinyPe.TextFlags).Resources([(24, 1, 0x409, new byte[40]), ("NAME", 2, 0, new byte[9])]).Build(),
+            new TinyPe { MinHeaderSize = 0x400, Pe32Plus = false }.Section(".text", new byte[100], TinyPe.TextFlags).Resources([(24, 1, 0x409, new byte[40])]).Section(".reloc", new byte[10], TinyPe.RelocFlags).Build(),
+        ];
+        Dictionary<ResourceKey, byte[]> big = Replace((3, 1, 0x409, new byte[100_000]), (14, 1, 0x409, new byte[100]), (16, 1, 0x409, new byte[500]));
+        var random = new Random(77);
+        int refused = 0;
+        int accepted = 0;
+
+        foreach (byte[] original in originals)
+        {
+            for (int round = 0; round < 3000; round++)
+            {
+                byte[] file = [.. original];
+                int writes = random.Next(1, 4);
+                for (int i = 0; i < writes; i++)
+                {
+                    uint value = values[random.Next(values.Length)];
+                    int at = random.Next(0, 0x600) & ~1;
+                    if (random.Next(2) == 0)
+                    {
+                        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(at & ~3), value);
+                    }
+                    else
+                    {
+                        BinaryPrimitives.WriteUInt16LittleEndian(file.AsSpan(at), (ushort)value);
+                    }
+                }
+
+                try
+                {
+                    Rewrite(file, big, [3, 14, 16]);
+                    accepted++;
+                }
+                catch (ExportException)
+                {
+                    refused++;
+                }
+            }
+        }
+
+        Assert.True(refused > 1000 && accepted > 100, $"refused {refused}, accepted {accepted}");
+    }
+
+    [Fact]
+    public void AResourceSectionThatWouldEndPast4GiBIsRefusedNotOverflowed()
+    {
+        var tree = new ResourceTree();
+        tree.Set(new ResourceKey(3, 1, 0x409), new byte[100_000]);
+
+        Assert.Contains("4 GiB", Assert.Throws<ExportException>(() => tree.Serialize(0xFFFF_F000)).Message, StringComparison.Ordinal);
+        Assert.NotEmpty(tree.Serialize(0xFFFE_0000)); // it fits there
+    }
+
+    [Fact]
+    public void ADirectoryOfMoreThan65535EntriesIsRefusedNotWrapped()
+    {
+        var tree = new ResourceTree();
+        for (int language = 0; language <= ushort.MaxValue; language++)
+        {
+            tree.Set(new ResourceKey(3, 1, language), []);
+        }
+
+        Assert.Contains("65535", Assert.Throws<ExportException>(() => tree.Serialize(0x1000)).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ASectionThatAnotherDirectoryPointsIntoIsNotRewrittenInPlace()
+    {
+        // The resource section is last, which would rewrite it in place; but the exception table (directory 3) points into it, so it holds more than resources: a new section is added instead.
+        byte[] input = new TinyPe { MinHeaderSize = 0x400, Directories = new Dictionary<int, (uint, uint)> { [3] = (0x2000 + 0x40, 12) } }
+            .Section(".text", new byte[100], TinyPe.TextFlags)
+            .Resources([(24, 1, 0x409, new byte[200])])
+            .Build();
+
+        byte[] output = Rewrite(input);
+
+        PEHeaders headers = PeChecks.AssertConsistent(output);
+        Assert.Equal([".text", ".rsrc0", ".rsrc"], headers.SectionHeaders.Select(h => h.Name));
+        Assert.Equal(input.AsSpan(0x600, 0x200).ToArray(), output.AsSpan(0x600, 0x200).ToArray()); // the old section is as it was
+        Assert.Equal((0x2000 + 0x40, 12), (headers.PEHeader!.ExceptionTableDirectory.RelativeVirtualAddress, headers.PEHeader.ExceptionTableDirectory.Size));
+    }
+
+    [Fact]
+    public void AnImageThatNeedsASignatureToLoadIsNotUnsigned()
+    {
+        byte[] signed = new TinyPe { MinHeaderSize = 0x400, DllCharacteristics = 0x80, Certificate = new byte[64] }.Section(".text", new byte[100], TinyPe.TextFlags).Build();
+        byte[] unsigned = new TinyPe { MinHeaderSize = 0x400, DllCharacteristics = 0x80 }.Section(".text", new byte[100], TinyPe.TextFlags).Build();
+
+        Assert.Contains("FORCE_INTEGRITY", Assert.Throws<ExportException>(() => Rewrite(signed)).Message, StringComparison.Ordinal);
+        PeChecks.AssertConsistent(Rewrite(unsigned)); // without a signature to strip there is nothing to lose
     }
 }

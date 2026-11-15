@@ -66,6 +66,7 @@ internal sealed class PeImage
     private const int OffsetSizeOfHeaders = 60;
     private const int OffsetCheckSum = 64;
     private const int OffsetSubsystem = 68;
+    private const int OffsetDllCharacteristics = 70;
 
     private readonly int _peOffset;
     private readonly int _optionalOffset;
@@ -135,6 +136,9 @@ internal sealed class PeImage
 
     /// <summary><c>Subsystem</c>: <see cref="SubsystemConsole"/> or <see cref="SubsystemGui"/> for the programs we handle.</summary>
     public ushort Subsystem => U16(Bytes, _optionalOffset + OffsetSubsystem);
+
+    /// <summary>Whether the image has <c>IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY</c> (0x80) in <c>DllCharacteristics</c>: Windows then loads it only if it is signed.</summary>
+    public bool ForcesIntegrity => (U16(Bytes, _optionalOffset + OffsetDllCharacteristics) & 0x0080) != 0;
 
     /// <summary>The offset in the file of the first byte after the section table that a new section header would use.</summary>
     public int NextSectionHeaderOffset => _sectionTableOffset + (SectionHeaderSize * _sections.Count);

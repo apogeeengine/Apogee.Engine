@@ -98,17 +98,36 @@ writes the executable's headers and resource section itself, with no Windows API
 - **The subsystem.** The runtime is a console program; a game started by a double-click would open a console window beside its own. The export makes it a windowed program (`IMAGE_SUBSYSTEM_WINDOWS_GUI`).
   A windowed program has no standard output: run the game from a terminal and nothing is printed. `--console` keeps the console subsystem for when you want to read the log.
 
-How the file is changed: the resource section is rewritten where it is when it is the last section of the file; otherwise (linkers put the relocations last) a new `.rsrc` section is added after the
+How the file is changed: the resource section is rewritten where it is when it is the last section of the file and nothing else points into it; otherwise (linkers put the relocations last) a new `.rsrc` section is added after the
 last one, and the old one is renamed `.rsrc0` and left in the file as unused data. No existing section moves, so the code, the pack key and everything that points into the program stay where they
 are, and the key is written before this step so that the checksum in the header, which is written last, covers the final file. Adding a section header needs 40 free bytes between the section table and
-the first section's data; a linker leaves hundreds, but an executable made some other way may not, and the export then stops with an error saying so. The export refuses an executable that has other data after
+the first section's data; a linker leaves hundreds, but an executable made some other way may not, and the export then stops with an error saying so. It also stops if the declared image size is larger than where the last section ends. The export refuses an executable that has other data after
 its sections (an installer, an attached archive), and one that is damaged: the message says what is wrong.
 
-- **Signing.** A signed runtime loses its signature (the changes invalidate it), and the export warns. Signing the game (Authenticode, `signtool sign`) is outside the export: sign `<executable>.exe`, and
+- **Signing.** Signing the game (Authenticode, `signtool sign`) is outside the export: sign `<executable>.exe`, and
   the DLLs if you like, after the export. An unsigned program from the internet is held by Windows SmartScreen until enough people have run it, or until it is signed with a certificate that has a reputation;
   a game on Steam is not affected by that.
-- **Not tested on Windows by the project's tests.** The unit tests read the exported file back with `System.Reflection.PortableExecutable` and their own parsers, on any host; on Windows one test also asks
-  `FileVersionInfo` for the version information. Whether Explorer shows the icon and the Details tab, and that a double-click opens no console, is checked by hand on a Windows computer.
+- **Version suffixes.** The version in `game.xml` is read as `major.minor.patch`: a suffix such as `-beta` or `+build` is dropped when the manifest is read, so the file version, the product version and the
+  strings `FileVersion` and `ProductVersion` all say `1.2.3.0`; the suffix is not in the executable. Put the label in the `description` if players should see it.
+- **Signed runtimes.** A signed runtime loses its signature (the changes invalidate it) and the export warns. A runtime with `IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY`, which Windows loads only when signed,
+  is refused instead, because the unsigned result could not start.
+
+What the tests prove, and what they do not. The unit tests write executables with the PE writer and read them back with `System.Reflection.PortableExecutable`, with their own parser of the resource
+tree and version block, and with an independent sum for the checksum: the sections are contiguous and aligned, `SizeOfImage` is where the last one ends, every resource directory is ordered (names first,
+then numbers) with the entry counts it declares, the checksum is right. They do this on small executables made by the tests, on the engine's vendored MSVC-linked `SDL3.dll` and on the signed
+`steam_api64.dll` (a signature to strip, a resource type with a name), where the original sections, the import, exception, relocation, debug and load-configuration tables and the other resources must come out
+byte for byte. They also damage the headers (truncations, every field set to the edge values, random bytes) and expect an `ExportException` every time. They cannot show that the Windows loader accepts the
+file: **nothing in the project's tests runs an exported program on Windows**, and `PEReader` is more lenient than the loader. On Windows one test asks `FileVersionInfo` for the version information.
+
+To look at an export with a second, independent implementation of the format, on Linux or macOS with LLVM installed (one test does this when `llvm-readobj` is on the `PATH`):
+
+```sh
+llvm-readobj --file-headers --sections --coff-resources Bin/export/win/FixtureGame.exe
+```
+
+Expected: `Subsystem: IMAGE_SUBSYSTEM_WINDOWS_GUI (0x2)` (without `--console`), a non-zero `CheckSum`, a section `.rsrc` that is the last one and, usually, `.rsrc0` before it (the old resources, now unused), and
+under `.rsrc` the types `ICON (ID 3)` with 7 entries, `GROUP_ICON (ID 14)`, `VERSIONINFO (ID 16)` and `MANIFEST (ID 24)`. That Explorer shows the icon and the Details tab, and that a double-click opens no
+console, is checked by hand on a Windows computer.
 
 ### Linux
 
@@ -175,5 +194,5 @@ game's icon (`Rgba(size)`, `Png(size)`: a box filter down, with a warning for an
 ## Tests
 
 `Tests/Apogee.Export.Tests`: the targets, reading the platform from an executable header, what is left out of a runtime folder, the key slot (written into the only slot, read back, no slot or two is an
-error, the key is not in the file in the clear), the icon sizes, the PE writer (the resource tree, the section that is rewritten or added, header room, signatures and overlays, the subsystem, the checksum, files that are damaged or hostile, a real compiler-made assembly), the Windows step (the version information and the icon images read back, the key kept), the Linux step (the executable bit, `icon.png` and the manifest's icon, the escaping of the desktop entry), and exports for all four targets from any host with a synthesized runtime folder (layout, renamed executable, what is packed, the game
+error, the key is not in the file in the clear), the icon sizes, the PE writer (the resource tree, the section that is rewritten or added, header room, signatures and overlays, the subsystem, the checksum, files that are damaged or hostile, the engine's vendored Windows libraries, damaged and hostile files), the Windows step (the version information and the icon images read back, the key kept), the Linux step (the executable bit, `icon.png` and the manifest's icon, the escaping of the desktop entry), and exports for all four targets from any host with a synthesized runtime folder (layout, renamed executable, what is packed, the game
 folder untouched, encrypted packs, the output folder rules). `Tests/Apogee.Runtime.Tests` runs an exported game from its folder, headless, on its encrypted pack.

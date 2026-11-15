@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection.PortableExecutable;
 using System.Text;
+using Xunit;
 
 namespace Apogee.Export.Tests;
 
@@ -158,6 +159,52 @@ internal static class TestResources
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// Checks every directory of the file's resource tree the way the loader's binary search needs it: exactly as many entries with a name (the high bit of the first word) as <c>NumberOfNamedEntries</c>
+    /// says, and they come first, ordered by name without regard to case; the numbered ones follow, ascending; and the tree is three levels deep.
+    /// </summary>
+    public static void AssertOrdered(byte[] file)
+    {
+        using var reader = new PEReader(new MemoryStream(file));
+        DirectoryEntry directory = reader.PEHeaders.PEHeader!.ResourceTableDirectory;
+        byte[] section = reader.GetSectionData(directory.RelativeVirtualAddress).GetContent().ToArray();
+
+        void Walk(int at, int depth)
+        {
+            Assert.True(depth < 3, "the tree is deeper than type/name/language");
+            int named = BinaryPrimitives.ReadUInt16LittleEndian(section.AsSpan(at + 12));
+            int ids = BinaryPrimitives.ReadUInt16LittleEndian(section.AsSpan(at + 14));
+            string? previousName = null;
+            long previousId = -1;
+            for (int i = 0; i < named + ids; i++)
+            {
+                uint field = BinaryPrimitives.ReadUInt32LittleEndian(section.AsSpan(at + 16 + (8 * i)));
+                uint target = BinaryPrimitives.ReadUInt32LittleEndian(section.AsSpan(at + 20 + (8 * i)));
+                Assert.Equal(i < named, (field & 0x8000_0000) != 0); // the named entries are exactly the first 'named'
+                if (i < named)
+                {
+                    int offset = (int)(field & 0x7FFF_FFFF);
+                    string name = Encoding.Unicode.GetString(section, offset + 2, BinaryPrimitives.ReadUInt16LittleEndian(section.AsSpan(offset)) * 2).ToUpperInvariant();
+                    Assert.True(previousName is null || string.CompareOrdinal(previousName, name) < 0, "names are not in order");
+                    previousName = name;
+                }
+                else
+                {
+                    Assert.True(field > previousId, "numbers are not in ascending order");
+                    previousId = field;
+                }
+
+                Assert.Equal(depth < 2, (target & 0x8000_0000) != 0); // directories above the languages, data at the languages
+                if (depth < 2)
+                {
+                    Walk((int)(target & 0x7FFF_FFFF), depth + 1);
+                }
+            }
+        }
+
+        Walk(0, 0);
     }
 
     /// <summary>The one resource at (<paramref name="type"/>, <paramref name="name"/>, any language) of a file; fails the test if there is not exactly one.</summary>
