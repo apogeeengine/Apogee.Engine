@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Threading;
 
 namespace Apogee.Core.Logging;
@@ -11,19 +10,10 @@ public sealed class ConsoleSink : ILogSink
 
     public void Write(in LogEntry entry)
     {
-        string line = string.Create(CultureInfo.InvariantCulture, $"{entry.Time:HH:mm:ss.fff} {Abbreviation(entry.Level)} [{entry.Category}] {entry.Message}");
+        string line = entry.ToLine();
         lock (s_lock)
         {
             (entry.Level >= LogLevel.Warning ? Console.Error : Console.Out).WriteLine(line);
         }
     }
-
-    private static string Abbreviation(LogLevel level) => level switch
-    {
-        LogLevel.Trace => "TRC",
-        LogLevel.Debug => "DBG",
-        LogLevel.Information => "INF",
-        LogLevel.Warning => "WRN",
-        _ => "ERR",
-    };
 }
