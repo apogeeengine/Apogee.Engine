@@ -7,6 +7,7 @@ using Xunit;
 namespace Apogee.Scripting.Tests;
 
 /// <summary>The <c>task</c> library on a bare VM: the test is the clock, through <see cref="LuauVm.AdvanceTime"/>.</summary>
+[Collection("Global log")]
 public sealed class TaskTests : IDisposable
 {
     private const double Frame = 1.0 / 60;

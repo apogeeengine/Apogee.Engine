@@ -40,6 +40,7 @@ public sealed class TestFolder : IDisposable
     }
 }
 
+[Collection("Global log")]
 public class TestRunnerTests
 {
     private const string Passing = "local test = require('@engine/test')\ntest.describe('d', function() test.it('c', function() test.expect(1).toBe(1) end) end)";

@@ -13,6 +13,7 @@ using Flecs = Apogee.Native.Flecs.Ecs;
 namespace Apogee.Scripting.Tests;
 
 /// <summary>The <c>tween</c> library on a bare VM: the test is the clock, through <see cref="LuauVm.AdvanceTime"/>.</summary>
+[Collection("Global log")]
 public sealed class TweenTests : IDisposable
 {
     private const double Frame = 1.0 / 60;
