@@ -113,10 +113,15 @@ internal static class RuntimeLoop
         PlatformHost.Initialize();
         try
         {
+            // The window is the player's: the size and fullscreen from the settings (whose defaults are the game's game.xml), unless --size is given. VSync is read once, here.
+            SettingsStore settings = session.Settings;
+            int width = options.SizeGiven ? options.Width : settings.GetInt(EngineSettings.WindowWidth);
+            int height = options.SizeGiven ? options.Height : settings.GetInt(EngineSettings.WindowHeight);
             WindowOptions windowOptions = WindowOptions.HighPixelDensity | GraphicsDevice.RequiredWindowOptions();
             windowOptions |= options.Resizable ? WindowOptions.Resizable : WindowOptions.None;
-            windowOptions |= options.Fullscreen ? WindowOptions.Fullscreen : WindowOptions.None;
-            using var window = new Window(title, options.Width, options.Height, windowOptions);
+            windowOptions |= settings.GetBool(EngineSettings.WindowFullscreen) ? WindowOptions.Fullscreen : WindowOptions.None;
+            using var window = new Window(title, width, height, windowOptions);
+            using WindowSettings windowSettings = EngineSettings.ConnectWindow(settings, window, trackSize: !options.SizeGiven && options.Resizable);
             if (manifest?.Icon is { } icon && root is not null)
             {
                 SetWindowIcon(window, Path.Combine(root, icon));
@@ -124,7 +129,7 @@ internal static class RuntimeLoop
 
             using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Apogee runtime", Window = window, PreferredDeviceName = options.Gpu });
             CrashHandler.SetContext("GPU", device.Name);
-            using var swapchain = device.CreateSwapchain();
+            using var swapchain = device.CreateSwapchain(vsync: settings.GetBool(EngineSettings.GraphicsVSync));
             using var loop = device.CreateFrameLoop(swapchain);
             using var pool = new TransientPool(device);
             ShaderLibrary shaders = session.CreateShaderLibrary(ShaderCache);
@@ -154,6 +159,7 @@ internal static class RuntimeLoop
                 long cpuStart = Stopwatch.GetTimestamp();
 
                 PlatformHost.PumpEvents();
+                windowSettings.Update(); // a size the player gave the window is kept for the next start
                 PixelSize pixels = window.PixelSize;
                 if (!pixels.IsEmpty)
                 {
