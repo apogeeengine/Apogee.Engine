@@ -86,16 +86,67 @@ jobs:
         run: |
           Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
           test -s "$RUNNER_TEMP/game-user/ran.txt"
+          test -s "$RUNNER_TEMP/game-user/scene.txt"
+          test -s "$RUNNER_TEMP/game-user/def.txt"
           test -s "$RUNNER_TEMP/game-user/document.txt"
           test -s "$RUNNER_TEMP/game-user/moddata/patcher/ran.txt"
-      # The same game shipped as a pack, rendered offscreen on lavapipe with the validation layer on.
+      # The same game shipped as a cooked pack, rendered offscreen on lavapipe with the validation layer on. A cooked pack needs the game imported first, and importing writes imported/ into the folder: that is done on a
+      # copy, so the fixture stays as it is in the repository.
       - name: Fixture game, from a pack and rendered
         run: |
-          Bin/publish/runtime/Apogee.Runtime --pack Tests/Fixtures/ShippedGame Bin/game-shipped/data/game.pack
+          rm -rf Bin/game-imported
+          cp -r Tests/Fixtures/ShippedGame Bin/game-imported
+          Bin/publish/runtime/Apogee.Runtime --import Bin/game-imported
+          Bin/publish/runtime/Apogee.Runtime --pack Bin/game-imported Bin/game-shipped/data/game.pack --cooked
           Bin/publish/runtime/Apogee.Runtime --game Bin/game-shipped --user "$RUNNER_TEMP/game-user-packed" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot Bin/game.png
           test -s Bin/game.png
           test -s "$RUNNER_TEMP/game-user-packed/ran.txt"
+          test -s "$RUNNER_TEMP/game-user-packed/scene.txt"
+          test -s "$RUNNER_TEMP/game-user-packed/def.txt"
           test -s "$RUNNER_TEMP/game-user-packed/document.txt"
+      # The export test (docs: Docs/manual/tools/export.md). The fixture game is exported for this platform, cooked and encrypted, by the published runtime. APOGEE_PACK_KEY is a fixed test key that is set on
+      # this step only. It is PUBLIC and worthless: it is made up, protects nothing, and an exported game carries its key anyway. Never ship a game with it; a real game's key is a secret of the release process.
+      - name: Export the fixture game, cooked and encrypted
+        env:
+          APOGEE_PACK_KEY: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+        run: Bin/publish/runtime/Apogee.Runtime --export Tests/Fixtures/ShippedGame Bin/export --target linux-x64 --cooked
+      - name: Exported game, checked
+        run: |
+          root=Bin/export
+          test -x "$root/FixtureGame"
+          # The pack is encrypted: its magic is not the plain one ("APGK").
+          test -s "$root/data/game.pack"
+          test "$(head -c 4 "$root/data/game.pack" | od -An -tx1 | tr -d ' \n')" != 4150474b
+          # No debug files, no Slang compiler, no shader sources, no Steam app id file.
+          test -z "$(find Bin/export \( -iname '*slang*' -o -name '*.pdb' -o -name '*.dbg' -o -name '*.lib' -o -name '*.exp' -o -name '*.dSYM' -o -name 'steam_appid.txt' \) ! -path '*/Shaders/imported/*')"
+          # The export wrote nothing into the game folder.
+          git diff --exit-code -- Tests/Fixtures/ShippedGame
+          test -z "$(git status --porcelain Tests/Fixtures)"
+      # The exported game, run headless from another folder, with the key out of the environment (it comes out of the executable) and a player's mod in the user folder. +connect_lobby is what Steam appends to the
+      # command line for an invitation: the game ignores it.
+      - name: Exported game, run
+        run: |
+          exe="$PWD/Bin/export/FixtureGame"
+          user="$RUNNER_TEMP/exported-user"
+          rm -rf "$user"
+          mkdir -p "$user/mods"
+          cp -r Tests/Fixtures/ShippedGame/dev_mods/patcher "$user/mods/"
+          test -z "${APOGEE_PACK_KEY-}"
+          cd "$RUNNER_TEMP"
+          env -u APOGEE_PACK_KEY "$exe" --headless --frames 60 --user "$user" +connect_lobby 1
+          test -s "$user/ran.txt"
+          test -s "$user/scene.txt"
+          test -s "$user/def.txt"
+          test -s "$user/document.txt"
+          test -s "$user/moddata/patcher/ran.txt"
+      # The exported game rendered offscreen on lavapipe, also from another folder and without the key.
+      - name: Exported game, rendered
+        run: |
+          exe="$PWD/Bin/export/FixtureGame"
+          cd "$RUNNER_TEMP"
+          env -u APOGEE_PACK_KEY "$exe" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot "$RUNNER_TEMP/exported-game.png" --user "$RUNNER_TEMP/exported-user-rendered"
+          test -s "$RUNNER_TEMP/exported-game.png"
+          test -s "$RUNNER_TEMP/exported-user-rendered/ran.txt"
       - name: Luau definitions
         run: |
           Bin/publish/runtime/Apogee.Runtime --luau-defs Bin/defs
@@ -120,3 +171,16 @@ jobs:
           test -z "$(find Bin/shipped-runtime -maxdepth 1 -iname '*slang*' ! -name '*.pdb')"
           Bin/shipped-runtime/Apogee.Runtime --game Bin/game-shipped --user "$RUNNER_TEMP/game-user-shipped" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot Bin/shipped-game.png
           test -s Bin/shipped-game.png
+      # The published runtime and the export, for whoever exports for this platform from another one (--runtime <dir>, see Docs/manual/tools/export.md) or wants to try the exported game.
+      - name: Runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apogee-linux-x64
+          path: Bin/publish/runtime
+          retention-days: 14
+      - name: Export artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: export-linux-x64
+          path: Bin/export
+          retention-days: 14
