@@ -18,18 +18,13 @@ internal sealed class LinuxPackaging : IPlatformPackaging
     /// <summary>The width and height of the icon file.</summary>
     public const int IconSize = 256;
 
-    private const UnixFileMode ExecutableMode =
-        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-        | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
-        | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
-
     /// <summary>The characters that make an <c>Exec</c> argument need quotes.</summary>
     private static readonly SearchValues<char> s_execReserved = SearchValues.Create(" \t\n\"'\\><~|&;$*?#()`");
 
     public void Apply(PlatformPackagingContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        MakeExecutable(context);
+        ExecutableBit.Set(context, "Linux");
 
         bool hasIcon = false;
         if (context.IconFile is { } file)
@@ -137,16 +132,5 @@ internal sealed class LinuxPackaging : IPlatformPackaging
         }
 
         return quoted.Append('"').ToString();
-    }
-
-    private static void MakeExecutable(PlatformPackagingContext context)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            context.Warnings.Add($"This computer does not have Unix file modes, so {Path.GetFileName(context.Layout.ExecutablePath)} is not marked executable: set the executable bit (chmod +x) when the export is unpacked on Linux, or export from Linux or WSL.");
-            return;
-        }
-
-        File.SetUnixFileMode(context.Layout.ExecutablePath, ExecutableMode);
     }
 }
