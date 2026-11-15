@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A definition of the fixture game: a shipped pack holds this file cooked, at this path. -->
+<Crates>
+  <Crate id="fixture" weight="3">
+    <Tag>cooked</Tag>
+    <Tag>fragile</Tag>
+  </Crate>
+</Crates>

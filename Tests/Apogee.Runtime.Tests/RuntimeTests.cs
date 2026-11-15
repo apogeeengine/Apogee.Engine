@@ -484,6 +484,103 @@ public class CommandTests
         Assert.NotEqual(Apogee.Core.Assets.AssetUid.None, Apogee.Content.Assets.AuthoredAssets.ReadUid(files.ReadAllBytes("res://scenes/start.ascene")));
     }
 
+    private static string FixtureFolder(string name)
+    {
+        for (string? directory = AppContext.BaseDirectory; directory is not null; directory = System.IO.Path.GetDirectoryName(directory))
+        {
+            string candidate = System.IO.Path.Combine(directory, "Tests", "Fixtures", name);
+            if (Directory.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new DirectoryNotFoundException($"Tests/Fixtures/{name} was not found above {AppContext.BaseDirectory}.");
+    }
+
+    private static void CopyFolder(string from, string to)
+    {
+        foreach (string directory in Directory.EnumerateDirectories(from, "*", SearchOption.AllDirectories))
+        {
+            Directory.CreateDirectory(System.IO.Path.Combine(to, System.IO.Path.GetRelativePath(from, directory)));
+        }
+
+        Directory.CreateDirectory(to);
+        foreach (string file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
+        {
+            File.Copy(file, System.IO.Path.Combine(to, System.IO.Path.GetRelativePath(from, file)));
+        }
+    }
+
+    [Fact]
+    public void ACookedGameLoadsItsSceneAndDefsFromThePack()
+    {
+        if (!System.Security.Cryptography.AesGcm.IsSupported)
+        {
+            Assert.Skip("AES-GCM is not available on this machine.");
+        }
+
+        const string Hex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+        using var scratch = new Scratch();
+        string game = System.IO.Path.Combine(scratch.Root, "game");
+        CopyFolder(FixtureFolder("ShippedGame"), game);
+        string fromFolder = System.IO.Path.Combine(scratch.Root, "user-folder");
+        string fromPack = System.IO.Path.Combine(scratch.Root, "user-pack");
+
+        // The game as it is in its folder: the scene and the definitions are text.
+        Assert.Equal(0, Commands.Run(Options("--game", game, "--user", fromFolder, "--headless", "--frames", "2")));
+        string scene = File.ReadAllText(System.IO.Path.Combine(fromFolder, "scene.txt"));
+        string def = File.ReadAllText(System.IO.Path.Combine(fromFolder, "def.txt"));
+        Assert.Equal("2 entities, a main camera and its child", scene);
+        Assert.Equal("fixture weighs 3, 2 tags, read from Crates", def);
+
+        // Import, pack cooked and encrypted, and ship only the pack with the manifest.
+        string shipped = System.IO.Path.Combine(scratch.Root, "shipped");
+        Directory.CreateDirectory(System.IO.Path.Combine(shipped, "data"));
+        File.Copy(System.IO.Path.Combine(game, "game.xml"), System.IO.Path.Combine(shipped, "game.xml"));
+        string pack = System.IO.Path.Combine(shipped, "data", "game.pack");
+        string? before = Environment.GetEnvironmentVariable("APOGEE_PACK_KEY");
+        try
+        {
+            Environment.SetEnvironmentVariable("APOGEE_PACK_KEY", Hex);
+            Assert.Equal(0, Commands.Import(Options("--import", game)));
+            Assert.Equal(0, Commands.Pack(Options("--pack", game, pack, "--cooked")));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("APOGEE_PACK_KEY", before);
+        }
+
+        // Every scene and definition file in the pack is cooked; the manifests, the document and the scripts stay text.
+        Apogee.Content.Packs.PackKey key = Apogee.Content.Packs.PackKey.Parse(Hex);
+        using (var packed = Apogee.Content.Packs.PackSource.Open(pack, key))
+        {
+            var files = new Apogee.Content.FileSystem.VirtualFileSystem();
+            files.Mount("res://", packed);
+            string[] cooked = ["res://packages/core/scenes/start.ascene", "res://packages/core/data/crates.xml", "res://imported/assets.xml"];
+            foreach (string path in files.EnumerateFiles("res://", recursive: true))
+            {
+                bool isDocument = path.EndsWith(".ascene", StringComparison.Ordinal) || (path.StartsWith("res://packages/core/data/", StringComparison.Ordinal) && path.EndsWith(".xml", StringComparison.Ordinal));
+                Assert.Equal(isDocument || path == "res://imported/assets.xml", Apogee.Content.Xml.XmlBinary.IsBinary(files.ReadAllBytes(path)));
+            }
+
+            Assert.All(cooked, path => Assert.True(Apogee.Content.Xml.XmlBinary.IsBinary(files.ReadAllBytes(path)), path));
+            Assert.StartsWith("<Mod ", files.ReadAllText("res://packages/core/mod.xml"), StringComparison.Ordinal);
+            Assert.StartsWith("<rml>", files.ReadAllText("res://packages/core/ui/fixture.rml"), StringComparison.Ordinal);
+            Assert.StartsWith("<Mod ", files.ReadAllText("res://dev_mods/patcher/mod.xml"), StringComparison.Ordinal);
+            Assert.False(files.FileExists("res://icon.png")); // the source of an imported asset is not in a cooked pack
+        }
+
+        Assert.False(File.Exists(System.IO.Path.Combine(shipped, "icon.png")));
+        Assert.Equal(0, Commands.Launch(Options("--user", fromPack, "--headless", "--frames", "2"), shipped.Replace('\\', '/'), key));
+
+        // The cooked game read what the game in its folder read.
+        Assert.Equal(scene, File.ReadAllText(System.IO.Path.Combine(fromPack, "scene.txt")));
+        Assert.Equal(def, File.ReadAllText(System.IO.Path.Combine(fromPack, "def.txt")));
+        Assert.Equal("core ran", File.ReadAllText(System.IO.Path.Combine(fromPack, "ran.txt")));
+        Assert.Equal("document ran", File.ReadAllText(System.IO.Path.Combine(fromPack, "document.txt")));
+    }
+
     [Fact]
     public void ShadersAreCompiledByImportAndPackedWithoutTheirSourcesOrTheCompiler()
     {
