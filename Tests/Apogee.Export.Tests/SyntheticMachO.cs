@@ -69,7 +69,8 @@ internal sealed class SyntheticMachO
     /// <param name="embedAt">Where.</param>
     /// <param name="minimumOs">The <c>minos</c> of the <c>LC_BUILD_VERSION</c> command.</param>
     /// <param name="cpuType">The header's <c>cputype</c>.</param>
-    /// <param name="certificateBlob">Adds a CMS blob, the part of a signature made with a certificate.</param>
+    /// <param name="wrapperLength">Adds a blob wrapper (the signature slot 0x10000) of this length: 8 is the empty one that <c>codesign -s -</c> writes, more has a CMS message in it, as a signature made with a certificate does. 0: none.</param>
+    /// <param name="flags">The CodeDirectory <c>flags</c>: 0x20002 is ad hoc and linker-signed, 0x2 ad hoc, without 0x2 a certificate signs.</param>
     public static SyntheticMachO Build(
         int codeLength,
         DirectorySpec[] specs,
@@ -78,7 +79,8 @@ internal sealed class SyntheticMachO
         int embedAt = 0x400,
         uint minimumOs = 0x000B0000,
         uint cpuType = 0x0100000C,
-        bool certificateBlob = false)
+        int wrapperLength = 0,
+        uint flags = 0x20002)
     {
         // The program: header (32), LC_BUILD_VERSION (32) and LC_CODE_SIGNATURE (16), then bytes that are the same on every run.
         byte[] program = new byte[codeLength];
@@ -89,7 +91,7 @@ internal sealed class SyntheticMachO
         const int IdentLength = 9;
         const int FixedSize = 88;
         var directories = new List<DirectoryLayout>();
-        int blobsStart = 12 + (specs.Length + 1 + (certificateBlob ? 1 : 0)) * 8;
+        int blobsStart = 12 + (specs.Length + 1 + (wrapperLength > 0 ? 1 : 0)) * 8;
         int at = blobsStart;
         foreach (DirectorySpec spec in specs)
         {
@@ -106,9 +108,9 @@ internal sealed class SyntheticMachO
         int requirementsAt = at;
         at += 12;
         int certificateAt = at;
-        if (certificateBlob)
+        if (wrapperLength > 0)
         {
-            at += 16;
+            at += wrapperLength;
         }
 
         int signatureLength = at;
@@ -141,7 +143,7 @@ internal sealed class SyntheticMachO
         Span<byte> blob = file.AsSpan(codeLength, signatureLength);
         BinaryPrimitives.WriteUInt32BigEndian(blob, 0xFADE0CC0);
         BinaryPrimitives.WriteUInt32BigEndian(blob[4..], (uint)signatureLength);
-        BinaryPrimitives.WriteUInt32BigEndian(blob[8..], (uint)(specs.Length + 1 + (certificateBlob ? 1 : 0)));
+        BinaryPrimitives.WriteUInt32BigEndian(blob[8..], (uint)(specs.Length + 1 + (wrapperLength > 0 ? 1 : 0)));
         int index = 12;
         for (int i = 0; i < specs.Length; i++)
         {
@@ -155,17 +157,17 @@ internal sealed class SyntheticMachO
         index += 8;
         BinaryPrimitives.WriteUInt32BigEndian(blob[requirementsAt..], 0xFADE0C01);
         BinaryPrimitives.WriteUInt32BigEndian(blob[(requirementsAt + 4)..], 12);
-        if (certificateBlob)
+        if (wrapperLength > 0)
         {
             BinaryPrimitives.WriteUInt32BigEndian(blob[index..], 0x10000); // CSSLOT_SIGNATURESLOT
             BinaryPrimitives.WriteUInt32BigEndian(blob[(index + 4)..], (uint)certificateAt);
             BinaryPrimitives.WriteUInt32BigEndian(blob[certificateAt..], 0xFADE0B01);
-            BinaryPrimitives.WriteUInt32BigEndian(blob[(certificateAt + 4)..], 16);
+            BinaryPrimitives.WriteUInt32BigEndian(blob[(certificateAt + 4)..], (uint)wrapperLength);
         }
 
         foreach (DirectoryLayout directory in directories)
         {
-            WriteDirectory(blob.Slice(directory.Offset, directory.Length), directory, codeLength);
+            WriteDirectory(blob.Slice(directory.Offset, directory.Length), directory, codeLength, flags);
         }
 
         var image = new SyntheticMachO(file, codeLength, signatureLength, directories);
@@ -217,12 +219,12 @@ internal sealed class SyntheticMachO
     public List<(int Start, int End)> CodeSlotRanges() =>
         Directories.ConvertAll(d => (SignatureOffset + d.Offset + d.HashOffset, SignatureOffset + d.Offset + d.HashOffset + d.CodeSlots * d.HashSize));
 
-    private static void WriteDirectory(Span<byte> directory, DirectoryLayout layout, int codeLength)
+    private static void WriteDirectory(Span<byte> directory, DirectoryLayout layout, int codeLength, uint flags)
     {
         BinaryPrimitives.WriteUInt32BigEndian(directory, 0xFADE0C02);
         BinaryPrimitives.WriteUInt32BigEndian(directory[4..], (uint)layout.Length);
         BinaryPrimitives.WriteUInt32BigEndian(directory[8..], 0x20400);
-        BinaryPrimitives.WriteUInt32BigEndian(directory[12..], 0x20002); // CS_ADHOC | CS_LINKER_SIGNED
+        BinaryPrimitives.WriteUInt32BigEndian(directory[12..], flags);
         BinaryPrimitives.WriteUInt32BigEndian(directory[16..], (uint)layout.HashOffset);
         BinaryPrimitives.WriteUInt32BigEndian(directory[20..], 88); // identOffset
         BinaryPrimitives.WriteUInt32BigEndian(directory[24..], 2); // nSpecialSlots

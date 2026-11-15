@@ -79,6 +79,20 @@ public static class PackKeySlot
         }
     }
 
+    /// <summary>Where the slot is in the file at <paramref name="executable"/>, and how long it is: for a platform step to check that what the export wrote lies where it expects.</summary>
+    /// <exception cref="ExportException">The file has no slot, or more than one, or cannot be read.</exception>
+    internal static (long Offset, int Length) Locate(string executable)
+    {
+        try
+        {
+            return (Find(File.ReadAllBytes(executable), Template[..MagicLength], executable), Length);
+        }
+        catch (IOException e)
+        {
+            throw new ExportException($"{executable} could not be read: {e.Message}", e);
+        }
+    }
+
     /// <summary>The slot that holds <paramref name="key"/>, masked with <paramref name="salt"/>.</summary>
     internal static byte[] Encode(ReadOnlySpan<byte> key, ReadOnlySpan<byte> salt)
     {

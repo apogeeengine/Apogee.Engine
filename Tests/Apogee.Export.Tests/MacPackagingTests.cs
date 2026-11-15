@@ -212,7 +212,7 @@ public class MacPackagingTests
     public void AProgramSignedWithACertificateFailsTheExportWithWhatToDo()
     {
         using var scratch = new Scratch();
-        SyntheticMachO program = SyntheticMachO.Build(0x8000, [new(2, 14)], embed: PackKeySlot.Template.ToArray(), certificateBlob: true);
+        SyntheticMachO program = SyntheticMachO.Build(0x8000, [new(2, 14)], embed: PackKeySlot.Template.ToArray(), wrapperLength: 16);
 
         ExportException e = Assert.Throws<ExportException>(() => Export(scratch, s_arm64, program.Bytes, new PackKey(s_keyBytes)));
 

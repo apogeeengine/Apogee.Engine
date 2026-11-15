@@ -145,7 +145,8 @@ public class MachOSignatureTests
     [Fact]
     public void ASignatureMadeWithACertificateIsRefusedAndNothingIsWritten()
     {
-        SyntheticMachO image = SyntheticMachO.Build(CodeLength, [s_sha256Pages4K], correctHashes: false, certificateBlob: true);
+        // A wrapper with a CMS message in it (more than its 8 byte header), and CodeDirectory flags with no CS_ADHOC: what Developer ID signing makes.
+        SyntheticMachO image = SyntheticMachO.Build(CodeLength, [s_sha256Pages4K], correctHashes: false, wrapperLength: 16, flags: 0x10000);
         byte[] copy = (byte[])image.Bytes.Clone();
 
         ExportException e = Assert.Throws<ExportException>(() => Rehash(copy));
@@ -153,6 +154,47 @@ public class MachOSignatureTests
         Assert.Contains("certificate", e.Message, StringComparison.Ordinal);
         Assert.Contains("after the export", e.Message, StringComparison.Ordinal);
         Assert.Equal(image.Bytes, copy);
+    }
+
+    [Fact]
+    public void ANonEmptyWrapperAloneIsRefused()
+    {
+        SyntheticMachO image = SyntheticMachO.Build(CodeLength, [s_sha256Pages4K], correctHashes: false, wrapperLength: 16);
+
+        Assert.Contains("certificate", Assert.Throws<ExportException>(() => Rehash((byte[])image.Bytes.Clone())).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ACertificateFlagsAloneAreRefused()
+    {
+        SyntheticMachO image = SyntheticMachO.Build(CodeLength, [s_sha256Pages4K], correctHashes: false, flags: 0x10000);
+
+        Assert.Contains("certificate", Assert.Throws<ExportException>(() => Rehash((byte[])image.Bytes.Clone())).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnAdHocSignatureMadeByCodesignWithItsEmptyWrapperIsRehashed()
+    {
+        // What `codesign -s -` writes: CS_ADHOC only (no linker-signed bit), and an empty (8 byte) wrapper in slot 0x10000.
+        SyntheticMachO image = SyntheticMachO.Build(CodeLength, [s_sha256Pages4K, new(2, 14)], correctHashes: false, wrapperLength: 8, flags: 0x2);
+
+        byte[] result = RehashCopy(image.Bytes, out bool signed);
+
+        Assert.True(signed);
+        Assert.True(image.HashesAreRight(result));
+    }
+
+    [Fact]
+    public void TheChangedBytesMustBeInsideTheCodeTheSignatureCovers()
+    {
+        SyntheticMachO image = SyntheticMachO.Build(CodeLength, [s_sha256Pages4K]);
+
+        Assert.True(MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (0x400, 68)));
+        Assert.True(MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (CodeLength - 68, 68))); // up to the last byte before the signature
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (40, 68))); // in the load commands
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (CodeLength - 67, 68))); // runs into the signature
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (CodeLength + 100, 68))); // in the signature
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (long.MaxValue - 10, 68)));
     }
 
     [Fact]
@@ -209,7 +251,7 @@ public class MachOSignatureTests
         "superblob-magic", "superblob-length-beyond", "superblob-length-tiny", "superblob-count-max", "superblob-count-beyond", "blob-offset-beyond", "blob-offset-in-index", "blob-offset-max",
         "blob-length-beyond", "blob-length-tiny", "blob-length-max", "directory-too-short", "hash-type-unknown", "hash-size-wrong", "hash-size-zero", "slots-max", "slots-one-less", "slots-one-more",
         "page-size-huge", "limit-beyond-signature", "limit-max", "limit64-beyond", "hash-offset-beyond", "hash-offset-max", "hash-offset-low", "special-slots-max", "special-slots-before-header",
-        "directories-too-many", "no-directory");
+        "directories-too-many", "no-directory", "scatter-offset", "version-shorter-than-its-fields", "version-20100-short", "hash-offset-in-fixed-part", "flags-not-ad-hoc", "wrapper-with-message");
 
     [Theory]
     [MemberData(nameof(Edits))]
@@ -285,6 +327,18 @@ public class MachOSignatureTests
                 file = TooManyDirectories();
                 break;
             case "no-directory": Be(directory, 0xFADE0C01); break; // the blob is a requirements blob now
+            case "scatter-offset": Be(directory + 44, 1); break;
+            case "version-shorter-than-its-fields":
+                // Version 0x20300 has codeLimit64 at offset 56: a directory of 60 bytes cannot hold it (it used to be accepted, with the 32-bit limit).
+                Be(directory + 8, 0x20300);
+                Be(directory + 4, 60);
+                break;
+            case "version-20100-short": Be(directory + 8, 0x20100); Be(directory + 4, 46); break;
+            case "hash-offset-in-fixed-part": Be(directory + 16, 108); break; // two special slots of 32 bytes then start at 44, over the fields of version 0x20400 that end at 88
+            case "flags-not-ad-hoc": Be(directory + 12, 0x20000); break;
+            case "wrapper-with-message":
+                file = SyntheticMachO.Build(CodeLength, [s_sha256Pages4K], correctHashes: false, wrapperLength: 12).Bytes;
+                break;
             default: throw new ArgumentException(edit);
         }
 
@@ -368,11 +422,15 @@ public class MachOSignatureTests
             return;
         }
 
-        int checkedSlices = 0;
+        // Signed with a certificate (Developer ID), so refused: not ad hoc.
+        string[] certificateSigned = ["libsteam_api.dylib", "libslang-compiler", "libslang-glslang"];
+        var verified = new List<string>();
         foreach (string library in Directory.EnumerateFiles(thirdParty, "*.dylib", SearchOption.AllDirectories).Where(f => f.Contains("osx-", StringComparison.Ordinal)))
         {
+            int sliceNumber = 0;
             foreach (byte[] slice in Slices(File.ReadAllBytes(library)))
             {
+                string label = $"{Path.GetFileName(library)}#{sliceNumber++}";
                 using var stream = new CountingStream(slice);
                 try
                 {
@@ -381,9 +439,9 @@ public class MachOSignatureTests
                         continue; // an x86-64 image the linker did not sign
                     }
                 }
-                catch (ExportException e) when (e.Message.Contains("certificate", StringComparison.Ordinal))
+                catch (ExportException e) when (e.Message.Contains("certificate", StringComparison.Ordinal) && certificateSigned.Any(n => library.Contains(n, StringComparison.Ordinal)))
                 {
-                    continue; // signed with an identity (Valve's, for instance): refused, as intended
+                    continue;
                 }
 
                 Assert.Equal(0, stream.BytesWritten);
@@ -392,15 +450,18 @@ public class MachOSignatureTests
                 int at = slice.Length / 3; // in the code, well clear of the load commands and of the signature at the end
                 changed[at] ^= 0x5A;
                 Assert.True(Rehash(changed));
-                Assert.NotEqual(slice, changed); // the hashes changed
-                changed[at] ^= 0x5A;
+                changed[at] ^= 0x5A; // the program as it was; only the hashes of the signature differ from the original now
+                Assert.NotEqual(slice, changed);
                 Assert.True(Rehash(changed));
                 Assert.Equal(slice, changed);
-                checkedSlices++;
+                verified.Add(label);
             }
         }
 
-        Assert.True(checkedSlices > 0, "no library with an ad-hoc signature was found");
+        // libSDL3 was signed by codesign -s - (an empty wrapper, CS_ADHOC): both its slices are among those checked; the others were signed by the linker.
+        Assert.Contains("libSDL3.dylib#0", verified);
+        Assert.Contains("libSDL3.dylib#1", verified);
+        Assert.True(verified.Count >= 4, string.Join(", ", verified));
     }
 
     private static string? FindThirdParty()

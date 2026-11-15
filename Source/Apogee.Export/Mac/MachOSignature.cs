@@ -46,8 +46,14 @@ internal static class MachOSignature
 
     private const int BlobIndexSize = 8;
 
-    /// <summary>The size of the part of a CodeDirectory that every version has: up to and including <c>spare2</c> (offset 40, 4 bytes).</summary>
+    /// <summary>The size of the part of a CodeDirectory that every version has: up to and including <c>spare2</c> (offset 40, 4 bytes). Enough to read the version.</summary>
     private const int CodeDirectoryMinimumSize = 44;
+
+    /// <summary>The <c>flags</c> bit (offset 12) of an ad-hoc signature, <c>CS_ADHOC</c>: no certificate.</summary>
+    private const uint AdHocFlag = 0x2;
+
+    /// <summary>The CodeDirectory <c>version</c> that has <c>scatterOffset</c> (at offset 44), <c>CS_SUPPORTSSCATTER</c>.</summary>
+    private const uint ScatterVersion = 0x20100;
 
     /// <summary>The CodeDirectory <c>version</c> that has <c>codeLimit64</c> (at offset 56), <c>CS_SUPPORTSCODELIMIT64</c>.</summary>
     private const uint CodeLimit64Version = 0x20300;
@@ -65,12 +71,14 @@ internal static class MachOSignature
     /// </summary>
     /// <returns>True when the program has a signature (which now matches); false when it has none, and nothing was done.</returns>
     /// <exception cref="ExportException">The file is not a thin 64-bit Mach-O, its signature is malformed or is not an ad-hoc one, or the file could not be read or written.</exception>
-    public static bool Rehash(string executable)
+    /// <param name="executable">The program.</param>
+    /// <param name="mustBeCovered">When given, the file range (offset and length) that was changed and that the signature must cover: the pack key slot. See the stream overload.</param>
+    public static bool Rehash(string executable, (long Offset, int Length)? mustBeCovered = null)
     {
         try
         {
             using FileStream stream = new(executable, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            return Rehash(stream, Path.GetFileName(executable));
+            return Rehash(stream, Path.GetFileName(executable), mustBeCovered);
         }
         catch (IOException e)
         {
@@ -85,7 +93,11 @@ internal static class MachOSignature
     /// <summary>The same for a stream that is the program: seekable, readable and writable. Writes nothing unless the hashes changed, and then only the signature's blob.</summary>
     /// <param name="stream">The program.</param>
     /// <param name="name">What to call it in messages.</param>
-    internal static bool Rehash(Stream stream, string name)
+    /// <param name="mustBeCovered">
+    /// A range of the file that was changed (the pack key slot) and that must be inside the program's code, after the header and load commands and before the signature, so that the page hashes
+    /// cover it; otherwise the rehash could not make the signature right, and it is an error. Not checked when the program has no signature.
+    /// </param>
+    internal static bool Rehash(Stream stream, string name, (long Offset, int Length)? mustBeCovered = null)
     {
         long fileLength = stream.Length;
         MachOImage image = MachOFile.Read(stream, 0, fileLength, name);
@@ -99,6 +111,11 @@ internal static class MachOSignature
         if (signatureSize < SuperBlobHeaderSize || signatureSize > MaxSignatureBytes || signatureOffset < commandsEnd || signatureOffset + signatureSize > fileLength)
         {
             throw new ExportException($"{name}: LC_CODE_SIGNATURE says the signature is {signatureSize} bytes at offset {signatureOffset}, which does not fit the file ({fileLength} bytes).");
+        }
+
+        if (mustBeCovered is { } changed && (changed.Length < 0 || changed.Offset < commandsEnd || changed.Offset > signatureOffset - changed.Length))
+        {
+            throw new ExportException($"{name}: the bytes changed by the export (offset {changed.Offset}, {changed.Length} bytes) are not in the code that the signature covers (from {commandsEnd} to {signatureOffset}).");
         }
 
         byte[] blob = new byte[signatureSize];
@@ -195,9 +212,10 @@ internal static class MachOSignature
                 throw new ExportException($"{name}: blob {i} of the code signature is {blobLength} bytes long at {offset}, which does not fit the signature.");
             }
 
-            if (magic == BlobWrapperMagic)
+            // codesign -s - writes an empty wrapper (8 bytes: magic and length, no CMS message) in the signature slot; a signature made with a certificate has the CMS message in it.
+            if (magic == BlobWrapperMagic && blobLength > 8)
             {
-                throw new ExportException($"{name} is signed with a certificate (its signature has a CMS blob), and changing the program invalidates that. Publish the runtime unsigned (the linker's ad-hoc signature is the one this export repairs) and sign the bundle after the export, with codesign.");
+                throw Certificate(name);
             }
 
             if (magic == CodeDirectoryMagic)
@@ -218,6 +236,9 @@ internal static class MachOSignature
 
         return directories;
     }
+
+    private static ExportException Certificate(string name) =>
+        new($"{name} is signed with a certificate (its signature is not an ad-hoc one), and changing the program invalidates that. Publish the runtime unsigned (the linker's ad-hoc signature is the one this export repairs) and sign the bundle after the export, with codesign.");
 
     /// <summary>
     /// Computes the hash of every page of the program that <paramref name="directory"/> covers, and writes it into <paramref name="blob"/> (the signature's bytes) in the directory's code slots.
@@ -298,6 +319,16 @@ internal static class MachOSignature
         /// <summary>The bytes one slot covers.</summary>
         public long PageSize { get; }
 
+        /// <summary>The bytes of a CodeDirectory before its identifier and hashes can start, for a version: 44 up to <c>spare2</c>, then 48 (+ <c>scatterOffset</c>), 52 (+ <c>teamOffset</c>), 64 (+ <c>spare3</c>, <c>codeLimit64</c>) and 88 (+ <c>execSegBase</c>, <c>execSegLimit</c>, <c>execSegFlags</c>).</summary>
+        private static int FixedSize(uint version) => version switch
+        {
+            >= 0x20400 => 88,
+            >= 0x20300 => 64,
+            >= 0x20200 => 52,
+            >= 0x20100 => 48,
+            _ => CodeDirectoryMinimumSize,
+        };
+
         /// <summary>Reads and checks the CodeDirectory in the <paramref name="range"/> of <paramref name="blob"/> for a program whose signature is at <paramref name="signatureOffset"/>.</summary>
         public static CodeDirectory Parse(byte[] blob, BlobRange range, long signatureOffset, string name)
         {
@@ -308,6 +339,7 @@ internal static class MachOSignature
 
             ReadOnlySpan<byte> bytes = blob.AsSpan(range.Offset, range.Length);
             uint version = BinaryPrimitives.ReadUInt32BigEndian(bytes[8..]);
+            uint flags = BinaryPrimitives.ReadUInt32BigEndian(bytes[12..]);
             uint hashOffset = BinaryPrimitives.ReadUInt32BigEndian(bytes[16..]);
             uint specialSlots = BinaryPrimitives.ReadUInt32BigEndian(bytes[24..]);
             uint codeSlots = BinaryPrimitives.ReadUInt32BigEndian(bytes[28..]);
@@ -316,8 +348,27 @@ internal static class MachOSignature
             int hashType = bytes[37];
             int pageSizeLog2 = bytes[39];
 
+            // A signature made with a certificate is not ad hoc: its CodeDirectory is signed, and cannot be changed.
+            if ((flags & AdHocFlag) == 0)
+            {
+                throw Certificate(name);
+            }
+
+            // The fixed part of the directory has more fields in later versions, and a directory of a version must hold them all: a shorter one is malformed (the kernel refuses it too).
+            int fixedSize = FixedSize(version);
+            if (range.Length < fixedSize)
+            {
+                throw new ExportException($"{name}: a code directory of version 0x{version:X} is {range.Length} bytes, shorter than its {fixedSize} fixed bytes.");
+            }
+
+            // With a scatter vector (scatterOffset, offset 44) the code slots hash pieces of the file in an order that this does not follow. No tool writes one now.
+            if (version >= ScatterVersion && BinaryPrimitives.ReadUInt32BigEndian(bytes[44..]) != 0)
+            {
+                throw new ExportException($"{name}: the code signature uses a scatter vector, which is not supported.");
+            }
+
             // From version 0x20300 a non-zero codeLimit64 (needed only for programs of 4 GiB and more) is the limit.
-            if (version >= CodeLimit64Version && bytes.Length >= 64)
+            if (version >= CodeLimit64Version)
             {
                 ulong codeLimit64 = BinaryPrimitives.ReadUInt64BigEndian(bytes[56..]);
                 if (codeLimit64 != 0)
@@ -362,7 +413,7 @@ internal static class MachOSignature
             // The special slots (negative indexes) are before hashOffset and after the fixed part; the code slots are after it; all must be in the directory.
             long specialStart = hashOffset - specialSlots * (long)hashSize;
             long codeEnd = hashOffset + codeSlots * (long)hashSize;
-            if (specialStart < CodeDirectoryMinimumSize || codeEnd > range.Length)
+            if (specialStart < fixedSize || codeEnd > range.Length)
             {
                 throw new ExportException($"{name}: the code signature's hash slots (offset {hashOffset}, {specialSlots} special and {codeSlots} code slots of {hashSize} bytes) do not fit its code directory ({range.Length} bytes).");
             }

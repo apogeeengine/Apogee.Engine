@@ -41,7 +41,9 @@ internal sealed class MacPackaging : IPlatformPackaging
         context.Log($"Wrote Info.plist (macOS {MachOBuildVersion.Format(minimum)} or later)");
 
         // Last, and nothing may change the executable's bytes after it: the pack key is already in.
-        if (MachOSignature.Rehash(layout.ExecutablePath))
+        // When the key was written, the slot it is in must be in the code that the signature hashes.
+        (long, int)? slot = context.Options.Key is null ? null : PackKeySlot.Locate(layout.ExecutablePath);
+        if (MachOSignature.Rehash(layout.ExecutablePath, slot))
         {
             context.Log("Made the executable's ad-hoc code signature match the pack key");
         }
