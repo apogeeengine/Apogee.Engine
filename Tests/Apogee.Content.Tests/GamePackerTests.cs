@@ -329,13 +329,11 @@ public class GamePackerTests
     [Fact]
     public void APathThatCannotBeInAPackIsAContentErrorNamingIt()
     {
+        // Every character a pack path refuses is one that Windows refuses in a file name too, so a file with such a name can only exist on another OS.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "a file with a name the pack refuses cannot be made on Windows: that file system refuses it first");
         using var game = new Game();
         game.Write("good.txt", "x");
         game.Write("bad|name.txt", "x");
-        if (!File.Exists(Path.Combine(game.Root, "bad|name.txt")))
-        {
-            return;
-        }
 
         ContentException error = Assert.Throws<ContentException>(() => GamePacker.Pack(game.Request()));
         Assert.Contains("bad|name.txt", error.Message, StringComparison.Ordinal);
