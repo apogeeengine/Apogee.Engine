@@ -5,6 +5,7 @@ using System.Linq;
 using Apogee.Content.Assets;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Import;
+using Apogee.Content.Packages;
 using Apogee.Content.Xml;
 
 namespace Apogee.Content.Packs;
@@ -20,7 +21,8 @@ public sealed record PackRequest
 
     /// <summary>
     /// Pack what a shipped game needs: the imported artifacts instead of the sources, their settings and the files they were made from, and authored documents (<see cref="AuthoredAssets.Extensions"/>)
-    /// and the UID list <c>imported/assets.xml</c> in their cooked form (<see cref="XmlBinary"/>) at the paths they have in the folder. It needs the folder to have been imported (<c>imported/index.xml</c>,
+    /// and the UID list <c>imported/assets.xml</c> in their cooked form (<see cref="XmlBinary"/>) at the paths they have in the folder, and so are the definitions (the <c>.xml</c> files) in the content folders
+    /// of the base packages (<c>packages/&lt;id&gt;/</c>, as their <c>mod.xml</c> lists them). The manifests (<c>mod.xml</c>), schemas and sidecars stay text. It needs the folder to have been imported (<c>imported/index.xml</c>,
     /// see <see cref="AssetImporter"/>) unless <see cref="AllowNothingImported"/> says otherwise. Nothing under <c>dev_mods/</c> is cooked.
     /// </summary>
     public bool Cooked { get; init; }
@@ -64,7 +66,7 @@ public sealed record PackReport(int Added, int Unchanged, int Removed, int Cooke
 
 /// <summary>
 /// Packs a game folder into a pack (see <see cref="PackFormat"/>): the library behind <c>Apogee.Runtime --pack</c>, and what an export calls. The sources of imported assets are dropped from a cooked pack,
-/// authored XML is cooked in place, and a patch pack holds only what changed against its bases.
+/// authored XML and the definitions of the base packages are cooked in place, and a patch pack holds only what changed against its bases.
 /// </summary>
 public static class GamePacker
 {
@@ -72,6 +74,9 @@ public static class GamePacker
 
     /// <summary>The folder whose files are never cooked: dev mods are loose files, read as they are.</summary>
     private const string DevMods = "dev_mods/";
+
+    /// <summary>The folder of the base packages in the game folder (<see cref="PackageOptions.BasePackagesPath"/>).</summary>
+    private const string BasePackages = "packages/";
 
     /// <summary>Writes the pack.</summary>
     /// <exception cref="ContentException">The folder is not a folder; <see cref="PackRequest.Cooked"/> and nothing is imported; a path cannot be in a pack; an authored document is not well-formed.</exception>
@@ -158,10 +163,13 @@ public static class GamePacker
 
         private bool Cooked { get; init; }
 
+        /// <summary>The definition files of the base packages: cooked when <see cref="Cooked"/>.</summary>
+        private HashSet<string> Definitions { get; init; } = [];
+
         /// <summary>Whether the file at <paramref name="path"/> is written as binary XML.</summary>
         public bool IsCooked(string path) =>
             Cooked && !path.StartsWith(DevMods, StringComparison.Ordinal)
-            && (AuthoredAssets.IsAuthored(path) || path == AssetImporter.CacheFolder + "/" + AssetDatabase.ListFileName);
+            && (AuthoredAssets.IsAuthored(path) || path == AssetImporter.CacheFolder + "/" + AssetDatabase.ListFileName || Definitions.Contains(path));
 
         public static Plan Make(PackRequest request)
         {
@@ -213,7 +221,36 @@ public static class GamePacker
                 throw new ContentException(string.Join(Environment.NewLine, problems));
             }
 
-            return new Plan { Folder = folder, Paths = paths, Cooked = request.Cooked };
+            return new Plan { Folder = folder, Paths = paths, Cooked = request.Cooked, Definitions = request.Cooked ? DefinitionsOf(folder, paths) : new HashSet<string>() };
+        }
+
+        /// <summary>
+        /// The <c>.xml</c> files in the content folders (<c>&lt;Content path="…"/&gt;</c>) of each base package whose <c>mod.xml</c> is among <paramref name="paths"/> and reads: what a
+        /// <see cref="DefDatabase"/> loads from it. The manifest itself and the sidecars are never among them. A manifest that does not read is the game's error when it runs, so its package is packed as it is.
+        /// </summary>
+        private static HashSet<string> DefinitionsOf(string folder, List<string> paths)
+        {
+            const string Manifest = "mod.xml";
+            var found = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string manifestPath in paths.Where(p => p.StartsWith(BasePackages, StringComparison.Ordinal) && p.EndsWith("/" + Manifest, StringComparison.Ordinal) && p.IndexOf('/', BasePackages.Length) == p.Length - Manifest.Length - 1))
+            {
+                if (!PackageManifest.TryParse(File.ReadAllText(Path.Combine(folder, manifestPath)), manifestPath, out PackageManifest? manifest, out _))
+                {
+                    continue;
+                }
+
+                string package = manifestPath[..^Manifest.Length];
+                foreach (string content in manifest!.ContentFolders)
+                {
+                    string prefix = package + content + "/";
+                    foreach (string path in paths.Where(p => p.StartsWith(prefix, StringComparison.Ordinal) && p.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && !p.EndsWith(ImportSidecar.Suffix, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        found.Add(path);
+                    }
+                }
+            }
+
+            return found;
         }
 
         private static string Prefix(string prefix)

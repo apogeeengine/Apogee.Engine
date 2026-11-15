@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Xml;
@@ -188,6 +189,73 @@ public class DefDatabaseTests
                 [new DefSource("base", "mod://base/data/crate.xml", 1, DefRole.Definition), new DefSource("mod", "mod://mod/data/patches.xml", 2, DefRole.Patch)],
                 def.Sources);
         }
+    }
+
+    [Fact]
+    public void CookedDefsLoadAndMergeLikeText()
+    {
+        string[] baseFiles = ["<Crates><Crate id=\"a\" weight=\"5\"><Tag>old</Tag><Tag>heavy</Tag></Crate><Crate id=\"b\"/><Crate id=\"c\"/></Crates>", "<Crate id=\"d\"/>"];
+        string[] modFiles =
+        [
+            "<Patches>\n<Crate id=\"a\" patch=\"true\" weight=\"6\"><Tag>new</Tag><Tag remove=\"true\"/></Crate>\n<Crate id=\"c\" remove=\"true\"/>\n</Patches>",
+            "<Crate id=\"b\" weight=\"9\"/>",
+        ];
+        (VirtualFileSystem textFiles, TempFolder textBase, TempFolder textMod) = Layout();
+        (VirtualFileSystem cookedFiles, TempFolder cookedBase, TempFolder cookedMod) = Layout();
+        using (textBase)
+        using (textMod)
+        using (cookedBase)
+        using (cookedMod)
+        {
+            for (int i = 0; i < baseFiles.Length; i++)
+            {
+                textBase.Write($"data/{i}.xml", baseFiles[i]);
+                textMod.Write($"data/{i}.xml", modFiles[i]);
+                Cook(cookedBase, $"data/{i}.xml", baseFiles[i]);
+                Cook(cookedMod, $"data/{i}.xml", modFiles[i]);
+            }
+
+            Assert.True(XmlBinary.IsBinary(cookedFiles.ReadAllBytes("mod://base/data/0.xml")));
+            var fromText = DefDatabase.Load(textFiles, s_folders, Schemas());
+            var fromCooked = DefDatabase.Load(cookedFiles, s_folders, Schemas());
+
+            Assert.Equal(fromText.Problems.Select(p => p.ToString()), fromCooked.Problems.Select(p => p.ToString())); // the replaced Crate 'b', named the same way
+            Assert.Single(fromCooked.Problems);
+            Assert.Equal(fromText.All.Select(d => (d.Type, d.Id, d.Value.ToString())), fromCooked.All.Select(d => (d.Type, d.Id, d.Value.ToString())));
+            Assert.Equal(["a", "b", "d"], fromCooked.All.Select(d => d.Id));
+            Assert.Equal("{id: \"a\", weight: 6, Tag: [\"new\"]}", fromCooked.Get("Crate", "a")!.Value.ToString());
+            Assert.Equal(fromText.Get("Crate", "a")!.Sources, fromCooked.Get("Crate", "a")!.Sources); // the lines of the source are kept
+            Assert.Equal(fromText.Get("Crate", "b")!.Sources, fromCooked.Get("Crate", "b")!.Sources);
+        }
+    }
+
+    [Fact]
+    public void ADamagedCookedFileIsAProblemThatNamesItAndTheRestLoads()
+    {
+        (VirtualFileSystem files, TempFolder baseGame, TempFolder mod) = Layout();
+        using (baseGame)
+        using (mod)
+        {
+            byte[] cooked = XmlBinary.Write(XmlNode.Parse("<Crate id=\"cut\"/>"));
+            string path = Path.Combine(baseGame.Root, "data", "cut.xml");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, cooked[..^3]);
+            baseGame.Write("data/fine.xml", "<Crate id=\"fine\"/>");
+
+            var database = DefDatabase.Load(files, s_folders, Schemas());
+
+            Assert.Equal(["fine"], database.All.Select(d => d.Id));
+            SchemaProblem problem = Assert.Single(database.Problems);
+            Assert.Equal((ProblemSeverity.Error, "mod://base/data/cut.xml"), (problem.Severity, problem.File));
+            Assert.Contains("mod://base/data/cut.xml", problem.Message);
+        }
+    }
+
+    private static void Cook(TempFolder folder, string relative, string text)
+    {
+        string path = Path.Combine(folder.Root, relative);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, XmlBinary.Write(XmlNode.Parse(text, "src")));
     }
 
     [Fact]

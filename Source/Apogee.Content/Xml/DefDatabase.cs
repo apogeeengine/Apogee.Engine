@@ -125,11 +125,16 @@ public sealed class DefDatabase
         XmlNode root;
         try
         {
-            root = XmlNode.Parse(files.ReadAllText(path), path);
+            root = XmlFile.Read(files, path); // text, or cooked in a shipped pack
         }
         catch (XmlParseException e)
         {
             _problems.Add(new SchemaProblem(ProblemSeverity.Error, "", path, e.Line, "the file is not well-formed XML: " + e.Reason));
+            return;
+        }
+        catch (ContentException e)
+        {
+            _problems.Add(new SchemaProblem(ProblemSeverity.Error, "", path, 0, "the cooked file cannot be read: " + e.Message));
             return;
         }
 

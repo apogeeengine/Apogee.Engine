@@ -6,6 +6,7 @@ using System.Text;
 using Apogee.Content.Assets;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Import;
+using Apogee.Content.Packages;
 using Apogee.Content.Packs;
 using Apogee.Content.Xml;
 using Apogee.Core.Assets;
@@ -141,6 +142,49 @@ public class GamePackerTests
         Assert.Equal(File.ReadAllText(Path.Combine(game.Root, "dev_mods", "tool", "scenes", "mine.ascene")), Encoding.UTF8.GetString(files.ReadAllBytes("res://dev_mods/tool/scenes/mine.ascene"))); // dev mods are never cooked
         Assert.Equal("<Notes/>", files.ReadAllText("res://notes.xml")); // other XML is left as it is
         Assert.StartsWith("<Imports", files.ReadAllText("res://imported/index.xml"), StringComparison.Ordinal); // the index stays text
+    }
+
+    [Fact]
+    public void ACookedPackHoldsTheDefinitionsOfBasePackagesAsBinaryAndLeavesTheRestAsText()
+    {
+        using var game = new Game();
+        game.Populate();
+        game.Write("packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/><Content path=\"data\"/><Content path=\"more/\"/><Schema path=\"schemas\"/></Mod>");
+        game.Write("packages/core/data/crates.xml", "<Crates>\n  <Crate id=\"a\"/>\n</Crates>");
+        game.Write("packages/core/data/deep/barrel.xml", "<Barrel id=\"b\"/>");
+        game.Write("packages/core/more/chest.xml", "<Chest id=\"c\"/>");
+        game.Write("packages/core/data/readme.txt", "not XML");
+        game.Write("packages/core/schemas/crate.xsd", "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"/>");
+        game.Write("packages/core/other/loose.xml", "<Loose/>"); // not in a content folder
+        game.Write("packages/broken/mod.xml", "<Mod>"); // a manifest that does not read: its package is packed as it is
+        game.Write("packages/broken/data/crate.xml", "<Crate id=\"x\"/>");
+        game.Write("dev_mods/mine/mod.xml", "<Mod id=\"mine\" version=\"1.0.0\"><Content path=\"data\"/></Mod>");
+        game.Write("dev_mods/mine/data/crate.xml", "<Crate id=\"m\"/>");
+        game.Import();
+
+        PackReport report = GamePacker.Pack(game.Request(cooked: true));
+
+        using var pack = PackSource.Open(report.Parts[0]);
+        VirtualFileSystem files = Mount(pack);
+        foreach (string cooked in new[] { "packages/core/data/crates.xml", "packages/core/data/deep/barrel.xml", "packages/core/more/chest.xml" })
+        {
+            Assert.True(XmlBinary.IsBinary(files.ReadAllBytes("res://" + cooked)), cooked);
+        }
+
+        foreach (string text in new[] { "packages/core/mod.xml", "packages/core/data/readme.txt", "packages/core/schemas/crate.xsd", "packages/core/other/loose.xml", "packages/broken/mod.xml", "packages/broken/data/crate.xml", "dev_mods/mine/mod.xml", "dev_mods/mine/data/crate.xml" })
+        {
+            Assert.Equal(File.ReadAllText(Path.Combine(game.Root, text)), Encoding.UTF8.GetString(files.ReadAllBytes("res://" + text)));
+        }
+
+        Assert.Equal(5, report.CookedDocuments); // the scene, the UID list and the three definition files
+        XmlNode crates = XmlFile.Read(files, "res://packages/core/data/crates.xml");
+        Assert.Equal(("Crates", "a", 2), (crates.Name, crates.Children[0].Attribute("id"), crates.Children[0].Line)); // as the text reads, with its lines
+
+        // The base package's definitions load from the pack as they do from the folder.
+        using var packages = PackageSet.Load(files, new PackageOptions { UserModsPath = "user://none", DevModsPath = "res://none" });
+        DefDatabase defs = packages.LoadDefs();
+        Assert.Equal(["a", "b", "c"], defs.All.Select(d => d.Id).Order());
+        Assert.False(defs.HasErrors);
     }
 
     [Fact]

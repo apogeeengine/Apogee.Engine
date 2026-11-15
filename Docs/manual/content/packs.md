@@ -23,9 +23,11 @@ no `nul`…), and the tool says which are not. From code: `GamePacker` (below), 
   for each file that is gone. Mounted over the base, it replaces, adds and removes.
 
 With `--cooked` the pack is what a shipped game needs: the imported artifacts instead of the sources they replace and their `.import.xml` files ([Asset import](import.md#packing)), the authored
-documents (scenes) and the UID list `imported/assets.xml` as [cooked XML](import.md#cooked-xml) at the same paths, everything else as it is. It needs the folder to be imported first. The summary line
-says how many documents were cooked (`game.pack: 14 files (5.5 MiB) in 1 part(s), 4.9 MiB, 2 cooked`). Files under `dev_mods/` are never cooked, and a scene that is not well-formed XML is an error
-(exit code 1) that names its path.
+documents (scenes), the definitions of the base packages (the `.xml` files in the `Content` folders of `packages/<id>/mod.xml`) and the UID list `imported/assets.xml` as [cooked XML](import.md#cooked-xml) at the
+same paths, everything else as it is: `mod.xml`, schemas, `.rml` documents, scripts and mods stay text. It needs the folder to be imported first. The summary line
+says how many documents were cooked (`game.pack: 14 files (5.5 MiB) in 1 part(s), 4.9 MiB, 2 cooked`). Files under `dev_mods/` are never cooked, and a scene or a definition file that is not well-formed XML is an error
+(exit code 1) that names its path. A script that read such a file as text with `fs.read_text` gets bytes from a cooked pack: it reads definitions with `defs`, scenes with `world:load_scene_file` and
+other XML with `xml.load`, which work on both forms (`Tests/Fixtures/ShippedGame` is packed `--cooked` and run from the pack by a test).
 
 ### From code: `GamePacker`
 
