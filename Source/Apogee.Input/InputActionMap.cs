@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Apogee.Core.Logging;
 using Apogee.Reflection;
 
 namespace Apogee.Input;
@@ -49,6 +50,13 @@ public sealed partial class InputActionMap : EngineObject
     private readonly List<InputAction> _actions = [];
     private readonly Dictionary<string, int> _index = new(StringComparer.Ordinal);
     private readonly List<string[]> _situations = [];
+    private readonly Dictionary<string, string[]> _pending = new(StringComparer.Ordinal); // saved overrides of actions that are not defined (yet)
+
+    /// <summary>
+    /// Raised after any rebinding: <see cref="SetBindings"/>, <see cref="Reset"/>, <see cref="ResetAll"/>, <see cref="Load"/> and <see cref="LoadText"/>, whether or not a binding really changed. The settings
+    /// store listens to save the bindings.
+    /// </summary>
+    public event Action? BindingsChanged;
 
     /// <summary>The actions, in the order they were added.</summary>
     public IReadOnlyList<InputAction> Actions => _actions;
@@ -68,8 +76,20 @@ public sealed partial class InputActionMap : EngineObject
             throw new ValueException($"input action '{id}' is defined twice");
         }
 
+        var action = new InputAction(id, help, [.. contexts], analog, ParseAll(id, defaults));
         _index[id] = _actions.Count;
-        _actions.Add(new InputAction(id, help, [.. contexts], analog, ParseAll(id, defaults)));
+        _actions.Add(action);
+
+        // The player's saved bindings of an action that did not exist when they were loaded (a mod, or a script that defines it later) apply now, without a change event: they are saved already.
+        if (_pending.Remove(id, out string[]? saved))
+        {
+            var errors = new List<string>();
+            action.Bindings = ParseSaved(id, saved, errors);
+            foreach (string error in errors)
+            {
+                Log.Warn("Input", $"saved bindings: {error}");
+            }
+        }
     }
 
     [Method]
@@ -103,7 +123,11 @@ public sealed partial class InputActionMap : EngineObject
 
     /// <summary>Rebinds an action. Throws (a script error) on a binding that does not read.</summary>
     [Method]
-    public void SetBindings(string id, string[] bindings) => Get(id).Bindings = ParseAll(id, bindings);
+    public void SetBindings(string id, string[] bindings)
+    {
+        Get(id).Bindings = ParseAll(id, bindings);
+        BindingsChanged?.Invoke();
+    }
 
     [Method]
     public string[] GetBindings(string id) => [.. Get(id).Bindings.Select(b => b.ToString())];
@@ -112,8 +136,13 @@ public sealed partial class InputActionMap : EngineObject
     public string[] GetDefaults(string id) => [.. Get(id).Defaults.Select(b => b.ToString())];
 
     [Method]
-    public void Reset(string id) => Get(id).Bindings = Get(id).Defaults;
+    public void Reset(string id)
+    {
+        Get(id).Bindings = Get(id).Defaults;
+        BindingsChanged?.Invoke();
+    }
 
+    /// <summary>Puts every defined action back to its defaults. Saved bindings of actions that are not defined (yet) are kept.</summary>
     [Method]
     public void ResetAll()
     {
@@ -121,6 +150,8 @@ public sealed partial class InputActionMap : EngineObject
         {
             action.Bindings = action.Defaults;
         }
+
+        BindingsChanged?.Invoke();
     }
 
     // An analog action reads its input whatever the modifiers and the trigger, so it clashes with anything else on that input; the others clash on the same
@@ -173,9 +204,20 @@ public sealed partial class InputActionMap : EngineObject
     [Method]
     public string[] GetAllConflicts() => [.. AllConflicts().Select(c => $"{c.Action}\t{c.Other}\t{c.Binding}")];
 
-    /// <summary>The bindings that differ from the defaults, by action id: what a game stores in the player's settings.</summary>
-    public IReadOnlyDictionary<string, string[]> Save() =>
-        _actions.Where(a => !a.Bindings.SequenceEqual(a.Defaults)).ToDictionary(a => a.Id, a => a.Bindings.Select(b => b.ToString()).ToArray(), StringComparer.Ordinal);
+    /// <summary>
+    /// The bindings that differ from the defaults, by action id: what a game stores in the player's settings. It includes the saved bindings of actions that are not defined (<see cref="LoadSaved"/>), so a
+    /// mod that is switched off for a while does not lose its players' bindings.
+    /// </summary>
+    public IReadOnlyDictionary<string, string[]> Save()
+    {
+        Dictionary<string, string[]> saved = _actions.Where(a => !a.Bindings.SequenceEqual(a.Defaults)).ToDictionary(a => a.Id, a => a.Bindings.Select(b => b.ToString()).ToArray(), StringComparer.Ordinal);
+        foreach ((string id, string[] texts) in _pending)
+        {
+            saved[id] = texts;
+        }
+
+        return saved;
+    }
 
     /// <summary>Applies what <see cref="Save"/> wrote. Returns what could not be applied (an unknown action, a binding that does not read); the rest is.</summary>
     public string[] Load(IReadOnlyDictionary<string, string[]> saved)
@@ -189,26 +231,54 @@ public sealed partial class InputActionMap : EngineObject
                 continue;
             }
 
-            var bindings = new List<Binding>();
-            foreach (string text in texts)
-            {
-                if (Binding.TryParse(text, out Binding binding, out string error))
-                {
-                    if (!bindings.Contains(binding))
-                    {
-                        bindings.Add(binding);
-                    }
-                }
-                else
-                {
-                    errors.Add($"{id}: {error}");
-                }
-            }
+            _actions[i].Bindings = ParseSaved(id, texts, errors);
+        }
 
-            _actions[i].Bindings = bindings.ToArray();
+        BindingsChanged?.Invoke();
+        return [.. errors];
+    }
+
+    /// <summary>
+    /// Applies saved bindings (<see cref="Save"/>'s) at startup: those of actions that are defined apply now, and the others are kept until the action is added (<see cref="AddAction"/>) and are part of
+    /// <see cref="Save"/> meanwhile. Returns the bindings that do not read. It raises no <see cref="BindingsChanged"/>: what is loaded is saved already.
+    /// </summary>
+    public string[] LoadSaved(IReadOnlyDictionary<string, string[]> saved)
+    {
+        var errors = new List<string>();
+        foreach ((string id, string[] texts) in saved)
+        {
+            if (_index.TryGetValue(id, out int i))
+            {
+                _actions[i].Bindings = ParseSaved(id, texts, errors);
+            }
+            else
+            {
+                _pending[id] = [.. texts];
+            }
         }
 
         return [.. errors];
+    }
+
+    private static Binding[] ParseSaved(string id, string[] texts, List<string> errors)
+    {
+        var bindings = new List<Binding>();
+        foreach (string text in texts)
+        {
+            if (Binding.TryParse(text, out Binding binding, out string error))
+            {
+                if (!bindings.Contains(binding))
+                {
+                    bindings.Add(binding);
+                }
+            }
+            else
+            {
+                errors.Add($"{id}: {error}");
+            }
+        }
+
+        return [.. bindings];
     }
 
     /// <summary><see cref="Save"/> as text, one line per action: <c>lights = Hold L | Joy RB</c> (an action with no binding has nothing after the equals sign).</summary>
@@ -219,6 +289,11 @@ public sealed partial class InputActionMap : EngineObject
         foreach (InputAction action in _actions.Where(a => !a.Bindings.SequenceEqual(a.Defaults)))
         {
             Binding.AppendLine(text, action.Id, action.Bindings);
+        }
+
+        foreach ((string id, string[] texts) in _pending)
+        {
+            text.Append(id).Append(" = ").Append(string.Join(" | ", texts)).Append('\n');
         }
 
         return text.ToString();

@@ -174,6 +174,67 @@ public class ActionMapTests
     }
 
     [Fact]
+    public void PendingOverridesApplyWhenTheActionIsAdded()
+    {
+        var map = new InputActionMap();
+        int raised = 0;
+        map.BindingsChanged += () => raised++;
+
+        string[] errors = map.LoadSaved(new Dictionary<string, string[]> { ["lights"] = ["Hold L", "Joy RB"], ["horn"] = ["Nonsense Key"] });
+        Assert.Empty(errors);
+        Assert.Equal(0, raised); // what is loaded is saved already
+
+        map.AddAction("lights", ["vehicle"], ["L"]);
+        Assert.Equal(["Hold L", "Joy RB"], map.GetBindings("lights"));
+        Assert.Equal(["L"], map.GetDefaults("lights"));
+        Assert.Equal(0, raised);
+
+        // A saved binding that does not read is dropped when its action arrives (logged); the action keeps what did read, here nothing.
+        map.AddAction("horn", ["vehicle"], ["H"]);
+        Assert.Empty(map.GetBindings("horn"));
+    }
+
+    [Fact]
+    public void SaveKeepsOverridesOfActionsThatAreNotDefined()
+    {
+        var map = new InputActionMap();
+        map.AddAction("lights", ["vehicle"], ["L"]);
+        _ = map.LoadSaved(new Dictionary<string, string[]> { ["ghost"] = ["Hold G", "Joy A"], ["lights"] = ["K"] });
+
+        IReadOnlyDictionary<string, string[]> saved = map.Save();
+        Assert.Equal(["K"], saved["lights"]);
+        Assert.Equal(["Hold G", "Joy A"], saved["ghost"]);
+        Assert.Equal("lights = K\nghost = Hold G | Joy A\n", map.SaveText());
+
+        map.ResetAll(); // the defined actions go back to their defaults; a disabled mod's bindings are not the player's to lose here
+        Assert.Equal(["ghost"], map.Save().Keys);
+        map.AddAction("ghost", ["vehicle"], ["G"]);
+        Assert.Equal(["ghost"], map.Save().Keys); // applied now, and it differs from the default G
+        Assert.Equal(2, map.GetBindings("ghost").Length);
+    }
+
+    [Fact]
+    public void BindingsChangedIsRaisedByEveryRebind()
+    {
+        InputActionMap map = Catalog();
+        int raised = 0;
+        map.BindingsChanged += () => raised++;
+
+        map.SetBindings("lights", ["L"]);
+        Assert.Equal(1, raised);
+        map.Reset("lights");
+        Assert.Equal(2, raised);
+        map.ResetAll();
+        Assert.Equal(3, raised);
+        _ = map.Load(new Dictionary<string, string[]> { ["lights"] = ["K"] });
+        Assert.Equal(4, raised);
+        _ = map.LoadText("lights = J\n");
+        Assert.Equal(5, raised);
+        Assert.Throws<ValueException>(() => map.SetBindings("lights", ["Nonsense Key"]));
+        Assert.Equal(5, raised); // a rebind that failed changed nothing
+    }
+
+    [Fact]
     public void ResetGoesBackToTheDefaults()
     {
         InputActionMap map = Catalog();
