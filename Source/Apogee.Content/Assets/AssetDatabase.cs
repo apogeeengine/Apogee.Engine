@@ -32,8 +32,9 @@ public sealed partial class AssetDatabase(VirtualFileSystem files)
     // Where the game's own packages and development mods live under res://: a file there is also at mod://<id>/ when that package is mounted (see PackageSet).
     private static readonly string[] s_packageFolders = ["packages/", "dev_mods/"];
 
-    // A project is not nested deeper than this, or made of more folders than this; a link that leads back to a folder above it would otherwise make a tree without end.
-    private const int MaxFolderDepth = 64;
+    // A project is not nested deeper than this, or made of more folders than this; a link that leads back to a folder above it would otherwise make a tree without end. The depth is below what the OS lets
+    // a path pass through links (32 on macOS, 40 on Linux): beyond that a listing fails and reads as empty, and the walk would go on through every sibling up to MaxFolders instead of stopping at once.
+    private const int MaxFolderDepth = 24;
     private const int MaxFolders = 100_000;
 
     private readonly Lock _lock = new();

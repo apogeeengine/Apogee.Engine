@@ -138,7 +138,7 @@ the old file whole and never an empty one. The file keeps its permissions.
    cannot be put back is named in the error.
 5. `dryRun: true` runs all of it except the writes and returns the same report with `Applied` false: use it for a confirmation dialog.
 6. Everything that can go wrong before the first write (a folder that cannot be listed or that is deleted during the scan, a file that cannot be opened, a source of your own that throws) comes out of `Find`,
-   `Rewrite` and `Move` as a `ContentException` that says nothing was changed; only a null argument is an `ArgumentNullException`. Listing the project is bounded (64 folders deep, 100,000 folders), so a link that
+   `Rewrite` and `Move` as a `ContentException` that says nothing was changed; only a null argument is an `ArgumentNullException`. Listing the project is bounded (24 folders deep, 100,000 folders), so a link that
    leads back to a folder above it ends in an error, not in a tree without end.
 
 ### Move
