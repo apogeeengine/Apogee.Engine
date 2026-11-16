@@ -93,24 +93,86 @@ jobs:
         run: |
           app="Bin/export/Fixture Game.app"
           root="$app/Contents/Resources"
-          test -x "$app/Contents/MacOS/FixtureGame"
-          # The pack is encrypted: its magic is not the plain one ("APGK").
-          test -s "$root/data/game.pack"
-          test "$(head -c 4 "$root/data/game.pack" | od -An -tx1 | tr -d ' \n')" != 4150474b
-          # No debug files, no Slang compiler, no shader sources, no Steam app id file.
-          test -z "$(find Bin/export \( -iname '*slang*' -o -name '*.pdb' -o -name '*.dbg' -o -name '*.lib' -o -name '*.exp' -o -name '*.dSYM' -o -name 'steam_appid.txt' \) ! -path '*/Shaders/imported/*')"
-          # The export wrote nothing into the game folder.
-          git diff --exit-code -- Tests/Fixtures/ShippedGame
-          test -z "$(git status --porcelain Tests/Fixtures)"
-          # The program's own ad-hoc signature, which the export repaired after it wrote the key into the program (see "Checking an export on a Mac" in the export page). On a copy, outside the bundle: the bundle is not sealed.
+          echo "=== Export folder contents ==="
+          find "$app" -type f | sort
+          failed=0
+          if test -x "$app/Contents/MacOS/FixtureGame"; then
+            echo "OK: executable exists and is executable"
+          else
+            echo "FAILED: executable exists and is executable"
+            failed=$((failed + 1))
+          fi
+          if test -s "$root/data/game.pack"; then
+            echo "OK: pack file exists and is not empty"
+          else
+            echo "FAILED: pack file exists and is not empty"
+            failed=$((failed + 1))
+          fi
+          pack_magic=$(head -c 4 "$root/data/game.pack" | od -An -tx1 | tr -d ' \n')
+          if test "$pack_magic" != "4150474b"; then
+            echo "OK: pack magic bytes are encrypted (not APGK)"
+          else
+            echo "FAILED: pack magic bytes are encrypted (not APGK)"
+            echo "First 16 bytes: $(head -c 16 "$root/data/game.pack" | od -An -tx1 | tr -d ' \n')"
+            failed=$((failed + 1))
+          fi
+          leftover=$(find Bin/export \( -iname '*slang*' -o -name '*.pdb' -o -name '*.dbg' -o -name '*.lib' -o -name '*.exp' -o -name '*.dSYM' -o -name 'steam_appid.txt' \) ! -path '*/Shaders/imported/*')
+          if test -z "$leftover"; then
+            echo "OK: no leftover files"
+          else
+            echo "FAILED: no leftover files"
+            echo "$leftover"
+            failed=$((failed + 1))
+          fi
+          if git diff --exit-code -- Tests/Fixtures/ShippedGame; then
+            echo "OK: no changes to Tests/Fixtures/ShippedGame"
+          else
+            echo "FAILED: no changes to Tests/Fixtures/ShippedGame"
+            git diff --stat Tests/Fixtures/ShippedGame
+            failed=$((failed + 1))
+          fi
+          git_status=$(git status --porcelain Tests/Fixtures)
+          if test -z "$git_status"; then
+            echo "OK: no untracked files in Tests/Fixtures"
+          else
+            echo "FAILED: no untracked files in Tests/Fixtures"
+            echo "$git_status"
+            failed=$((failed + 1))
+          fi
           cp "$app/Contents/MacOS/FixtureGame" "$RUNNER_TEMP/FixtureGame-copy"
-          codesign --verify --strict --verbose=4 "$RUNNER_TEMP/FixtureGame-copy"
-          codesign -dvvv "$RUNNER_TEMP/FixtureGame-copy"
-          # The bundle's plist and icon.
-          plutil -lint "$app/Contents/Info.plist"
+          if codesign --verify --strict --verbose=4 "$RUNNER_TEMP/FixtureGame-copy"; then
+            echo "OK: codesign verify"
+          else
+            echo "FAILED: codesign verify"
+            failed=$((failed + 1))
+          fi
+          if codesign -dvvv "$RUNNER_TEMP/FixtureGame-copy"; then
+            echo "OK: codesign dump"
+          else
+            echo "FAILED: codesign dump"
+            failed=$((failed + 1))
+          fi
+          if plutil -lint "$app/Contents/Info.plist"; then
+            echo "OK: plist is valid"
+          else
+            echo "FAILED: plist is valid"
+            failed=$((failed + 1))
+          fi
           rm -rf "$RUNNER_TEMP/game.iconset"
-          iconutil -c iconset "$app/Contents/Resources/game.icns" -o "$RUNNER_TEMP/game.iconset"
-          ls "$RUNNER_TEMP/game.iconset"
+          if iconutil -c iconset "$app/Contents/Resources/game.icns" -o "$RUNNER_TEMP/game.iconset"; then
+            echo "OK: iconutil converted icns"
+          else
+            echo "FAILED: iconutil converted icns"
+            failed=$((failed + 1))
+          fi
+          if ls "$RUNNER_TEMP/game.iconset" > /dev/null 2>&1; then
+            echo "OK: icon set directory has contents"
+          else
+            echo "FAILED: icon set directory has contents"
+            ls "$RUNNER_TEMP/game.iconset" 2>&1 || true
+            failed=$((failed + 1))
+          fi
+          exit $failed
       # The exported game, run headless from another folder, with the key out of the environment (it comes out of the executable) and a player's mod in the user folder. +connect_lobby is what Steam appends to the
       # command line for an invitation: the game ignores it.
       - name: Exported game, run

@@ -113,15 +113,53 @@ jobs:
       - name: Exported game, checked
         run: |
           root=Bin/export
-          test -x "$root/FixtureGame"
-          # The pack is encrypted: its magic is not the plain one ("APGK").
-          test -s "$root/data/game.pack"
-          test "$(head -c 4 "$root/data/game.pack" | od -An -tx1 | tr -d ' \n')" != 4150474b
-          # No debug files, no Slang compiler, no shader sources, no Steam app id file.
-          test -z "$(find Bin/export \( -iname '*slang*' -o -name '*.pdb' -o -name '*.dbg' -o -name '*.lib' -o -name '*.exp' -o -name '*.dSYM' -o -name 'steam_appid.txt' \) ! -path '*/Shaders/imported/*')"
-          # The export wrote nothing into the game folder.
-          git diff --exit-code -- Tests/Fixtures/ShippedGame
-          test -z "$(git status --porcelain Tests/Fixtures)"
+          echo "=== Export folder contents ==="
+          find "$root" -type f | sort
+          failed=0
+          if test -x "$root/FixtureGame"; then
+            echo "OK: executable exists and is executable"
+          else
+            echo "FAILED: executable exists and is executable"
+            failed=$((failed + 1))
+          fi
+          if test -s "$root/data/game.pack"; then
+            echo "OK: pack file exists and is not empty"
+          else
+            echo "FAILED: pack file exists and is not empty"
+            failed=$((failed + 1))
+          fi
+          pack_magic=$(head -c 4 "$root/data/game.pack" | od -An -tx1 | tr -d ' \n')
+          if test "$pack_magic" != "4150474b"; then
+            echo "OK: pack magic bytes are encrypted (not APGK)"
+          else
+            echo "FAILED: pack magic bytes are encrypted (not APGK)"
+            echo "First 16 bytes: $(head -c 16 "$root/data/game.pack" | od -An -tx1 | tr -d ' \n')"
+            failed=$((failed + 1))
+          fi
+          leftover=$(find Bin/export \( -iname '*slang*' -o -name '*.pdb' -o -name '*.dbg' -o -name '*.lib' -o -name '*.exp' -o -name '*.dSYM' -o -name 'steam_appid.txt' \) ! -path '*/Shaders/imported/*')
+          if test -z "$leftover"; then
+            echo "OK: no leftover files"
+          else
+            echo "FAILED: no leftover files"
+            echo "$leftover"
+            failed=$((failed + 1))
+          fi
+          if git diff --exit-code -- Tests/Fixtures/ShippedGame; then
+            echo "OK: no changes to Tests/Fixtures/ShippedGame"
+          else
+            echo "FAILED: no changes to Tests/Fixtures/ShippedGame"
+            git diff --stat Tests/Fixtures/ShippedGame
+            failed=$((failed + 1))
+          fi
+          git_status=$(git status --porcelain Tests/Fixtures)
+          if test -z "$git_status"; then
+            echo "OK: no untracked files in Tests/Fixtures"
+          else
+            echo "FAILED: no untracked files in Tests/Fixtures"
+            echo "$git_status"
+            failed=$((failed + 1))
+          fi
+          exit $failed
       # The exported game, run headless from another folder, with the key out of the environment (it comes out of the executable) and a player's mod in the user folder. +connect_lobby is what Steam appends to the
       # command line for an invitation: the game ignores it.
       - name: Exported game, run
