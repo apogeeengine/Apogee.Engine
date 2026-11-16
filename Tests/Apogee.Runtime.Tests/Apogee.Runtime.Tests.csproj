@@ -12,6 +12,7 @@
     <Compile Include="../Apogee.Native.Tests/NativeRequirements.cs" Link="NativeRequirements.cs" />
     <Compile Include="../Apogee.Graphics.Tests/GpuFixture.cs" Link="GpuFixture.cs" />
     <Compile Include="../Apogee.Export.Tests/TinyPe.cs" Link="TinyPe.cs" />
+    <Compile Include="../Apogee.Export.Tests/SyntheticMachO.cs" Link="SyntheticMachO.cs" />
     <Compile Include="../Apogee.Export.Tests/TestResources.cs" Link="TestResources.cs" />
   </ItemGroup>
   <Import Project="../../ThirdParty/NativeLibraries.props" />

@@ -991,11 +991,15 @@ public class CommandTests
         string folder = System.IO.Path.Combine(scratch.Root, "runtime");
         Directory.CreateDirectory(folder);
 
-        // Elsewhere the program is the .NET host with the slot appended. A Windows export rewrites the program's resources, which needs a layout it can read (an appended slot would be an overlay), so there
+        // On Linux the program is the .NET host with the slot appended. A Windows export rewrites the program's resources, which needs a layout it can read (an appended slot would be an overlay), so there
         // the program is a small executable that has the slot in its code.
+        // On macOS the slot has to be inside the code the program's signature covers (the export writes it there and signs the program again), which an appended one is not: the program is a small
+        // signed Mach-O for the machine's architecture that has the slot in its code.
         byte[] program = windows
             ? Apogee.Export.Tests.TinyPe.Typical(Apogee.Export.PackKeySlot.Template.ToArray()).Build()
-            : [.. File.ReadAllBytes(Environment.ProcessPath!), .. Apogee.Export.PackKeySlot.Template.ToArray()];
+            : OperatingSystem.IsMacOS()
+                ? Apogee.Export.Tests.SyntheticMachO.Build(0x8000, [new(2, 14)], embed: Apogee.Export.PackKeySlot.Template.ToArray(), cpuType: Apogee.Export.ExportTarget.Host.Arch == "arm64" ? 0x0100000Cu : 0x01000007u).Bytes
+                : [.. File.ReadAllBytes(Environment.ProcessPath!), .. Apogee.Export.PackKeySlot.Template.ToArray()];
         File.WriteAllBytes(System.IO.Path.Combine(folder, windows ? "Apogee.Runtime.exe" : "Apogee.Runtime"), program);
         File.WriteAllText(System.IO.Path.Combine(folder, windows ? "flecs.dll" : "libflecs.so"), "a native library");
         return folder;
