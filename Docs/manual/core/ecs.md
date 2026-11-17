@@ -60,7 +60,10 @@ not the entities of registered components and the reflection data under them, no
 - **Snapshots:** `Snapshot()` takes every user entity (ids with their generation, names, parents, component bytes), `SnapshotTree(entity)` one branch. `Restore(snapshot)` puts the world back: user entities
   that are not in it are destroyed, the ones that are come back *under the same ids* (made alive again with `ecs_make_alive` when they were destroyed) with their components, names and parents as they
   were; `RestoreEntities(snapshot)` only brings back and overwrites, destroying nothing (an undo of a deletion). The same ids are what keep a selection and an undo history valid across a play session.
-  A snapshot is bytes: a component that holds a handle of the run (a physics body's id) comes back with the old value, so such components are left to the code that made them.
+  Asset fields travel by reference: for each field of an asset type (`ModelRenderer.Model`, anything `[Property(Asset = "…")]`) the snapshot also keeps the `AssetRef` (path and UID) its handle named, through the
+  type registered with `RegisterAssetType`. Restored into the world it was taken from, the bytes come back as they are; restored into another world (the new session after a play run), each such field is set to
+  *that* world's handle for the same asset, so a model is still the same model although the new session numbered its models afresh. An asset that world cannot find, or that has no path or UID, comes back as 0
+  with a warning. Any other handle of the run (a physics body's id) is still bytes and comes back with the old value, so such components are left to the code that made them.
 - **Scenes** (`.ascene`): `SaveScene()` writes the user entities as XML text, `SaveScene(entity)` one branch, and `LoadScene(text, parent?)` creates the entities (under `parent` when given) and returns them in the
   order of the file. `SaveSceneDocument(roots)` and `LoadScene(node, parent?)` do the same with an `XmlNode` tree, for code that patches or inspects it. Each component is an element and each field an attribute
   (`<Transform Position="0 -0.5 0" Rotation="0 0 0 1" Scale="1 1 1"/>`), a child `<Entity>` is a child entity, and the format needs no reflection, so it works in NativeAOT. Flecs' own JSON was not used: it would
@@ -122,6 +125,6 @@ when the frame is done: the exception itself when there was one, an `AggregateEx
 
 `Tests/Apogee.Ecs.Tests` (needs the `flecs` native library): the transform hierarchy (`TransformTests`), registration and reflection JSON, set/get/ensure, tags, runtime components, names
 and parents, ids that stay dead, queries (with `Not`, with structural changes inside), systems in phases, failing systems, observers, and
-disposal; and `EditingTests`: which entities are the user's, hierarchy order, the components of an entity, clones, snapshots and restoring (ids that come back, names that swapped, a deleted branch),
-and scenes (a round trip with the hierarchy, references, doubles and script components, converters, unknown things, bad files). The scene round trip also runs in the NativeAOT smoke test
+disposal; and `EditingTests`: which entities are the user's, hierarchy order, the components of an entity, clones, snapshots and restoring (ids that come back, names that swapped, a deleted branch);
+`SnapshotAssetTests` (asset fields restored into a world that numbers its assets differently); and scenes (a round trip with the hierarchy, references, doubles and script components, converters, unknown things, bad files). The scene round trip also runs in the NativeAOT smoke test
 (`Apogee.Runtime --smoke`) and from Luau (`Tests/Luau/ecs.test.luau`).

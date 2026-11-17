@@ -36,6 +36,7 @@ public sealed unsafe partial class World
     private const int SceneVersion = 1;
 
     private readonly Dictionary<string, (Func<uint, AssetRef?> ToRef, Func<AssetRef, uint> FromRef)> _assetTypes = new(StringComparer.Ordinal);
+    private readonly object _origin = new();   // what a snapshot says about the world it came from (see WorldSnapshot)
     private readonly HashSet<string> _assetTypesWarned = new(StringComparer.Ordinal);
     private readonly HashSet<string> _sceneIgnored = new(StringComparer.Ordinal) { "WorldTransform" };
 
@@ -211,6 +212,10 @@ public sealed unsafe partial class World
         return registered.ToRef(handle) is { IsEmpty: false } named ? named : null;
     }
 
+    // The same without the warning, for what is not saved (a snapshot): null for a type nobody registered and for what the type cannot name.
+    private AssetRef? QuietAssetRefOf(FieldDef field, uint handle) =>
+        field.AssetType is { } type && _assetTypes.TryGetValue(type, out var registered) && registered.ToRef(handle) is { IsEmpty: false } named ? named : null;
+
     // The handle of this run for the text of a reference; 0 for no text, for a type nobody registered (said once), and for an asset that cannot be loaded (logged).
     private uint HandleOf(ComponentInfo info, FieldDef field, string text)
     {
@@ -230,9 +235,26 @@ public sealed unsafe partial class World
             throw new FormatException($"'{text}' is not an asset reference (a path, path|uid://… or uid://…)");
         }
 
+        return Resolve(info, field, registered.FromRef, named);
+    }
+
+    // The handle of this run for a reference that was already read: what a snapshot of another world holds. 0 for a type nobody registered (said once) and for what cannot be found or loaded (logged).
+    private uint HandleOfRef(ComponentInfo info, FieldDef field, AssetRef named)
+    {
+        if (field.AssetType is not { } type || !_assetTypes.TryGetValue(type, out var registered))
+        {
+            WarnAssetTypeOnce(info, field);
+            return 0;
+        }
+
+        return Resolve(info, field, registered.FromRef, named);
+    }
+
+    private static uint Resolve(ComponentInfo info, FieldDef field, Func<AssetRef, uint> fromRef, AssetRef named)
+    {
         try
         {
-            uint handle = registered.FromRef(named);
+            uint handle = fromRef(named);
             if (handle == 0)
             {
                 Log.Warn("Scene", $"{info.Name}.{field.Name}: {named} names no {field.AssetType} that this world can find: left empty");

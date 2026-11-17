@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Apogee.Core.Assets;
+using Apogee.Core.Logging;
 using Apogee.Native.Flecs;
 using Apogee.Reflection;
 using Flecs = Apogee.Native.Flecs.Ecs;
@@ -13,19 +15,34 @@ public struct EditorOnly;
 
 // What an editor needs of a world: the hierarchy, the components of an entity, copies, and whole-world snapshots. "User entities" are the ones the game and the editor made: not Flecs' own
 // entities (modules, systems, observers, its builtin components), not the entities of registered components and their reflection data, and not the ones marked EditorOnly.
-/// <summary>One entity as it was: its id (the generation too), name, parent and the bytes of its components.</summary>
-internal sealed record EntityState(ulong Id, string? Name, ulong Parent, (ComponentInfo Info, byte[]? Data)[] Components);
+/// <summary>
+/// One component of an entity as it was: its bytes (null for a tag) and, for each of its asset fields (<see cref="FieldKind.AssetRef"/>, in field order), the <see cref="AssetRef"/> the handle named, or
+/// null when it named nothing or nothing that can be saved. A handle only means something in the world (and run) it came from; the reference is what another world can use.
+/// </summary>
+internal readonly record struct CapturedComponent(ComponentInfo Info, byte[]? Data, AssetRef?[]? Assets);
+
+/// <summary>One entity as it was: its id (the generation too), name, parent and its components.</summary>
+internal sealed record EntityState(ulong Id, string? Name, ulong Parent, CapturedComponent[] Components);
 
 /// <summary>
 /// The user entities of a world as they were (<see cref="Snapshot"/>), or a part of them (<see cref="SnapshotTree"/>): ids, names, parents and component bytes. Restoring it brings the entities back
 /// under the same ids, so a selection, an undo history or a reference between entities stays valid. A snapshot names its components by their description, not by their id in the world it
-/// was taken from, so it can be restored into another world (a new session after a play run): the entities come back under the same ids there too.
+/// was taken from, so it can be restored into another world (a new session after a play run): the entities come back under the same ids there too. Fields that hold an asset (a model of a
+/// <c>ModelRenderer</c>) are kept as the <see cref="AssetRef"/> they named: restored into the world they came from they are the same handles, into another world they are that world's handles for the same
+/// assets.
 /// </summary>
 public sealed class WorldSnapshot
 {
-    internal WorldSnapshot(List<EntityState> entities) => Entities = entities;
+    internal WorldSnapshot(List<EntityState> entities, object origin)
+    {
+        Entities = entities;
+        Origin = origin;
+    }
 
     internal List<EntityState> Entities { get; }
+
+    /// <summary>Identifies the world the snapshot was taken from (see <c>World._origin</c>).</summary>
+    internal object Origin { get; }
 
     /// <summary>The ids of the entities in it.</summary>
     public IEnumerable<Entity> Ids => Entities.Select(e => new Entity(e.Id));
@@ -286,16 +303,16 @@ public sealed unsafe partial class World
             states.Add(Capture(entity));
         }
 
-        return new WorldSnapshot(states);
+        return new WorldSnapshot(states, _origin);
     }
 
     /// <summary>Takes one entity and everything below it, parents first.</summary>
-    public WorldSnapshot SnapshotTree(Entity root) => new([.. Subtree(root).Select(Capture)]);
+    public WorldSnapshot SnapshotTree(Entity root) => new([.. Subtree(root).Select(Capture)], _origin);
 
     private EntityState Capture(Entity entity)
     {
         List<(Entity Id, ComponentInfo Info)> components = ComponentsOf(entity);
-        var captured = new (ComponentInfo, byte[]?)[components.Count];
+        var captured = new CapturedComponent[components.Count];
         for (int i = 0; i < captured.Length; i++)
         {
             (Entity id, ComponentInfo info) = components[i];
@@ -306,10 +323,30 @@ public sealed unsafe partial class World
                 new ReadOnlySpan<byte>(GetPointer(entity, id), info.Size).CopyTo(data);
             }
 
-            captured[i] = (info, data);
+            captured[i] = new CapturedComponent(info, data, data is null ? null : CaptureAssets(info, data));
         }
 
         return new EntityState(entity.Id, GetName(entity), GetParent(entity).Id, captured);
+    }
+
+    // The references the asset fields of one component's bytes name (null when it has none of those fields), for restoring into another world.
+    private AssetRef?[]? CaptureAssets(ComponentInfo info, byte[] data)
+    {
+        AssetRef?[]? refs = null;
+        int next = 0;
+        foreach (FieldDef field in info.Fields)
+        {
+            if (field.Kind != FieldKind.AssetRef)
+            {
+                continue;
+            }
+
+            refs ??= new AssetRef?[info.Fields.Count(f => f.Kind == FieldKind.AssetRef)];
+            uint handle = BitConverter.ToUInt32(data, field.Offset);
+            refs[next++] = handle == 0 ? null : QuietAssetRefOf(field, handle);
+        }
+
+        return refs;
     }
 
     /// <summary>
@@ -342,7 +379,41 @@ public sealed unsafe partial class World
         RestoreEntities(snapshot);
     }
 
-    /// <summary>Brings back the entities of the snapshot under their ids, overwriting what is there, and destroys nothing: what an undo of a deletion does.</summary>
+    // Sets each asset field of a component's bytes to this world's handle for the reference it named; 0 when there is none to name (said once per field) or this world cannot find it.
+    private void RebindAssets(ComponentInfo info, byte[] data, AssetRef?[] assets)
+    {
+        int next = 0;
+        foreach (FieldDef field in info.Fields)
+        {
+            if (field.Kind != FieldKind.AssetRef)
+            {
+                continue;
+            }
+
+            AssetRef? named = assets[next++];
+            uint handle = BitConverter.ToUInt32(data, field.Offset);
+            uint rebound = 0;
+            if (named is { } reference)
+            {
+                rebound = HandleOfRef(info, field, reference);
+            }
+            else if (handle != 0)
+            {
+                // It named something in the world it came from, but nothing that can be named in another one.
+                if (_assetTypesWarned.Add($"restore:{info.Name}.{field.Name}"))
+                {
+                    Log.Warn("Scene", $"{info.Name}.{field.Name} named an asset with no path or UID (handle {handle}), which another world cannot find: left empty");
+                }
+            }
+
+            BitConverter.TryWriteBytes(data.AsSpan(field.Offset, sizeof(uint)), rebound);
+        }
+    }
+
+    /// <summary>
+    /// Brings back the entities of the snapshot under their ids, overwriting what is there, and destroys nothing: what an undo of a deletion does. A snapshot of another world comes back with
+    /// this world's handles for the assets it named.
+    /// </summary>
     public void RestoreEntities(WorldSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -359,12 +430,15 @@ public sealed unsafe partial class World
             Flecs.RemoveId(Native, state.Id, Flecs.MakePair(Flecs.IdentifierId, Flecs.Name));
         }
 
+        bool sameWorld = ReferenceEquals(snapshot.Origin, _origin);
         foreach (EntityState state in snapshot.Entities)
         {
             var entity = new Entity(state.Id);
             var wanted = new HashSet<Entity>();
-            foreach ((ComponentInfo info, byte[]? data) in state.Components)
+            foreach (CapturedComponent captured in state.Components)
             {
+                ComponentInfo info = captured.Info;
+                byte[]? data = captured.Data;
                 Entity id = RegisterComponent(info);   // the same id when this world has it, a new component of the same layout when it has not
                 wanted.Add(id);
                 if (data is null)
@@ -373,6 +447,13 @@ public sealed unsafe partial class World
                 }
                 else
                 {
+                    // Another world has other handles: its own for the assets the fields named (the snapshot keeps its bytes, so a copy is changed).
+                    if (!sameWorld && captured.Assets is not null)
+                    {
+                        data = (byte[])data.Clone();
+                        RebindAssets(info, data, captured.Assets);
+                    }
+
                     fixed (byte* bytes = data)
                     {
                         SetPointer(entity, id, data.Length, bytes);
