@@ -24,10 +24,10 @@ writes the new path).
 | Asset | UID in | Example |
 | --- | --- | --- |
 | An imported file (`.glb`, `.png`, `.slang`…) | the `uid` attribute of its [`<asset>.import.xml`](import.md#settings) | `<Import uid="uid://4k2m9x7q1w3ze" srgb="false"/>` |
-| An authored file (`.ascene`) | the `uid` attribute of the document's root | `<Scene version="1" uid="uid://…">` |
+| An authored file (`.ascene`, `.aprefab`) | the `uid` attribute of the document's root | `<Scene version="1" uid="uid://…">`, `<Prefab version="1" uid="uid://…" nextId="4">` |
 | The whole project | `imported/assets.xml`, a list written by the import | `<Asset uid="uid://…" path="res://models/car.glb"/>` |
 
-`AuthoredAssets.Extensions` lists the authored kinds; [scenes](scenes.md) are the first. The sidecar and the document are the truth; `assets.xml` is a copy that makes lookups fast. It is rewritten by every import (only when its text changes),
+`AuthoredAssets.Extensions` lists the authored kinds: [scenes](scenes.md) and [prefabs](prefabs.md). The sidecar and the document are the truth; `assets.xml` is a copy that makes lookups fast. It is rewritten by every import (only when its text changes),
 sorted by path, and a pack carries it, so a shipped game finds a UID without scanning. The paths in it are written as the folder looked when it was imported (`res://…`); a package that was imported on its
 own and is mounted at `mod://id/` is read with its paths under `mod://id/`. In a `--pack --cooked` pack the list is [cooked XML](import.md#cooked-xml) and is the only record of the imported assets' UIDs
 (their sidecars and sources are left out), so `AssetDatabase` believes a cooked list without looking for the files.
@@ -93,7 +93,7 @@ RewriteReport report = AssetReferences.Rewrite(assets, "res://models/car.glb", "
 
 ### What is searched
 
-- **Documents:** every authored file (`AuthoredAssets.Extensions`: scenes) in the roots of the database, and every `.xml` file under the `defFolders` you name (definitions). Sidecars (`.import.xml`) hold settings,
+- **Documents:** every authored file (`AuthoredAssets.Extensions`: scenes and prefabs) in the roots of the database, and every `.xml` file under the `defFolders` you name (definitions). Sidecars (`.import.xml`) hold settings,
   not references, and are not searched; they move with their asset.
 - **References:** an attribute whose whole text is an [`AssetRef`](#the-values). Text inside elements is not rewritten (it is reported, see below).
 - **What counts as the asset:** an attribute whose path is the asset's path, or whose UID is the asset's UID and whose path does not lead to some *other* existing file. The second condition is the rule

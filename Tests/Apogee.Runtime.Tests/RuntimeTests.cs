@@ -367,6 +367,39 @@ public class CommandTests
     }
 
     [Fact]
+    public void AGameInstantiatesAPrefabFromLuau()
+    {
+        using var scratch = new Scratch();
+        scratch.Write("game/prefabs/lamp.aprefab", """
+            <?xml version="1.0" encoding="utf-8"?>
+            <Prefab version="1" nextId="4">
+              <Entity id="1" name="Lamp">
+                <Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/>
+                <Entity id="2" name="Bulb"><Transform Position="0 1.8 0" Rotation="0 0 0 1" Scale="1 1 1"/></Entity>
+                <Entity id="3" name="Base"><Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/></Entity>
+              </Entity>
+            </Prefab>
+            """);
+        string game = System.IO.Path.Combine(scratch.Root, "game");
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+
+        // The import gives the prefab its UID: it is authored, so it has no sidecar.
+        Assert.Equal(0, Commands.Import(Options("--import", game)));
+        Apogee.Core.Assets.AssetUid uid = Apogee.Content.Assets.AuthoredAssets.ReadUid(File.ReadAllBytes(System.IO.Path.Combine(game, "prefabs", "lamp.aprefab")));
+        Assert.False(uid.IsNone);
+        Game(scratch, "check", "<Script path=\"main.luau\"/>", user: false, ("main.luau", $$"""
+            assert(not pcall(function() world:instantiate("res://prefabs/none.aprefab") end), "a missing prefab is an error")
+            assert(not pcall(function() world:instantiate("uid://4k2m9x7q1w3ze") end), "an unknown uid is an error")
+            local lamp = world:instantiate("{{uid}}")
+            local again = world:instantiate("res://prefabs/lamp.aprefab", lamp)
+            fs.write_text("user://prefab.txt", #world:children(lamp) .. " " .. tostring(world:prefab_of(lamp) == "res://prefabs/lamp.aprefab|{{uid}}") .. " " .. tostring(world:prefab_of(world:children(lamp)[1])) .. " " .. #world:children(again))
+            """));
+
+        Assert.Equal(0, Commands.Run(Options("--game", game, "--user", user, "--headless", "--frames", "1")));
+        Assert.Equal("3 true nil 2", File.ReadAllText(System.IO.Path.Combine(user, "prefab.txt")));   // Bulb and Base, and the second instance made under the first
+    }
+
+    [Fact]
     public void AGameCanEndTheRunAndIsToldBySetEscapeQuitsWhatEscapeDoes()
     {
         using var scratch = new Scratch();

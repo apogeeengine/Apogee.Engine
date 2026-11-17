@@ -33,7 +33,7 @@ them as text. Because a scene is XML like the rest of the game's data, a mod can
 - **`<Scene version="1">`** is the root. `version` is the format's version; a scene from a newer engine (a larger number) is refused. A scene file may also carry a `uid` attribute, its
   [identity](assets.md#where-a-uid-lives); text made by `SaveScene` has none, because a copy must not carry one.
 - **`<Entity id="…" name="…">`** is an entity. `name` is optional. Its children are its components, as elements, and its child entities, as more `<Entity>` elements; a child entity is under its parent,
-  so there is no `parent` attribute. `Entity` is therefore not a name a component can have (`RegisterComponent` and `DefineComponent` refuse it).
+  so there is no `parent` attribute. `Entity` is therefore not a name a component can have (`RegisterComponent` and `DefineComponent` refuse it, and `Override`, which [prefab](prefabs.md) instances use).
 - **`id`** is the entity's number in the file, not its id in a world. Entity-typed fields refer to it, and a [patch](#patching-a-scene) matches on it.
 - **A component** is an element named after it, and each of its fields an attribute named after the field. A tag (or a component with no fields) is an empty element. A field the element does not
   name is zero when the scene is loaded.

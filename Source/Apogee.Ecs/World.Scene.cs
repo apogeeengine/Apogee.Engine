@@ -38,7 +38,7 @@ public sealed unsafe partial class World
     private readonly Dictionary<string, (Func<uint, AssetRef?> ToRef, Func<AssetRef, uint> FromRef)> _assetTypes = new(StringComparer.Ordinal);
     private readonly object _origin = new();   // what a snapshot says about the world it came from (see WorldSnapshot)
     private readonly HashSet<string> _assetTypesWarned = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _sceneIgnored = new(StringComparer.Ordinal) { "WorldTransform" };
+    private readonly HashSet<string> _sceneIgnored = new(StringComparer.Ordinal) { "WorldTransform", nameof(PrefabInstance), nameof(PrefabMember) };
 
     /// <summary>
     /// Says how the fields of an asset type (<see cref="FieldDef.AssetType"/>, such as <c>model</c> for <c>ModelRenderer.Model</c>) are saved. Such a field is a number in memory, a handle that only means
@@ -95,6 +95,22 @@ public sealed unsafe partial class World
             local[order[i].Id] = i + 1;
         }
 
+        (List<XmlNode> top, XmlNode? schemas) = WriteEntities(order, local);
+        var scene = new XmlNode(SceneRoot);
+        scene.SetAttribute("version", SceneVersion.ToString(CultureInfo.InvariantCulture));
+        if (schemas is not null)
+        {
+            scene.Children.Add(schemas);
+        }
+
+        scene.Children.AddRange(top);
+        return scene;
+    }
+
+    // The entities of `order` (parents before children) as nodes numbered by `local`: the nodes that have no parent in the order, and the <Components> element for the components scripts defined (null
+    // when there are none). What a scene and a prefab file share; the numbering is the caller's.
+    private (List<XmlNode> Top, XmlNode? Schemas) WriteEntities(List<Entity> order, Dictionary<ulong, int> local)
+    {
         var scriptComponents = new SortedDictionary<string, ComponentInfo>(StringComparer.Ordinal);
         var nodes = new Dictionary<ulong, XmlNode>();
         var top = new List<XmlNode>();
@@ -147,11 +163,10 @@ public sealed unsafe partial class World
             }
         }
 
-        var scene = new XmlNode(SceneRoot);
-        scene.SetAttribute("version", SceneVersion.ToString(CultureInfo.InvariantCulture));
+        XmlNode? schemas = null;
         if (scriptComponents.Count > 0)
         {
-            var schemas = new XmlNode("Components");
+            schemas = new XmlNode("Components");
             foreach ((string name, ComponentInfo info) in scriptComponents)
             {
                 var schema = new XmlNode("Component");
@@ -171,12 +186,9 @@ public sealed unsafe partial class World
 
                 schemas.Children.Add(schema);
             }
-
-            scene.Children.Add(schemas);
         }
 
-        scene.Children.AddRange(top);
-        return scene;
+        return (top, schemas);
     }
 
     // The text of a field, or null when the attribute is left out: an Entity outside the scene, a handle of 0, an asset the type cannot name.
@@ -328,6 +340,12 @@ public sealed unsafe partial class World
             }
         }
 
+        return LoadEntities(root, parent, out _);
+    }
+
+    // The entities of the document's <Entity> children (a scene's, or a prefab's one root), created in the order of the file; `nodes` gets the element each came from, in the same order.
+    private List<Entity> LoadEntities(XmlNode root, Entity parent, out List<XmlNode> nodes)
+    {
         if (root.Child("Components") is { } schemas)
         {
             DefineSceneComponents(schemas);
@@ -335,7 +353,7 @@ public sealed unsafe partial class World
 
         // Every entity first, in the order of the file, so that entity-typed fields can refer to the ones that come later in it; the parents next (they decide whether a name is free), then the names and components.
         var created = new List<Entity>();
-        var nodes = new List<XmlNode>();
+        nodes = [];
         var under = new List<Entity>();
         var byLocal = new Dictionary<int, Entity>();
         CreateSceneEntities(root, parent, created, nodes, under, byLocal);
@@ -413,19 +431,21 @@ public sealed unsafe partial class World
         VirtualFileSystem files = Files ?? throw new InvalidOperationException("this world has no files to save a scene to");
         string resolved = ResolveScenePath(path);
 
-        AssetUid uid = files.FileExists(resolved) ? AuthoredAssets.ReadUid(files.ReadAllBytes(resolved)) : AssetUid.None;
-        bool minted = uid.IsNone;
-        if (minted)
-        {
-            uid = AssetUid.New();
-        }
-
+        AssetUid uid = KeptUid(files, resolved, out bool minted);
         document.SetAttribute("uid", uid.ToString());
         files.WriteAllText(resolved, SceneText(document));
         if (minted)
         {
             Assets?.Refresh(); // the database remembers what it found: this file has a UID now
         }
+    }
+
+    // The UID of the document already at the path, or a new one (minted) when there is none.
+    private static AssetUid KeptUid(VirtualFileSystem files, string resolved, out bool minted)
+    {
+        AssetUid uid = files.FileExists(resolved) ? AuthoredAssets.ReadUid(files.ReadAllBytes(resolved)) : AssetUid.None;
+        minted = uid.IsNone;
+        return minted ? AssetUid.New() : uid;
     }
 
     private string ResolveScenePath(string path) => Assets is { } assets ? assets.ResolvePath(path) : path;
@@ -437,6 +457,13 @@ public sealed unsafe partial class World
         {
             if (node.Name != SceneEntity)
             {
+                continue;
+            }
+
+            if (node.HasAttribute("prefab"))
+            {
+                // An instance of another prefab holds patches, not whole components: made as a plain entity it would hold zeros. This version does not expand it.
+                Log.Warn("Scene", $"{node.Origin}:{node.Line}: <Entity> '{node.Attribute("name")}' names a prefab, which this version does not expand: skipped with everything under it");
                 continue;
             }
 
@@ -528,6 +555,12 @@ public sealed unsafe partial class World
     private void ReadComponent(Entity entity, XmlNode node, Dictionary<int, Entity> byLocal)
     {
         string name = node.Name;
+        if (name is nameof(PrefabInstance) or nameof(PrefabMember))
+        {
+            Log.Warn("Scene", $"{node.Origin}:{node.Line}: {name} is made by the engine, not read from a file: skipped");
+            return;
+        }
+
         Entity id = FindComponent(name);
         if (id.IsNull && TypeRegistry.FindComponent(name) is { } known)
         {

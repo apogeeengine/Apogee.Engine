@@ -79,6 +79,8 @@ public sealed unsafe partial class World : EngineObject, IDisposable
 
         // Registered now, not on first use: enumerating entities asks for it, and a new entity may move the array being enumerated.
         _editorOnly = Component<EditorOnly>();
+
+        RegisterPrefabAssetType();
     }
 
     /// <summary>The time step of the current <see cref="Progress"/>; what systems read for their delta time.</summary>
@@ -295,6 +297,12 @@ public sealed unsafe partial class World : EngineObject, IDisposable
         if (info.Name == "Entity")
         {
             throw new InvalidOperationException("Entity is not a component name: scene files use <Entity> for entities.");
+        }
+
+        // The same for the element that holds a prefab instance's changes to the entities it came from.
+        if (info.Name == "Override")
+        {
+            throw new InvalidOperationException("Override is not a component name: scene files use <Override> for the changes an instance of a prefab makes.");
         }
 
         if (_componentsByName.TryGetValue(info.Name, out Entity existing))
