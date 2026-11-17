@@ -343,6 +343,25 @@ public class AssetUidTests
     }
 
     [Fact]
+    public void ImportMintsAUidInAPrefab()
+    {
+        const string Prefab = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Prefab version=\"1\" nextId=\"2\">\n  <Entity id=\"1\" name=\"Lamp\"/>\n</Prefab>\n";
+        using var project = new Project();
+        project.Write("prefabs/lamp.aprefab", Prefab);
+
+        ImportReport report = project.Import();
+
+        Assert.True(report.Success);
+        string text = project.Read("prefabs/lamp.aprefab");
+        AssetUid uid = AuthoredAssets.ReadUid(Encoding.UTF8.GetBytes(text));
+        Assert.False(uid.IsNone);
+        Assert.Equal(Prefab.Replace("<Prefab version=\"1\" nextId=\"2\">", $"<Prefab version=\"1\" nextId=\"2\" uid=\"{uid}\">", StringComparison.Ordinal), text);
+        var database = new AssetDatabase(project.Files);
+        Assert.Equal(uid, database.UidOf("res://prefabs/lamp.aprefab"));
+        Assert.Equal("res://prefabs/lamp.aprefab", database.PathOf(uid));
+    }
+
+    [Fact]
     public void AnAuthoredFilesUidIsKeptWhenItIsOverwrittenWithText()
     {
         AssetUid uid = AssetUid.New();
