@@ -20,8 +20,8 @@ The layout (a dock space: hierarchy on the left, inspector on the right, the vie
   a ray against the models' bounds (measured from the file, so no GPU is needed), and a small sphere for entities that have no model (lights, cameras, empty entities). Ctrl-click toggles the entity in the
   [selection](#selection), Shift-click adds it, and a click on nothing clears the selection (unless Ctrl or Shift is held). **Dragging from empty space** (not on an entity, not on the gizmo) draws a selection box;
   letting go selects every entity whose bounds touch it (its model's bounds, projected; an entity without a model counts by its origin) and that is in front of the camera: with Ctrl the box toggles them, with Shift
-  it adds them, otherwise it replaces the selection. Escape clears the selection (while a box is being dragged it cancels the box instead). **ImGuizmo** moves, rotates and scales the active entity
-  (W, E and R choose; local or world axes; optional snapping); a drag is one undo step. The view cube in the corner turns the camera. The helpers drawn as debug lines (a ground grid, the bounds of every selected entity,
+  it adds them, otherwise it replaces the selection. Escape clears the selection (while a box is being dragged it cancels the box instead). **ImGuizmo** moves, rotates and scales the whole selection
+  (W, E and R choose; local or world axes; optional snapping; the *Pivot* box chooses where a group turns, see [Group transforms](#group-transforms)); a drag is one undo step. The view cube in the corner turns the camera. The helpers drawn as debug lines (a ground grid, the bounds of every selected entity,
   the active one brighter, a mark for each light and camera) can be turned off. Dropping a `.glb` or `.gltf` from the assets panel makes an entity at the point of the ground under the pointer.
 - **Hierarchy.** The scene as a tree: click to select, **Ctrl-click to toggle, Shift-click to select a range** (in the order the tree shows, so entities inside a collapsed branch are skipped), **drag on the empty space to
   select with a box**, Ctrl+A for all and Escape for none. Double click or F2 renames the active entity, Ctrl+D duplicates it, **Delete removes every selected entity as one undo step** ("Delete 3 entities"), right click
@@ -39,13 +39,35 @@ The layout (a dock space: hierarchy on the left, inspector on the right, the vie
 ## Selection
 
 The selection is a list of entities in the order they were picked, and one of them is the **active** entity: the last one picked, the one the inspector shows and the gizmo sits on (when the active one is deleted,
-the last of the others takes over). Several entities can be selected in the hierarchy and in the viewport (see the panels above). What a delete, a drag in the hierarchy (and, later, a copy or a group transform) acts
+the last of the others takes over). Several entities can be selected in the hierarchy and in the viewport (see the panels above). What a delete, a drag in the hierarchy, a group transform (and, later, a copy) acts
 on is the selection's **top level**: the selected entities that have no selected ancestor, because a branch is carried by its top and its selected descendants would be handled twice.
 
 The selection is not an undo step. It is kept as entity ids: an entity that was destroyed drops out of it, and comes back into it when an undo brings the entity back under the same id; creating an entity selects it,
 deleting entities takes them out of the selection (undoing the delete does not select them again), and the selection survives Play and Stop like the history does. While the game plays, selecting works and every edit
 stays disabled. The code is `Source/Apogee.Editor/Editing/Selection.cs` (plain classes over a world, with no ImGui, so it is tested without a window); the hierarchy panel only translates the requests of ImGui's
 multi-select (a click, a range, the box, Escape) into `SelectionRequest`s, which `SelectionRequests.Apply` applies against the list of visible nodes.
+
+## Group transforms
+
+The gizmo acts on the selection's top level (the selected entities that have a `Transform` and no selected ancestor: a selected child rides on its selected parent and is never moved twice). A drag is one undo step
+("Move 3 entities", "Rotate Cube"), however many frames it takes. **Pivot** in the viewport's toolbar chooses what a rotation or a scale turns around:
+
+- **Center**: the centre of the selection. It is the middle of the box that contains every member's model bounds when all of them have a model; when one does not (a light, a camera, an empty entity) it is the mean of
+  the origins. One selected entity always uses its own origin.
+- **Active**: the origin of the active entity (the last one picked).
+- **Individual**: the gizmo sits at the centre, but every entity turns and scales about its own origin, so a group of crates each spin in place. A move carries every entity by the same amount in all three modes.
+
+The gizmo's axes are the world's, or, with *World* off (and always when scaling), those of the active entity. Snapping applies to the gizmo, that is to the pivot, so the group moves by whole steps and the
+members keep their offsets from each other.
+
+What happens to a member, in world space: its offset from the pivot is stretched by the scale ratio (along the gizmo's axes) and then swung by the rotation of the drag, the pivot's translation is added, and its
+own rotation is turned by the same rotation. The result is taken into its parent's space, so a member under a rotated or scaled parent still moves the way the gizmo does. Positions are `double` and only
+differences (a delta, an offset) are ever floats, so a group ten million metres from the origin still moves to the millimetre; the gizmo itself works in floats relative to the camera, as the rest of the viewport does.
+
+**Scaling a group is exact only in some cases.** A transform here has a per-axis scale and no shear. Stretching a member along axes that are not its own would shear it, which cannot be stored. Each of a member's axes
+takes the length ratio that the stretch gives its direction, so a member whose axes line up with the gizmo's (or are turned a quarter turn) gets exactly the ratio you dragged, but a member turned 45 degrees under a
+non-uniform stretch is only approximated (its axes stay perpendicular and only their lengths follow the stretch). A uniform scale is always exact. Scaling about *Individual* or *Active* has the same rule. The maths is in
+`Source/Apogee.Editor/Editing/GroupTransform.cs` and `TransformGesture.cs` (plain functions over placements, with no ImGui, tested without a window); the undo step is `SetTransformsCommand` in `Apogee.Host`.
 
 ## Scenes and undo
 
@@ -69,13 +91,13 @@ Editing is off while playing: the panels show the game's world, read-only.
 
 ## What is not here
 
-Importing 3D models and other assets from inside the editor (new files go through `Apogee.Runtime --import`, see [Asset import](../content/import.md)), materials, animations, an Export dialog (a game is exported with [`./build.sh export`](export.md)), editing several selected entities at once (the gizmo and the inspector work on the active one), a scene file dialog beyond a list, material and logic graph editors (imnodes is ready for them), multi-viewport windows, and a physics ray cast for picking (an editing session has no physics bodies).
+Importing 3D models and other assets from inside the editor (new files go through `Apogee.Runtime --import`, see [Asset import](../content/import.md)), materials, animations, an Export dialog (a game is exported with [`./build.sh export`](export.md)), editing several selected entities at once in the inspector (it shows the active one), a scene file dialog beyond a list, material and logic graph editors (imnodes is ready for them), multi-viewport windows, and a physics ray cast for picking (an editing session has no physics bodies).
 Sound plays in play mode through OpenAL Soft ([Audio](../audio/index.md)), which ships beside the editor like any other library.
 
 ## Tests
 
 `Tests/Apogee.Editor.Tests`: the field codec for every `FieldKind` (a rotation as angles, integers clamped), the editor camera, picking (rays, boxes, spheres, the ground, and the selection box with what is behind the
-camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), the project (creating, naming, reparenting,
+camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned parent, a selected child not moved twice, the scale caveat), the project (creating, naming, reparenting,
 duplicating and deleting, one or several, through the history; the modified mark clearing when undo returns to the saved scene; a scene saved to a file and opened again with the model's path; Play running the game's
 scripts over the scene and Stop restoring the world under the same ids with the selection and history intact; a failing game), and, on a GPU (skipped without one), a frame of the viewport with no validation errors whose render graph lays out as nodes. `Tests/Apogee.Host.Tests` covers the history and
-its commands.
+its commands (a drag over several entities is one step).

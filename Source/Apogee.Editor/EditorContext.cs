@@ -47,6 +47,9 @@ public sealed class GizmoSettings
 
     public bool World { get; set; } = true;
 
+    /// <summary>Where a group of selected entities turns and scales around (see <see cref="PivotMode"/>); one entity always uses its own origin.</summary>
+    public PivotMode Pivot { get; set; } = PivotMode.Center;
+
     public bool Snap { get; set; }
 
     public float MoveStep { get; set; } = 0.5f;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Apogee.Core.Numerics;
 using Apogee.DevTools;
@@ -20,7 +21,10 @@ namespace Apogee.Editor.Panels;
 /// </summary>
 public sealed unsafe class ViewportPanel
 {
-    private bool _gizmoWasUsing;
+    private bool _gestureWasUsing;
+    private TransformGesture? _gesture;     // the drag in progress, captured when the gizmo was taken hold of
+    private int _gestureSelection;          // the selection's version when it began
+    private Trs _pivotNow;                  // where the gizmo is: the captured pivot, then wherever the drag has taken it
     private Vector2 _pressAt;
     private Vector2? _boxFrom;      // where a selection box was started, while the left button is held
 
@@ -116,6 +120,14 @@ public sealed unsafe class ViewportPanel
         }
 
         Gui.SameLine();
+        int pivot = (int)g.Pivot;
+        ImGui.SetNextItemWidth(110);
+        if (Ui.Combo("##pivot", ref pivot, "Pivot: Center", "Pivot: Active", "Pivot: Individual"))
+        {
+            g.Pivot = (PivotMode)pivot;
+        }
+
+        Gui.SameLine();
         bool snap = g.Snap;
         if (Gui.Checkbox("Snap", ref snap))
         {
@@ -204,38 +216,62 @@ public sealed unsafe class ViewportPanel
         Gizmo.SetRect(min.X, min.Y, size.X, size.Y);
 
         bool busy = false;
-        if (project.Selection is { } entity && !project.IsPlaying && world.Has<Transform>(entity))
+        GizmoSettings g = ctx.Gizmo;
+        bool scaling = g.Operation == (int)AgzOperation.Scale;
+        if (project.IsPlaying || (_gesture is not null && _gestureSelection != project.Selected.Version))
         {
-            Trs placed = world.ComputeWorldTransform(entity);
-            Matrix4x4 model = placed.ToMatrix(camera.Position);
-            GizmoSettings g = ctx.Gizmo;
+            _gesture = null;        // a Play, or a change of the selection in the middle of a drag, ends the drag
+        }
+
+        // Idle, the gesture is captured afresh every frame, so that the frame the drag begins in already has the state from before its first change. The gizmo is drawn at the pivot it captured; during a drag, where the
+        // drag has taken it.
+        TransformGesture? gesture = _gesture;
+        if (gesture is null && !project.IsPlaying)
+        {
+            ModelLibrary models = project.Session.Models;
+            gesture = TransformGesture.Begin(world, project.Selected.TopLevel(), project.Selected.Active, g.Pivot, !g.World || scaling, id => EntityBounds(world, models, id));
+            _pivotNow = gesture?.Pivot ?? default;
+        }
+
+        if (gesture is not null)
+        {
+            Matrix4x4 model = _pivotNow.ToMatrix(camera.Position);
             float* snap = stackalloc float[3];
-            float step = g.Operation == (int)AgzOperation.Rotate ? g.RotateStep : g.Operation == (int)AgzOperation.Scale ? g.ScaleStep : g.MoveStep;
+            float step = g.Operation == (int)AgzOperation.Rotate ? g.RotateStep : scaling ? g.ScaleStep : g.MoveStep;
             snap[0] = snap[1] = snap[2] = step;
             bool changed = Gizmo.Manipulate((float*)&view, (float*)&projection, g.Operation, g.World ? (int)AgzMode.World : (int)AgzMode.Local, (float*)&model, null, g.Snap ? snap : null, null, null);
-            if (changed && Matrix4x4.Decompose(model, out Vector3 scale, out Quaternion rotation, out Vector3 translation))
+            bool using3d = Gizmo.IsUsing();
+            if (using3d && _gesture is null)
             {
-                bool scaling = g.Operation == (int)AgzOperation.Scale;
-                var world3 = new Trs(camera.Position + (Double3)translation, rotation, scaling ? scale : placed.Scale);
-                Entity parent = world.GetParent(entity);
-                Trs local = parent.IsNull ? world3 : world3.InLocalOf(world.ComputeWorldTransform(parent));
-                var transform = Transform.From(local);
-                Entity id = world.Component<Transform>();
-                SetComponentCommand? command = SetComponentCommand.Create(project.WorldRef, entity, id, new ReadOnlySpan<byte>(&transform, sizeof(Transform)), $"Move {world.GetName(entity) ?? "entity"}");
+                _gesture = gesture;                              // the rising edge: this is the drag's start
+                _gestureSelection = project.Selected.Version;
+            }
+
+            if (changed && _gesture is not null && Matrix4x4.Decompose(model, out Vector3 scale, out Quaternion rotation, out Vector3 translation))
+            {
+                // ImGuizmo works in floats relative to the camera; the pivot's new place is the camera plus that offset, and only its difference from the old one reaches the entities (in double).
+                _pivotNow = new Trs(camera.Position + (Double3)translation, rotation, scaling ? scale : Vector3.One);
+                string verb = g.Operation == (int)AgzOperation.Rotate ? "Rotate" : scaling ? "Scale" : "Move";
+                string what = _gesture.Members.Count == 1 ? world.GetName(_gesture.Members[0]) ?? "entity" : $"{_gesture.Members.Count} entities";
+                SetTransformsCommand? command = SetTransformsCommand.Create(project.WorldRef, _gesture.Evaluate(_pivotNow).Select(e => (e.Entity, e.Local)), $"{verb} {what}");
                 if (command is not null)
                 {
                     project.History.Execute(command);
                 }
             }
 
-            bool using3d = Gizmo.IsUsing();
-            if (_gizmoWasUsing && !using3d)
+            if (_gestureWasUsing && !using3d)
             {
                 project.History.Seal();
+                _gesture = null;
             }
 
-            _gizmoWasUsing = using3d;
+            _gestureWasUsing = using3d;
             busy = using3d || Gizmo.IsOver();
+        }
+        else
+        {
+            _gestureWasUsing = false;
         }
 
         // The view cube: clicking a face turns the camera to look along that axis.
@@ -250,6 +286,10 @@ public sealed unsafe class ViewportPanel
 
         return busy || Gizmo.IsUsingViewManipulate() || Gizmo.IsViewManipulateHovered();
     }
+
+    /// <summary>The bounds of an entity's model in its own space, or null for an entity with no model (or one that does not load).</summary>
+    private static (Vector3 Min, Vector3 Max)? EntityBounds(World world, ModelLibrary models, Entity entity) =>
+        world.TryGet(entity, out ModelRenderer renderer) ? models.BoundsOf(renderer.Model) : null;
 
     /// <summary>
     /// A selection box dragged from empty space: drawn while the left button is down (Escape or another button cancels it), and on release it selects what <see cref="Picking.InRect"/> finds (Ctrl toggles
