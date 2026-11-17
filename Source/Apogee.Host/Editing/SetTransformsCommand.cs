@@ -7,7 +7,7 @@ namespace Apogee.Host.Editing;
 
 /// <summary>
 /// Sets the local <see cref="Transform"/> of several entities at once: a gizmo drag over a selection. It is one step, and the frames of one drag merge into it (the command keeps the first "before" of every
-/// entity and the last "after"), as <see cref="SetComponentCommand"/> does for one entity.
+/// entity and the last "after"), as <see cref="SetComponentCommand"/> does for one entity. Only a command with the same name merges: a rotation after a move is a step of its own.
 /// </summary>
 public sealed class SetTransformsCommand : IEditCommand
 {
@@ -90,7 +90,7 @@ public sealed class SetTransformsCommand : IEditCommand
 
     public bool TryMerge(IEditCommand following)
     {
-        if (following is not SetTransformsCommand other || other._entities.Length != _entities.Length)
+        if (following is not SetTransformsCommand other || other._entities.Length != _entities.Length || other._name != _name)
         {
             return false;
         }

@@ -420,4 +420,42 @@ public sealed class EditHistoryTests : IDisposable
         Assert.Equal(1, _world.Get<Transform>(all[0]).Position.X);
         Assert.Equal(3, _world.Get<Transform>(all[2]).Position.X);
     }
+
+    [Fact]
+    public void ATransformsCommandMergesOnlyWithTheSameSetAndTheSameName()
+    {
+        Entity[] all = Three();
+        Entity other = Make("d", at: new Double3(9, 0, 0));
+
+        _history.Execute(Shift(all, 1)!);
+        _history.Execute(Shift([all[0], all[1], other], 1)!);       // the same number of entities, but not the same ones
+        Assert.Equal(2, _history.Steps.Count);
+
+        _history.Seal();
+        _history.Execute(Shift(all, 1)!);
+        _history.Execute(Shift(all, 1, "Rotate 3 entities")!);      // a rotation does not fold into a move
+        Assert.Equal(4, _history.Steps.Count);
+    }
+
+    [Fact]
+    public void AMergedDragLeavesTheSavePointAndUndoingItComesBack()
+    {
+        Entity[] drag = Three();
+        _history.MarkSaved();
+
+        for (int frame = 0; frame < 4; frame++)
+        {
+            _history.Execute(Shift(drag, 0.25)!);
+        }
+
+        Assert.False(_history.IsAtSavePoint);                        // each merged frame is a new state
+        _history.Seal();
+        Assert.False(_history.IsAtSavePoint);
+
+        _history.Undo();
+        Assert.True(_history.IsAtSavePoint);
+        _history.Redo();
+        Assert.False(_history.IsAtSavePoint);
+    }
 }
+
