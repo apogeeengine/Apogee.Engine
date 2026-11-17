@@ -305,6 +305,29 @@ public class WindowsPackagingTests
     }
 
     [Fact]
+    public void EveryCopyOfThePackKeyIsWhereItWasAndStillOpens()
+    {
+        byte[] template = PackKeySlot.Template.ToArray();
+        byte[] twoSlots = new TinyPe { MinHeaderSize = 0x400 }
+            .Section(".text", [.. new byte[10], .. template, .. new byte[30], .. template, .. new byte[10]], TinyPe.TextFlags)
+            .Resources([(24, 1, 0x409, [1])])
+            .Section(".reloc", new byte[64], TinyPe.RelocFlags)
+            .Build();
+        using var scratch = new Scratch();
+
+        (_, byte[] before, byte[] after) = Apply(scratch, Fixture(), IconPng(), executable: twoSlots);
+
+        int first = before.AsSpan().IndexOf(template.AsSpan(0, 16));
+        int second = before.AsSpan(first + 1).IndexOf(template.AsSpan(0, 16)) + first + 1;
+        Assert.True(second > first);
+        foreach (int at in new[] { first, second })
+        {
+            Assert.Equal(before.AsSpan(at, 68).ToArray(), after.AsSpan(at, 68).ToArray());
+            Assert.Equal(PackKey.Parse(Hex).Bytes.ToArray(), PackKeySlot.Decode(after.AsSpan(at, 68))!.Bytes.ToArray());
+        }
+    }
+
+    [Fact]
     public void TheExecutableIsAWindowedProgramUnlessTheConsoleIsKept()
     {
         using var scratch = new Scratch();

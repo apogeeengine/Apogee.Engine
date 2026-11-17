@@ -7,7 +7,7 @@ namespace Apogee.Export;
 /// <summary>
 /// Windows: the executable gets the game's icon (at several sizes) and a version resource made from <c>game.xml</c> (name, organization, version, description, copyright), and becomes a program with
 /// windows instead of a console program, unless <see cref="ExportOptions.Console"/> asks to keep the console. This is done by our own PE writer (<see cref="PeResourceWriter"/>), on any host.
-/// It runs after the pack key is written into the executable, and the writer moves no section, so the key stays where it was; the checksum it writes comes last, over the final file.
+/// It runs after the pack key is written into the executable, and the writer moves no section, so every copy of the key stays where it was; the checksum it writes comes last, over the final file.
 /// </summary>
 internal sealed class WindowsPackaging : IPlatformPackaging
 {

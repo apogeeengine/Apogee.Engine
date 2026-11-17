@@ -189,12 +189,42 @@ public class MachOSignatureTests
     {
         SyntheticMachO image = SyntheticMachO.Build(CodeLength, [s_sha256Pages4K]);
 
-        Assert.True(MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (0x400, 68)));
-        Assert.True(MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (CodeLength - 68, 68))); // up to the last byte before the signature
-        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (40, 68))); // in the load commands
-        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (CodeLength - 67, 68))); // runs into the signature
-        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (CodeLength + 100, 68))); // in the signature
-        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", (long.MaxValue - 10, 68)));
+        Assert.True(MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", [(0x400, 68)]));
+        Assert.True(MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", [(CodeLength - 68, 68)])); // up to the last byte before the signature
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", [(40, 68)])); // in the load commands
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", [(CodeLength - 67, 68)])); // runs into the signature
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", [(CodeLength + 100, 68)])); // in the signature
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", [(long.MaxValue - 10, 68)]));
+    }
+
+    [Fact]
+    public void EveryChangedRangeMustBeInsideTheCodeTheSignatureCovers()
+    {
+        SyntheticMachO image = SyntheticMachO.Build(CodeLength, [s_sha256Pages4K]);
+
+        Assert.True(MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", [(0x400, 68), (CodeLength - 68, 68)]));
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", [(0x400, 68), (40, 68)])); // the second is in the load commands
+        Assert.Throws<ExportException>(() => MachOSignature.Rehash(new MemoryStream((byte[])image.Bytes.Clone()), "test", [(0x400, 68), (CodeLength - 67, 68)])); // the second runs into the signature
+    }
+
+    [Fact]
+    public void TwoPackKeySlotsAreBothCoveredByTheSignatureAfterTheKeyIsWritten()
+    {
+        using var scratch = new Scratch();
+        byte[] template = PackKeySlot.Template.ToArray();
+        byte[] embed = [.. template, .. new byte[0x4100], .. template]; // the second copy is in another page
+        SyntheticMachO image = SyntheticMachO.Build(0x6000, [new(2, 14)], embed: embed);
+        string exe = scratch.Write("game", image.Bytes);
+
+        Assert.Equal(2, PackKeySlot.Write(exe, new Apogee.Content.Packs.PackKey(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray())));
+        Assert.False(image.HashesAreRight(File.ReadAllBytes(exe)));
+
+        Assert.True(MachOSignature.Rehash(exe, PackKeySlot.Locate(exe)));
+
+        byte[] result = File.ReadAllBytes(exe);
+        Assert.True(image.HashesAreRight(result));
+        Assert.Equal(2, PackKeySlot.Locate(exe).Length);
+        Assert.Equal(result.AsSpan(0x400, 68).ToArray(), result.AsSpan(0x400 + 68 + 0x4100, 68).ToArray());
     }
 
     [Fact]

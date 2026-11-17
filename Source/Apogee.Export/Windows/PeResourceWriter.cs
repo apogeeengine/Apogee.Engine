@@ -10,7 +10,7 @@ namespace Apogee.Export.Windows;
 /// <para>
 /// Where the new resource section goes: when the old <c>.rsrc</c> is the last section of the file and holds nothing but resources, it is rewritten where it is. Otherwise (a linker puts
 /// <c>.reloc</c> last) a new <c>.rsrc</c> section is added after the last one, and the old one, still in the file, is renamed <c>.rsrc0</c> and left as dead data: nothing points to it any more, and
-/// no section moves, so nothing the program or the pack key slot holds changes place. The section table gets one more header, which needs 40 free bytes after it.
+/// no section moves, so nothing the program or any copy of the pack key slot holds changes place. The section table gets one more header, which needs 40 free bytes after it.
 /// </para>
 /// </summary>
 internal static class PeResourceWriter

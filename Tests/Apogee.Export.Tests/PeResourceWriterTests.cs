@@ -82,6 +82,21 @@ public class PeResourceWriterTests
     }
 
     [Fact]
+    public void BothCopiesOfThePackKeySlotAreWhereTheyWereWhenASectionIsAppended()
+    {
+        byte[] input = TinyPe.Typical([.. new byte[50], .. s_slot, .. new byte[50], .. s_slot, .. new byte[50]]).Build();
+
+        byte[] output = Rewrite(input);
+
+        int first = input.AsSpan().IndexOf(PackKeySlot.Template);
+        int second = input.AsSpan(first + 1).IndexOf(PackKeySlot.Template) + first + 1;
+        Assert.True(second > first);
+        Assert.Equal(first, output.AsSpan().IndexOf(PackKeySlot.Template));
+        Assert.Equal(second, output.AsSpan(first + 1).IndexOf(PackKeySlot.Template) + first + 1);
+        Assert.Equal(-1, output.AsSpan(second + 1).IndexOf(PackKeySlot.Template[..16]));
+    }
+
+    [Fact]
     public void AResourceSectionThatIsLastIsRewrittenInPlace()
     {
         byte[] input = new TinyPe { MinHeaderSize = 0x400 }

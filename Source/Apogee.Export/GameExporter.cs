@@ -55,8 +55,8 @@ public static class GameExporter
         }
         else
         {
-            PackKeySlot.Write(layout.ExecutablePath, options.Key);
-            log("Wrote the pack key into the executable");
+            int copies = PackKeySlot.Write(layout.ExecutablePath, options.Key);
+            log(copies == 1 ? "Wrote the pack key into the executable" : $"Wrote the pack key into the executable ({copies} places)");
         }
 
         byte[]? icon = ReadIcon(gameFolder, manifest, warnings);

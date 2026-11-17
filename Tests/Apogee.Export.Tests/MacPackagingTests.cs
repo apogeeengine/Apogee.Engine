@@ -189,6 +189,26 @@ public class MacPackagingTests
         Assert.DoesNotContain(result.Warnings, w => w.Contains("signature", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void TheSignatureIsRightAfterTheKeyIsWrittenIntoBothCopiesOfTheSlot()
+    {
+        using var scratch = new Scratch();
+        byte[] template = PackKeySlot.Template.ToArray();
+        SyntheticMachO program = SyntheticMachO.Build(0x8000, [new(2, 14), new(1, 12)], embed: [.. template, .. new byte[0x4100], .. template], cpuType: 0x0100000C);
+
+        ExportResult result = Export(scratch, s_arm64, program.Bytes, new PackKey(s_keyBytes));
+
+        byte[] exported = File.ReadAllBytes(result.Executable);
+        Assert.True(program.HashesAreRight(exported));
+        Assert.False(program.HashesAreRight(AsExportedWithoutRehash(program, exported)));
+        foreach (int at in new[] { 0x400, 0x400 + 68 + 0x4100 })
+        {
+            Assert.Equal(s_keyBytes, PackKeySlot.Decode(exported.AsSpan(at, 68))!.Bytes.ToArray());
+        }
+
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("signature", StringComparison.Ordinal));
+    }
+
     /// <summary>The exported program with the signature's hashes put back as they were in the runtime: what the file would be had only the key been written.</summary>
     private static byte[] AsExportedWithoutRehash(SyntheticMachO original, byte[] exported)
     {

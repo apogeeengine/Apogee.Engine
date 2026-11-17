@@ -11,7 +11,7 @@ namespace Apogee.Export;
 /// <para>
 /// <b>Why.</b> The linker (or <c>codesign -s -</c>) signs a program ad hoc: no certificate, only hashes. The signature is a blob at the end of the file, the <i>SuperBlob</i>, which holds a
 /// <i>CodeDirectory</i>: a hash of every 4 KiB or 16 KiB page of the program, up to the start of the signature. The kernel of an Apple-silicon Mac checks a page's hash when it is mapped and kills
-/// a program whose pages do not match ("Killed: 9"). Changing the key slot changes a page, so its hash in the CodeDirectory must be made again.
+/// a program whose pages do not match ("Killed: 9"). Changing the key slot (each copy of it) changes a page, so its hash in the CodeDirectory must be made again.
 /// </para>
 /// <para>
 /// <b>What this does.</b> It finds <c>LC_CODE_SIGNATURE</c>, reads the SuperBlob, and for every CodeDirectory in it recomputes the hash of every page (with that CodeDirectory's own hash function
@@ -72,8 +72,8 @@ internal static class MachOSignature
     /// <returns>True when the program has a signature (which now matches); false when it has none, and nothing was done.</returns>
     /// <exception cref="ExportException">The file is not a thin 64-bit Mach-O, its signature is malformed or is not an ad-hoc one, or the file could not be read or written.</exception>
     /// <param name="executable">The program.</param>
-    /// <param name="mustBeCovered">When given, the file range (offset and length) that was changed and that the signature must cover: the pack key slot. See the stream overload.</param>
-    public static bool Rehash(string executable, (long Offset, int Length)? mustBeCovered = null)
+    /// <param name="mustBeCovered">When given, the file ranges (offset and length) that were changed and that the signature must cover: the copies of the pack key slot. See the stream overload.</param>
+    public static bool Rehash(string executable, IReadOnlyCollection<(long Offset, int Length)>? mustBeCovered = null)
     {
         try
         {
@@ -94,10 +94,10 @@ internal static class MachOSignature
     /// <param name="stream">The program.</param>
     /// <param name="name">What to call it in messages.</param>
     /// <param name="mustBeCovered">
-    /// A range of the file that was changed (the pack key slot) and that must be inside the program's code, after the header and load commands and before the signature, so that the page hashes
-    /// cover it; otherwise the rehash could not make the signature right, and it is an error. Not checked when the program has no signature.
+    /// Ranges of the file that were changed (the copies of the pack key slot), each of which must be inside the program's code, after the header and load commands and before the signature, so that the
+    /// page hashes cover it; otherwise the rehash could not make the signature right, and it is an error. Not checked when the program has no signature. The hashes are made once, for all of them.
     /// </param>
-    internal static bool Rehash(Stream stream, string name, (long Offset, int Length)? mustBeCovered = null)
+    internal static bool Rehash(Stream stream, string name, IReadOnlyCollection<(long Offset, int Length)>? mustBeCovered = null)
     {
         long fileLength = stream.Length;
         MachOImage image = MachOFile.Read(stream, 0, fileLength, name);
@@ -113,9 +113,15 @@ internal static class MachOSignature
             throw new ExportException($"{name}: LC_CODE_SIGNATURE says the signature is {signatureSize} bytes at offset {signatureOffset}, which does not fit the file ({fileLength} bytes).");
         }
 
-        if (mustBeCovered is { } changed && (changed.Length < 0 || changed.Offset < commandsEnd || changed.Offset > signatureOffset - changed.Length))
+        if (mustBeCovered is not null)
         {
-            throw new ExportException($"{name}: the bytes changed by the export (offset {changed.Offset}, {changed.Length} bytes) are not in the code that the signature covers (from {commandsEnd} to {signatureOffset}).");
+            foreach ((long Offset, int Length) changed in mustBeCovered)
+            {
+                if (changed.Length < 0 || changed.Offset < commandsEnd || changed.Offset > signatureOffset - changed.Length)
+                {
+                    throw new ExportException($"{name}: the bytes changed by the export (offset {changed.Offset}, {changed.Length} bytes) are not in the code that the signature covers (from {commandsEnd} to {signatureOffset}).");
+                }
+            }
         }
 
         byte[] blob = new byte[signatureSize];

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -8,8 +9,11 @@ namespace Apogee.Export;
 
 /// <summary>
 /// A reserved place in the engine's executable for the key of the game's packs, so that an exported game opens its packs without the environment variable. The executable holds
-/// <see cref="Template"/> (68 bytes in its read-only data: a 16 byte magic, a format byte, a "used" byte, 2 reserved bytes, a 16 byte salt, and 32 bytes for the key); an export finds the magic in the
-/// copy of the executable it makes, and writes the key there masked: <c>key XOR SHA-256(salt + magic)</c>. The running game reads it back with <see cref="TryRead"/>.
+/// <see cref="Template"/> (68 bytes in its read-only data: a 16 byte magic, a format byte, a "used" byte, 2 reserved bytes, a 16 byte salt, and 32 bytes for the key); an export finds every copy of the
+/// template in the copy of the executable it makes, and writes the key into each, masked: <c>key XOR SHA-256(salt + magic)</c> (the same salt and bytes in all). The running game reads it back with <see cref="TryRead"/>.
+/// <para>
+/// There is normally one copy, but a compiler may emit the data twice (the NativeAOT compiler does in the arm64 macOS executable), and the game reads whichever copy its code refers to: so every copy is patched.
+/// </para>
 /// <para>
 /// This is obfuscation, not protection. The key is in the file, one XOR from anyone who reads this code or finds the magic; and a running game has the key in memory. It keeps the key out of
 /// <c>strings</c>, out of a quick look in a hex editor, and out of the packs' reach, nothing more. It stops nobody who wants the game's files.
@@ -24,9 +28,12 @@ public static class PackKeySlot
     private const int Length = KeyOffset + 32;
     private const byte Format = 1;
 
+    /// <summary>More copies of the slot than this in one file is not a runtime of this engine (a compiler emits two or three at most): the file is refused, and no loop runs on what a hostile file holds.</summary>
+    private const int MaxCopies = 16;
+
     /// <summary>
-    /// The slot as the engine's executable holds it, empty: <c>magic(16) | format(1) | used(1) | reserved(2) | salt(16) | maskedKey(32)</c>. The magic is the only copy of it in the executable, which
-    /// is how an export finds it (and why it exists exactly once). The data is read-only: only an export changes it, in the copy of the file.
+    /// The slot as the engine's executable holds it, empty: <c>magic(16) | format(1) | used(1) | reserved(2) | salt(16) | maskedKey(32)</c>. The magic is found only in the slot (and its copies), which
+    /// is how an export finds them. The data is read-only: only an export changes it, in the copy of the file.
     /// </summary>
     internal static ReadOnlySpan<byte> Template =>
     [
@@ -50,9 +57,13 @@ public static class PackKeySlot
         }
     }
 
-    /// <summary>Writes <paramref name="key"/> into the slot of the executable at <paramref name="executable"/>.</summary>
-    /// <exception cref="ExportException">The file has no slot, or more than one (so it is not this engine's executable), or cannot be written.</exception>
-    public static void Write(string executable, PackKey key)
+    /// <summary>
+    /// Writes <paramref name="key"/> into every copy of the slot of the executable at <paramref name="executable"/>, the same masked bytes (and salt) in each: the running game reads whichever copy
+    /// its code refers to.
+    /// </summary>
+    /// <returns>How many copies of the slot were written (at least one).</returns>
+    /// <exception cref="ExportException">The file has no slot, or more than <see cref="MaxCopies"/> (so it is not this engine's executable), ends inside a slot, or cannot be written.</exception>
+    public static int Write(string executable, PackKey key)
     {
         byte[] file;
         try
@@ -64,28 +75,39 @@ public static class PackKeySlot
             throw new ExportException($"{executable} could not be read: {e.Message}", e);
         }
 
-        ReadOnlySpan<byte> magic = Template[..MagicLength];
-        int offset = Find(file, magic, executable);
+        int[] offsets = Find(file, executable);
         byte[] slot = Encode(key.Bytes, RandomNumberGenerator.GetBytes(16));
         try
         {
             using FileStream stream = new(executable, FileMode.Open, FileAccess.Write, FileShare.None);
-            stream.Position = offset;
-            stream.Write(slot);
+            foreach (int offset in offsets)
+            {
+                stream.Position = offset;
+                stream.Write(slot);
+            }
         }
         catch (IOException e)
         {
             throw new ExportException($"{executable} could not be written: {e.Message}", e);
         }
+
+        return offsets.Length;
     }
 
-    /// <summary>Where the slot is in the file at <paramref name="executable"/>, and how long it is: for a platform step to check that what the export wrote lies where it expects.</summary>
-    /// <exception cref="ExportException">The file has no slot, or more than one, or cannot be read.</exception>
-    internal static (long Offset, int Length) Locate(string executable)
+    /// <summary>Where each copy of the slot is in the file at <paramref name="executable"/>, and how long it is: for a platform step to check that what the export wrote lies where it expects.</summary>
+    /// <exception cref="ExportException">The file has no slot, or too many, or ends inside one, or cannot be read.</exception>
+    internal static (long Offset, int Length)[] Locate(string executable)
     {
         try
         {
-            return (Find(File.ReadAllBytes(executable), Template[..MagicLength], executable), Length);
+            int[] offsets = Find(File.ReadAllBytes(executable), executable);
+            var ranges = new (long Offset, int Length)[offsets.Length];
+            for (int i = 0; i < offsets.Length; i++)
+            {
+                ranges[i] = (offsets[i], Length);
+            }
+
+            return ranges;
         }
         catch (IOException e)
         {
@@ -144,26 +166,63 @@ public static class PackKeySlot
         return SHA256.HashData(input);
     }
 
-    private static int Find(byte[] file, ReadOnlySpan<byte> magic, string executable)
+    /// <summary>
+    /// The offset of every copy of the slot in <paramref name="file"/>: a place where the whole of <see cref="Template"/> is, empty or already written (so an export can be made again over a file), found by its
+    /// magic. A magic that is not followed by the rest of a slot is some other data and is passed over; a magic with less than a slot after it is an error.
+    /// </summary>
+    private static int[] Find(byte[] file, string executable)
     {
-        int first = file.AsSpan().IndexOf(magic);
-        if (first < 0)
+        ReadOnlySpan<byte> magic = Template[..MagicLength];
+        var offsets = new List<int>();
+        long position = 0;
+        while (position < file.Length)
+        {
+            int found = file.AsSpan((int)position).IndexOf(magic);
+            if (found < 0)
+            {
+                break;
+            }
+
+            long at = position + found;
+            if (at + Length > file.Length)
+            {
+                throw new ExportException($"{executable} ends inside its pack key slot.");
+            }
+
+            if (IsSlot(file.AsSpan((int)at, Length)))
+            {
+                if (offsets.Count == MaxCopies)
+                {
+                    throw new ExportException($"{executable} has more than {MaxCopies} pack key slots: it is not an Apogee runtime of this version.");
+                }
+
+                offsets.Add((int)at);
+                position = at + Length;
+            }
+            else
+            {
+                position = at + 1;
+            }
+        }
+
+        if (offsets.Count == 0)
         {
             throw new ExportException($"{executable} has no pack key slot: it is not an Apogee runtime of this version.");
         }
 
-        int next = file.AsSpan(first + 1).IndexOf(magic);
-        if (next >= 0)
+        return [.. offsets];
+    }
+
+    /// <summary>Whether <paramref name="bytes"/> (a slot's length) is the empty template, or the template with a key written into it: the magic, the format, a "used" byte of 0 or 1, and the reserved bytes 0 (an empty slot has an empty salt and key too).</summary>
+    private static bool IsSlot(ReadOnlySpan<byte> bytes)
+    {
+        ReadOnlySpan<byte> template = Template;
+        if (!bytes[..UsedOffset].SequenceEqual(template[..UsedOffset]) || bytes[UsedOffset] > 1 || bytes[UsedOffset + 1] != 0 || bytes[UsedOffset + 2] != 0)
         {
-            throw new ExportException($"{executable} has more than one pack key slot: it is not an Apogee runtime of this version.");
+            return false;
         }
 
-        if (first + Length > file.Length)
-        {
-            throw new ExportException($"{executable} ends inside its pack key slot.");
-        }
-
-        return first;
+        return bytes[UsedOffset] == 1 || bytes[SaltOffset..].SequenceEqual(template[SaltOffset..]);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

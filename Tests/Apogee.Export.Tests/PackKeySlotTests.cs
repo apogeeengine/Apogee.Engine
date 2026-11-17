@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Apogee.Content.Packs;
 using Xunit;
 
@@ -20,7 +21,7 @@ public class PackKeySlotTests
         int offset = FakeRuntime.SlotOffset(before);
         PackKey key = PackKey.Parse(Hex);
 
-        PackKeySlot.Write(exe, key);
+        Assert.Equal(1, PackKeySlot.Write(exe, key));
 
         byte[] after = File.ReadAllBytes(exe);
         Assert.Equal(before.Length, after.Length);
@@ -61,21 +62,101 @@ public class PackKeySlotTests
         Assert.Equal(KeyBytes(second), KeyBytes(PackKeySlot.Decode(file.AsSpan(FakeRuntime.SlotOffset(file), 68))!));
     }
 
+    private static byte[] Padded(params byte[][] parts) => [.. parts.SelectMany(static p => (byte[])[.. new byte[37], .. p]), .. new byte[37]];
+
     [Fact]
-    public void NoSlotOrTwoSlotsIsAnError()
+    public void NoSlotIsAnError()
     {
         using var scratch = new Scratch();
         string none = scratch.Write("none", new byte[4096]);
         Assert.Contains("no pack key slot", Assert.Throws<ExportException>(() => PackKeySlot.Write(none, PackKey.Parse(Hex))).Message, StringComparison.Ordinal);
 
-        byte[] one = FakeRuntime.Executable(new ExportTarget("linux", "x64"));
-        string two = scratch.Write("two", [.. one, .. PackKeySlot.Template.ToArray()]);
-        byte[] twoBefore = File.ReadAllBytes(two);
-        Assert.Contains("more than one pack key slot", Assert.Throws<ExportException>(() => PackKeySlot.Write(two, PackKey.Parse(Hex))).Message, StringComparison.Ordinal);
-        Assert.Equal(twoBefore, File.ReadAllBytes(two));
-
         string missing = scratch.Path("missing");
         Assert.Throws<ExportException>(() => PackKeySlot.Write(missing, PackKey.Parse(Hex)));
+    }
+
+    [Fact]
+    public void EveryCopyOfTheSlotIsPatchedWithTheSameBytesAndReadBack()
+    {
+        using var scratch = new Scratch();
+        byte[] template = PackKeySlot.Template.ToArray();
+        byte[] before = Padded(template, template);
+        string exe = scratch.Write("two", before);
+        PackKey key = PackKey.Parse(Hex);
+
+        int copies = PackKeySlot.Write(exe, key);
+
+        Assert.Equal(2, copies);
+        byte[] after = File.ReadAllBytes(exe);
+        int first = before.AsSpan().IndexOf(template);
+        int second = before.AsSpan(first + 1).IndexOf(template) + first + 1;
+        Assert.True(second > first);
+        Assert.Equal(after.AsSpan(first, 68).ToArray(), after.AsSpan(second, 68).ToArray()); // the same salt and masked key
+        Assert.Equal(KeyBytes(key), KeyBytes(PackKeySlot.Decode(after.AsSpan(first, 68))!));
+        Assert.Equal(KeyBytes(key), KeyBytes(PackKeySlot.Decode(after.AsSpan(second, 68))!));
+        for (int i = 0; i < before.Length; i++)
+        {
+            if ((i < first || i >= first + 68) && (i < second || i >= second + 68))
+            {
+                Assert.Equal(before[i], after[i]);
+            }
+        }
+
+        Assert.Equal([(first, 68), (second, 68)], PackKeySlot.Locate(exe).Select(static r => ((int)r.Offset, r.Length)));
+    }
+
+    [Fact]
+    public void AFileWithOneSlotReportsOneCopy()
+    {
+        using var scratch = new Scratch();
+        string exe = scratch.Write("game", FakeRuntime.Executable(new ExportTarget("linux", "x64")));
+
+        Assert.Equal(1, PackKeySlot.Write(exe, PackKey.Parse(Hex)));
+        Assert.Single(PackKeySlot.Locate(exe));
+    }
+
+    [Fact]
+    public void AMagicWithoutTheRestOfTheTemplateIsNotASlotAndIsNotPatched()
+    {
+        using var scratch = new Scratch();
+        byte[] template = PackKeySlot.Template.ToArray();
+        byte[] lookalike = [.. template[..16], .. Enumerable.Repeat((byte)0xEE, 52)];
+        byte[] before = Padded(template, lookalike);
+        string exe = scratch.Write("game", before);
+
+        Assert.Equal(1, PackKeySlot.Write(exe, PackKey.Parse(Hex)));
+
+        byte[] after = File.ReadAllBytes(exe);
+        int fake = before.AsSpan().IndexOf(lookalike);
+        Assert.Equal(lookalike, after.AsSpan(fake, 68).ToArray());
+
+        // With nothing but the lookalike there is no slot at all.
+        string only = scratch.Write("only", Padded(lookalike));
+        Assert.Contains("no pack key slot", Assert.Throws<ExportException>(() => PackKeySlot.Write(only, PackKey.Parse(Hex))).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ASlotCutByTheEndOfTheFileIsAnErrorAndNothingIsWritten()
+    {
+        using var scratch = new Scratch();
+        byte[] template = PackKeySlot.Template.ToArray();
+        byte[] before = [.. new byte[20], .. template, .. new byte[20], .. template[..40]];
+        string exe = scratch.Write("cut", before);
+
+        Assert.Contains("ends inside its pack key slot", Assert.Throws<ExportException>(() => PackKeySlot.Write(exe, PackKey.Parse(Hex))).Message, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllBytes(exe));
+    }
+
+    [Fact]
+    public void FarMoreCopiesThanACompilerEmitsIsRefused()
+    {
+        using var scratch = new Scratch();
+        byte[] template = PackKeySlot.Template.ToArray();
+        byte[] before = Padded([.. Enumerable.Repeat(template, 17)]);
+        string exe = scratch.Write("many", before);
+
+        Assert.Contains("more than 16 pack key slots", Assert.Throws<ExportException>(() => PackKeySlot.Write(exe, PackKey.Parse(Hex))).Message, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllBytes(exe));
     }
 
     [Fact]
