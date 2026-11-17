@@ -97,6 +97,101 @@ print(world:prefab_of(some))     -- nil: not the root of an instance
 `instantiate` returns the root. Like `load_scene_file` it reads without the per-mod confinement check of `fs.read_text`: a script can instantiate a prefab of any package or of the game by its path or
 UID, in a shipped game too (a pack holds it at the same path). The failures above are Luau errors. There is no Luau call that writes a prefab file.
 
+## Nested prefabs
+
+A prefab can hold instances of other prefabs: an `<Entity>` with a **`prefab`** attribute, the same text an `AssetRef` has (a path, a `uid://…`, or both). Its `id` is its number in the file, like any
+entity's, and its `name` is the name the root of the nested instance gets.
+
+```xml
+<Prefab version="1" uid="uid://9w1e3r5t7y9ua" nextId="5">
+  <Entity id="1" name="Corner">
+    <Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/>
+    <Entity id="2" name="Lamp" prefab="res://prefabs/lamp.aprefab|uid://7h2k4m6p8q0rs">   <!-- an instance: its id is in the corner's numbering -->
+      <Transform Position="2 0 0"/>                                     <!-- a patch of the lamp's root: only the fields that change -->
+      <Override entity="2"><Light Intensity="120"/></Override>          <!-- the lamp's Bulb (entity 2 of the lamp), in the lamp's numbering -->
+    </Entity>
+    <Entity id="3" name="Lamp 2" prefab="res://prefabs/lamp.aprefab|uid://7h2k4m6p8q0rs">
+      <Transform Position="-2 0 0"/>
+      <Override entity="3" remove="true"/>                              <!-- this one has no Base -->
+    </Entity>
+    <Entity id="4" name="Bench"><Transform Position="0 0 3" Rotation="0 0 0 1" Scale="1 1 1"/></Entity>
+  </Entity>
+</Prefab>
+```
+
+!!! note "Where this stands"
+    The expander that implements this page (`PrefabExpander`) is in `Apogee.Ecs` and tested on its own, but loading a scene and `Instantiate` do not call it yet: until they do, an `<Entity prefab="…">`
+    is still skipped with a warning, as the [format](#the-format) says. The rules below are the ones the expander follows.
+
+**Addresses.** Ids repeat from one prefab to the next (every lamp has an entity 2), so an entity is named by a path of ids, its **address**: `4` is entity 4 of the document, `4/2` entity 2 of the prefab
+instanced as entity 4, `4/3/2` entity 2 of the prefab instanced as entity 3 of the prefab instanced as entity 4. Each id is a whole number from 1 up with no leading zero, and an address has at most 17
+segments (the document's, and one for each of the 16 levels of nesting). The root of an instance is the instance's own address; `address/rootId` (the root's id in its own file) is accepted as another name for it.
+An address does not follow the hierarchy: if the author of the prefab moves entity 3 under another entity, `…/3` is still entity 3.
+
+**Scopes.** An Entity-typed field means an entity *of the document that holds it*. Inside a prefab file that is an id of the file (`lamp="1"` is the lamp's root), and it becomes an address under wherever the
+file is instanced (`5/2` for the lamp that is entity 2 of a corner instanced as 5). Everything an instance element and its overrides hold is written in the scope of the document the instance is in, so a field in
+an override inside `corner.aprefab` is an id of the corner, and one in a scene is an address of the scene. A field that names nothing (an id nobody has, text that is not an address) stays as it is and, as in
+a scene, means no entity.
+
+**Inner before outer.** The instances inside a prefab are expanded first, each with its own patches and overrides; the instance that holds the prefab then applies its overrides on top. An outer override
+may reach into a nested instance with a longer address (`2/2` in an instance of the corner is the lamp's bulb).
+
+**Names.** Siblings get unique names the way the scene loader gives them: the members of the prefab in file order, then the entities that were added, and a name that is already taken gets a number after it (`Part`, `Part 2`, `Part 3`…).
+
+## Overrides
+
+An instance element changes its prefab in three ways: component elements directly inside it, `<Entity>` children, and `<Override>` elements for any other entity of the instance.
+
+```xml
+<Entity id="2" name="Corner" prefab="res://prefabs/corner.aprefab|uid://9w1e3r5t7y9ua">
+  <Transform Position="10 0 4"/>                         <!-- a modified field on the root: the other fields stay the prefab's -->
+  <Health max="200" current="200" append="true"/>        <!-- a component the prefab does not have, written whole -->
+  <Override entity="4" name="Old bench"><Transform remove="true"/></Override>   <!-- a renamed entity, and a removed component -->
+  <Override entity="2"><Health max="50" current="50" append="true"/></Override> <!-- a component added to the nested lamp's root -->
+  <Override entity="2/2"><Light Intensity="40"/><Flicker lamp="1"/></Override>  <!-- into the nested lamp's bulb; lamp="1" is entity 1 of THIS scene -->
+  <Override entity="3" remove="true"/>                   <!-- a removed entity, and everything under it -->
+  <Override entity="2/3">                                <!-- an entity added under a member, numbered in this document -->
+    <Entity id="3" name="Sign"><Transform Position="0 0.5 0" Rotation="0 0 0 1" Scale="1 1 1"/></Entity>
+  </Override>
+  <Entity id="4" name="Trash can"/>                      <!-- an entity added directly under the root -->
+</Entity>
+```
+
+- **`<Override entity="address">`** is an address relative to the instance (`""`, or no `entity`, is the root). Its children are component patches and added `<Entity>` elements; `name` renames the
+  entity and `remove="true"` removes it with everything under it (not the root of the instance: remove the instance instead).
+- **A component element** changes a component the entity has: its attributes replace the prefab's, and the fields it does not name keep the prefab's value. `remove="true"` removes the component.
+  `append="true"` adds the component, written whole; if the prefab has (or later gets) the component, the instance's wins. These three words, with `patch`, are the same ones [`DefDatabase.Merge`](defs.md) uses
+  and are never kept in what an instance expands to.
+- **Added entities** are ordinary entities of the document that writes them (their ids are numbered there, so a scene's own ids, or the prefab file's), and may themselves be instances. They come after the
+  prefab's own children.
+- There is no order to override: siblings are in creation order, the prefab's entities first and then the added ones.
+
+**Strict matching.** An override applies only to what is there. The expander reads each element and, when it cannot apply it, keeps it aside instead of guessing:
+
+- an address that names nothing (the prefab lost that entity, or an earlier override removed it), a malformed address, or an `<Override>` with an attribute this version does not know: the whole element;
+- a patch of a component the entity does not have (the prefab dropped it: a half component would be made), or a `remove` of one it does not have: that component element, under an `<Override>` with the same
+  address (what could apply did).
+
+Each is logged with its file and line, and kept as written so that saving the scene does not lose it; if the prefab gets the entity or component back, the override applies again. A prefab that is not there
+is the same: the instance is a single entity with nothing in it, and every element of the instance element is kept.
+
+`DefDatabase.Merge` is used for the part it fits: the fields of one component (and the `remove`/`append` words). It is *not* used to find entities, which it would do by name and `id` among direct children only:
+an entity that the author moved would stop matching, ids repeat across nested prefabs, and a patch that matches nothing would add a half-made entity. Overrides address entities by path instead.
+
+## Limits
+
+A prefab file is read by anyone who installs a mod, so expansion is bounded and never trusts a file:
+
+- **Nesting depth: 16.** A chain of prefabs (one inside the next) may be 16 long; the 17th is missing (an instance of it is one empty entity, with a warning). Entities may be nested at most 128 deep in what
+  results (the limit a document already has), or the whole expansion fails.
+- **Cycles.** A prefab that contains itself, directly or through others (`a → b → c → a`), is not followed: the instance that would repeat it is missing, and the warning shows the chain. The rest expands.
+- **Entity budget: 262,144.** The expansion counts each entity as it is about to make it and stops with a `FormatException` when a load (a scene with all its instances) would go over, so a few small files that
+  nest ten instances sixteen levels deep cost at most the budget, not memory without end. The budget is one number for a whole load.
+- **Missing prefabs.** A reference that names no file, a file that cannot be read, is not a prefab (another root element, none or two root entities, a repeated id, a newer version), or whose root
+  entity is itself an instance of another prefab (an entity would be the root of two instances: put it under an entity of its own) leaves the instance missing, as above.
+- **Ids.** Ids of entities an `<Override>` adds count in the prefab's numbering like any other: they may not repeat one, and `nextId` stays above them. An entity with no usable id, or one that repeats an
+  address, is made but cannot be referred to.
+
 ## Files
 
 `.aprefab` is an [authored asset](assets.md#where-a-uid-lives) (`AuthoredAssets.Extensions`): `--import` gives a file without a `uid` one by adding the attribute to its root, the asset database finds a

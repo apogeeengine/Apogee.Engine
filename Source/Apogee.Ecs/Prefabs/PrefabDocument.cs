@@ -22,9 +22,10 @@ internal static class PrefabDocument
 
     /// <summary>
     /// Throws <see cref="FormatException"/> when the document is not a prefab this engine can read: another root element, a newer version, no root entity or more than one, an entity without a
-    /// usable id or with one that another entity has. A <c>nextId</c> that is missing or not above every id is not an error: it is worked out again, with a warning.
+    /// usable id or with one that another entity has (entities an <c>&lt;Override&gt;</c> of an instance adds count too). A <c>nextId</c> that is missing or not above every id is not an error: it is
+    /// worked out again, with a warning (<paramref name="warnNextId"/>: false for a caller that already said so).
     /// </summary>
-    public static void Check(XmlNode document, string origin)
+    public static void Check(XmlNode document, string origin, bool warnNextId = true)
     {
         if (document.Name != RootName)
         {
@@ -61,7 +62,7 @@ internal static class PrefabDocument
         var seen = new HashSet<int>();
         int max = 0;
         CheckIds(RootEntity(document), origin, seen, ref max);
-        if (!int.TryParse(document.Attribute("nextId"), NumberStyles.None, CultureInfo.InvariantCulture, out int next) || next <= max)
+        if (warnNextId && (!int.TryParse(document.Attribute("nextId"), NumberStyles.None, CultureInfo.InvariantCulture, out int next) || next <= max))
         {
             Log.Warn("Prefab", $"{origin}: nextId is missing or not above every id (the highest is {max}): it is worked out again, so a deleted id may be reused");
         }
@@ -88,12 +89,9 @@ internal static class PrefabDocument
     private static int HighestId(XmlNode entity)
     {
         int highest = TryParseId(entity.Attribute("id"), out int id) ? id : 0;
-        foreach (XmlNode child in entity.Children)
+        foreach (XmlNode child in EntitiesBelow(entity))
         {
-            if (child.Name == "Entity")
-            {
-                highest = Math.Max(highest, HighestId(child));
-            }
+            highest = Math.Max(highest, HighestId(child));
         }
 
         return highest;
@@ -112,11 +110,30 @@ internal static class PrefabDocument
         }
 
         max = Math.Max(max, id);
+        foreach (XmlNode child in EntitiesBelow(entity))
+        {
+            CheckIds(child, origin, seen, ref max);
+        }
+    }
+
+    // The entities an entity element holds: its child entities and, for an instance of another prefab, the ones its <Override> elements add. All of them take ids from the file's one numbering.
+    private static IEnumerable<XmlNode> EntitiesBelow(XmlNode entity)
+    {
         foreach (XmlNode child in entity.Children)
         {
             if (child.Name == "Entity")
             {
-                CheckIds(child, origin, seen, ref max);
+                yield return child;
+            }
+            else if (child.Name == "Override")
+            {
+                foreach (XmlNode added in child.Children)
+                {
+                    if (added.Name == "Entity")
+                    {
+                        yield return added;
+                    }
+                }
             }
         }
     }
