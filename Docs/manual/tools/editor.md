@@ -53,21 +53,26 @@ The gizmo acts on the selection's top level (the selected entities that have a `
 ("Move 3 entities", "Rotate Cube"), however many frames it takes. **Pivot** in the viewport's toolbar chooses what a rotation or a scale turns around:
 
 - **Center**: the centre of the selection. It is the middle of the box that contains every member's model bounds when all of them have a model; when one does not (a light, a camera, an empty entity) it is the mean of
-  the origins. One selected entity always uses its own origin.
-- **Active**: the origin of the active entity (the last one picked).
-- **Individual**: the gizmo sits at the centre, but every entity turns and scales about its own origin, so a group of crates each spin in place. A move carries every entity by the same amount in all three modes.
+  the origins. Only a member's own model counts, not those of its descendants, so a group of empty parents is centred on the mean of their origins. One selected entity always uses its own origin.
+- **Active**: the origin of the active entity (the last one picked); when the active entity is a child of a selected entity, the origin of that selected parent, which is the one that moves.
+- **Individual**: the gizmo sits at the centre, but every entity turns and scales about its own origin, so a group of crates each spin in place (about the gizmo's axes: with *World* off those are the active entity's, not each crate's own). A move carries every entity by the same amount in all three modes.
 
 The gizmo's axes are the world's, or, with *World* off (and always when scaling), those of the active entity. Snapping applies to the gizmo, that is to the pivot, so the group moves by whole steps and the
 members keep their offsets from each other.
 
 What happens to a member, in world space: its offset from the pivot is stretched by the scale ratio (along the gizmo's axes) and then swung by the rotation of the drag, the pivot's translation is added, and its
 own rotation is turned by the same rotation. The result is taken into its parent's space, so a member under a rotated or scaled parent still moves the way the gizmo does. Positions are `double` and only
-differences (a delta, an offset) are ever floats, so a group ten million metres from the origin still moves to the millimetre; the gizmo itself works in floats relative to the camera, as the rest of the viewport does.
+differences (a delta, an offset) are ever floats. A move adds the gizmo's float difference to the double position, so it is exact in double for entities at the root of the scene, however far out (ten million metres
+from the origin still moves to the millimetre), and a move never turns or scales anything; a rotation or a scale reads only the rotation or the scale back from the gizmo. Offsets between members are floats, so a rotation
+or scale about a pivot a kilometre away is good to about a tenth of a millimetre. An entity under a parent has a *local* position that the engine stores relative to the parent and handles as a float: far from its
+parent's origin (everything under a root at the origin while the group is ten million metres out) it is only as exact as that float, which is how every transform in the engine works. A scale ratio below 0.001 is
+raised to 0.001 (the gizmo never goes lower), so a group is flattened but never mirrored or collapsed to zero. A drag that is cut short (Play, a failed Play, Escape or a click that changes the selection) ends where it
+is as its own undo step, and a new drag cannot begin until the mouse button has been let go.
 
 **Scaling a group is exact only in some cases.** A transform here has a per-axis scale and no shear. Stretching a member along axes that are not its own would shear it, which cannot be stored. Each of a member's axes
 takes the length ratio that the stretch gives its direction, so a member whose axes line up with the gizmo's (or are turned a quarter turn) gets exactly the ratio you dragged, but a member turned 45 degrees under a
 non-uniform stretch is only approximated (its axes stay perpendicular and only their lengths follow the stretch). A uniform scale is always exact. Scaling about *Individual* or *Active* has the same rule. The maths is in
-`Source/Apogee.Editor/Editing/GroupTransform.cs` and `TransformGesture.cs` (plain functions over placements, with no ImGui, tested without a window); the undo step is `SetTransformsCommand` in `Apogee.Host`.
+`Source/Apogee.Editor/Editing/GroupTransform.cs`, `TransformGesture.cs` and `GizmoDrag.cs` (plain functions over placements, with no ImGui, tested without a window); the undo step is `SetTransformsCommand` in `Apogee.Host`.
 
 ## Scenes and undo
 
@@ -97,7 +102,7 @@ Sound plays in play mode through OpenAL Soft ([Audio](../audio/index.md)), which
 ## Tests
 
 `Tests/Apogee.Editor.Tests`: the field codec for every `FieldKind` (a rotation as angles, integers clamped), the editor camera, picking (rays, boxes, spheres, the ground, and the selection box with what is behind the
-camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned parent, a selected child not moved twice, the scale caveat), the project (creating, naming, reparenting,
+camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the project (creating, naming, reparenting,
 duplicating and deleting, one or several, through the history; the modified mark clearing when undo returns to the saved scene; a scene saved to a file and opened again with the model's path; Play running the game's
 scripts over the scene and Stop restoring the world under the same ids with the selection and history intact; a failing game), and, on a GPU (skipped without one), a frame of the viewport with no validation errors whose render graph lays out as nodes. `Tests/Apogee.Host.Tests` covers the history and
 its commands (a drag over several entities is one step).

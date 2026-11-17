@@ -21,10 +21,7 @@ namespace Apogee.Editor.Panels;
 /// </summary>
 public sealed unsafe class ViewportPanel
 {
-    private bool _gestureWasUsing;
-    private TransformGesture? _gesture;     // the drag in progress, captured when the gizmo was taken hold of
-    private int _gestureSelection;          // the selection's version when it began
-    private Trs _pivotNow;                  // where the gizmo is: the captured pivot, then wherever the drag has taken it
+    private GizmoDrag? _drag;               // the gizmo drag's life, over the project's history
     private Vector2 _pressAt;
     private Vector2? _boxFrom;      // where a selection box was started, while the left button is held
 
@@ -218,60 +215,43 @@ public sealed unsafe class ViewportPanel
         bool busy = false;
         GizmoSettings g = ctx.Gizmo;
         bool scaling = g.Operation == (int)AgzOperation.Scale;
-        if (project.IsPlaying || (_gesture is not null && _gestureSelection != project.Selected.Version))
-        {
-            _gesture = null;        // a Play, or a change of the selection in the middle of a drag, ends the drag
-        }
+        GizmoDrag drag = _drag ??= new GizmoDrag(project.History);
 
-        // Idle, the gesture is captured afresh every frame, so that the frame the drag begins in already has the state from before its first change. The gizmo is drawn at the pivot it captured; during a drag, where the
-        // drag has taken it.
-        TransformGesture? gesture = _gesture;
-        if (gesture is null && !project.IsPlaying)
+        // The drag's life (captured idle every frame, started when ImGuizmo reports use, dropped and sealed when cut short) is GizmoDrag's; see there.
+        TransformGesture? gesture = drag.Prepare(world, project.Selected.Version, !project.IsPlaying, Gui.MouseDown(ImGuiMouseButton.Left), () =>
         {
             ModelLibrary models = project.Session.Models;
-            gesture = TransformGesture.Begin(world, project.Selected.TopLevel(), project.Selected.Active, g.Pivot, !g.World || scaling, id => EntityBounds(world, models, id));
-            _pivotNow = gesture?.Pivot ?? default;
-        }
+            return TransformGesture.Begin(world, project.Selected.TopLevel(), project.Selected.Active, g.Pivot, !g.World || scaling, id => EntityBounds(world, models, id));
+        });
 
         if (gesture is not null)
         {
-            Matrix4x4 model = _pivotNow.ToMatrix(camera.Position);
+            Matrix4x4 sent = drag.Pivot.ToMatrix(camera.Position);
+            Matrix4x4 model = sent;
             float* snap = stackalloc float[3];
             float step = g.Operation == (int)AgzOperation.Rotate ? g.RotateStep : scaling ? g.ScaleStep : g.MoveStep;
             snap[0] = snap[1] = snap[2] = step;
             bool changed = Gizmo.Manipulate((float*)&view, (float*)&projection, g.Operation, g.World ? (int)AgzMode.World : (int)AgzMode.Local, (float*)&model, null, g.Snap ? snap : null, null, null);
             bool using3d = Gizmo.IsUsing();
-            if (using3d && _gesture is null)
-            {
-                _gesture = gesture;                              // the rising edge: this is the drag's start
-                _gestureSelection = project.Selected.Version;
-            }
+            drag.Observe(using3d);
 
-            if (changed && _gesture is not null && Matrix4x4.Decompose(model, out Vector3 scale, out Quaternion rotation, out Vector3 translation))
+            if (changed && drag.Active is { } active)
             {
-                // ImGuizmo works in floats relative to the camera; the pivot's new place is the camera plus that offset, and only its difference from the old one reaches the entities (in double).
-                _pivotNow = new Trs(camera.Position + (Double3)translation, rotation, scaling ? scale : Vector3.One);
-                string verb = g.Operation == (int)AgzOperation.Rotate ? "Rotate" : scaling ? "Scale" : "Move";
-                string what = _gesture.Members.Count == 1 ? world.GetName(_gesture.Members[0]) ?? "entity" : $"{_gesture.Members.Count} entities";
-                SetTransformsCommand? command = SetTransformsCommand.Create(project.WorldRef, _gesture.Evaluate(_pivotNow).Select(e => (e.Entity, e.Local)), $"{verb} {what}");
+                // ImGuizmo works in floats relative to the camera. Of what it gives back only the part this operation changes is used (a move: the difference of the translations, added to the double position), so
+                // rounding noise never moves or turns the group.
+                GroupOperation operation = g.Operation == (int)AgzOperation.Rotate ? GroupOperation.Rotate : scaling ? GroupOperation.Scale : GroupOperation.Move;
+                Trs pivot = GroupTransform.PivotAfter(drag.Pivot, operation, sent, model);
+                drag.MoveTo(pivot);
+                string verb = operation == GroupOperation.Rotate ? "Rotate" : scaling ? "Scale" : "Move";
+                string what = active.Members.Count == 1 ? world.GetName(active.Members[0]) ?? "entity" : $"{active.Members.Count} entities";
+                SetTransformsCommand? command = SetTransformsCommand.Create(project.WorldRef, active.Evaluate(pivot).Select(e => (e.Entity, e.Local)), $"{verb} {what}");
                 if (command is not null)
                 {
                     project.History.Execute(command);
                 }
             }
 
-            if (_gestureWasUsing && !using3d)
-            {
-                project.History.Seal();
-                _gesture = null;
-            }
-
-            _gestureWasUsing = using3d;
             busy = using3d || Gizmo.IsOver();
-        }
-        else
-        {
-            _gestureWasUsing = false;
         }
 
         // The view cube: clicking a face turns the camera to look along that axis.

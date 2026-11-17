@@ -18,6 +18,19 @@ public enum PivotMode
     Individual,
 }
 
+/// <summary>What the gizmo is doing to the pivot.</summary>
+public enum GroupOperation
+{
+    /// <summary>Translating.</summary>
+    Move,
+
+    /// <summary>Rotating.</summary>
+    Rotate,
+
+    /// <summary>Scaling.</summary>
+    Scale,
+}
+
 /// <summary>An axis-aligned box in the double-precision world.</summary>
 public readonly record struct WorldBox(Double3 Min, Double3 Max)
 {
@@ -39,6 +52,9 @@ public readonly record struct WorldBox(Double3 Min, Double3 Max)
 /// </summary>
 public static class GroupTransform
 {
+    /// <summary>The smallest scale ratio <see cref="Apply"/> uses on an axis.</summary>
+    public const float MinimumRatio = 1e-3f;
+
     /// <summary>
     /// The world box of a model's local box (<paramref name="localMin"/>, <paramref name="localMax"/>) placed at <paramref name="world"/>: the box of its eight corners, which are carried in double.
     /// </summary>
@@ -132,8 +148,13 @@ public static class GroupTransform
     /// </summary>
     public static Trs Apply(in Trs pivotBefore, in Trs pivotAfter, in Trs entityWorld, PivotMode mode)
     {
-        Vector3 ratio = pivotAfter.Scale / pivotBefore.Scale;
-        Quaternion turn = Quaternion.Normalize(Quaternion.Concatenate(Quaternion.Inverse(pivotBefore.Rotation), pivotAfter.Rotation));
+        // The gizmo never goes below this (ImGuizmo clamps its scale at 0.001): a zero or negative ratio would flatten or mirror a member and leave a scale that cannot be divided by. It is clamped, not refused.
+        Vector3 ratio = Vector3.Max(pivotAfter.Scale / pivotBefore.Scale, new Vector3(MinimumRatio));
+
+        // Equal rotations are no turn at all, bit for bit: Concatenate(Inverse(R), R) is only the identity up to float rounding, and a move or a scale must not turn anything by that much.
+        Quaternion turn = pivotAfter.Rotation == pivotBefore.Rotation
+            ? Quaternion.Identity
+            : Quaternion.Normalize(Quaternion.Concatenate(Quaternion.Inverse(pivotBefore.Rotation), pivotAfter.Rotation));
 
         // The position is "where it was, plus the pivot's translation, plus how far the swing and the stretch move the offset". The last part is zero when only the pivot moved, so a pure move is exact in double.
         Double3 position = entityWorld.Position + (pivotAfter.Position - pivotBefore.Position);
@@ -154,9 +175,38 @@ public static class GroupTransform
     /// </summary>
     public static Vector3 SwingAndStretch(Vector3 offset, Quaternion pivotRotation, Vector3 ratio, Quaternion turn)
     {
-        Vector3 inPivotAxes = Vector3.Transform(offset, Quaternion.Inverse(pivotRotation));
-        Vector3 stretched = Vector3.Transform(inPivotAxes * ratio, pivotRotation);
-        return Vector3.Transform(stretched, turn);
+        // Each step is skipped when it does nothing, so a move gives the offset back bit for bit (the round trip through the pivot's axes and back would not).
+        Vector3 result = offset;
+        if (ratio != Vector3.One)
+        {
+            Vector3 inPivotAxes = Vector3.Transform(result, Quaternion.Inverse(pivotRotation));
+            result = Vector3.Transform(inPivotAxes * ratio, pivotRotation);
+        }
+
+        return turn == Quaternion.Identity ? result : Vector3.Transform(result, turn);
+    }
+
+    /// <summary>
+    /// The pivot after one frame of the gizmo, from the matrix that was sent to it (<paramref name="sent"/>, the pivot placed relative to the camera) and the one it gave back (<paramref name="returned"/>), keeping
+    /// everything the operation does not change exactly as it was: a move takes only the float difference of the two translations and adds it to the double position (so the pivot's position is never rounded
+    /// to a float relative to the camera), a rotation takes only the rotation, a scale only the scale. Rounding noise in the other parts of the matrix therefore never moves or turns the group. A rotation or scale from a matrix that
+    /// cannot be taken apart gives back <paramref name="pivotNow"/>.
+    /// </summary>
+    public static Trs PivotAfter(in Trs pivotNow, GroupOperation operation, in Matrix4x4 sent, in Matrix4x4 returned)
+    {
+        if (operation == GroupOperation.Move)
+        {
+            return new Trs(pivotNow.Position + (Double3)(returned.Translation - sent.Translation), pivotNow.Rotation, pivotNow.Scale);
+        }
+
+        if (!Matrix4x4.Decompose(returned, out Vector3 scale, out Quaternion rotation, out _))
+        {
+            return pivotNow;
+        }
+
+        return operation == GroupOperation.Rotate
+            ? new Trs(pivotNow.Position, rotation, pivotNow.Scale)
+            : new Trs(pivotNow.Position, pivotNow.Rotation, scale);
     }
 
     /// <summary>

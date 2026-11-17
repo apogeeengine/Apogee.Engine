@@ -317,6 +317,291 @@ public sealed class GroupTransformTests : IDisposable
         AssertNear(new Double3(12, 0, 2), _world.ComputeWorldTransform(a).Position);
         AssertNear(new Double3(12, 0, -2), _world.ComputeWorldTransform(b).Position);
     }
+
+    // ---- What the review asked for: noise, parents, distance, the scale rule ----
+
+    private static Trs Tilted(Double3 at) => At(at, Quaternion.CreateFromAxisAngle(Vector3.Normalize(new Vector3(1, 2, 3)), 0.7f));
+
+    private static void AssertNear(float expected, float actual, float tolerance) => Assert.InRange(actual, expected - tolerance, expected + tolerance);
+
+    [Fact]
+    public void AMoveWithATurnedPivotIsExactAndNeverTurnsAnything()
+    {
+        // The pivot is the active entity's, turned (local axes). The matrix the gizmo gives back goes through float rounding, but only its translation is read for a move, and equal
+        // rotations are no turn: so every member just gets the double delta, and keeps its rotation and scale bit for bit.
+        const double far = 10_000_000;
+        Double3 origin = new(far, 0, 0);
+        Trs[] members = [Tilted(new Double3(far + 3.25, 1, 2)), At(new Double3(far + 20.5, 2, -3), Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.3f)), Tilted(new Double3(far - 8.75, 1, 0.5))];
+        Trs before = GroupTransform.Pivot(members, NoBoxes(3), 0, PivotMode.Active, localAxes: true);
+
+        Matrix4x4 sent = before.ToMatrix(origin);
+        // What the gizmo gives back: the same translation moved by (0.5, 0.125, -0.25), with a rotation that is the same turn written with other bits (the negated quaternion).
+        Matrix4x4 returned = Matrix4x4.CreateFromQuaternion(Quaternion.Negate(before.Rotation)) * Matrix4x4.CreateTranslation(sent.Translation + new Vector3(0.5f, 0.125f, -0.25f));
+        Trs after = GroupTransform.PivotAfter(before, GroupOperation.Move, sent, returned);
+
+        Assert.Equal(before.Rotation, after.Rotation);
+        Assert.Equal(before.Scale, after.Scale);
+        Double3 delta = new(0.5, 0.125, -0.25);
+        foreach (PivotMode mode in Enum.GetValues<PivotMode>())
+        {
+            foreach (Trs member in members)
+            {
+                Trs moved = GroupTransform.Apply(before, after, member, mode);
+                Assert.Equal(member.Position + delta, moved.Position);
+                Assert.Equal(member.Rotation, moved.Rotation);
+                Assert.Equal(member.Scale, moved.Scale);
+            }
+        }
+    }
+
+    [Fact]
+    public void ARotationOrAScaleKeepsTheDoublePositionOfThePivotBitForBit()
+    {
+        // The pivot's double position is never read back from the float matrix for these.
+        Double3 origin = new(10_000_000, 0, 0);
+        Trs pivot = new(new Double3(10_000_000.1234567, 3.3, -4.4), Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.4f), Vector3.One);
+        Matrix4x4 sent = pivot.ToMatrix(origin);
+
+        Matrix4x4 turned = Matrix4x4.CreateFromQuaternion(Quaternion.CreateFromAxisAngle(Vector3.UnitY, 1.1f)) * Matrix4x4.CreateTranslation(sent.Translation + new Vector3(1e-4f, 0, 0));
+        Trs rotated = GroupTransform.PivotAfter(pivot, GroupOperation.Rotate, sent, turned);
+        Assert.Equal(pivot.Position, rotated.Position);
+        Assert.Equal(pivot.Scale, rotated.Scale);
+        AssertNear(MathF.Sin(1.1f / 2f), rotated.Rotation.Y, 1e-5f);
+
+        Matrix4x4 bigger = Matrix4x4.CreateScale(2, 1, 1) * Matrix4x4.CreateFromQuaternion(pivot.Rotation) * Matrix4x4.CreateTranslation(sent.Translation + new Vector3(1e-4f, 0, 0));
+        Trs scaled = GroupTransform.PivotAfter(pivot, GroupOperation.Scale, sent, bigger);
+        Assert.Equal(pivot.Position, scaled.Position);
+        Assert.Equal(pivot.Rotation, scaled.Rotation);
+        AssertNear(new Vector3(2, 1, 1), scaled.Scale, 1e-5f);
+    }
+
+    [Fact]
+    public void RotatingAndScalingUnderATurnedNonUniformParentLandWhereTheMathSays()
+    {
+        // The parent is turned 30 degrees about Y and scaled (2, 3, 0.5). Write the gesture's locals, ask the engine for the world placements, and they are what Apply worked out.
+        Entity parent = Make("parent", new Double3(5, 1, -2), Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 6f), new Vector3(2, 3, 0.5f));
+        Entity a = Make("a", new Double3(1, 0.5f, 2), Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.5f), new Vector3(1, 2, 1), parent);
+        Entity b = Make("b", new Double3(-2, 1, 0.5), Quaternion.Identity, Vector3.One, parent);
+        Entity c = Make("c", new Double3(10, 0, 0));
+        Entity[] members = [a, b, c];
+        Trs[] starts = [.. members.Select(_world.ComputeWorldTransform)];
+
+        foreach (bool rotate in new[] { true, false })
+        {
+            TransformGesture gesture = Begin(members, c, PivotMode.Center);
+            Trs after = rotate
+                ? At(gesture.Pivot.Position, Quaternion.CreateFromAxisAngle(Vector3.Normalize(new Vector3(0, 1, 1)), 0.9f))
+                : new Trs(gesture.Pivot.Position, Quaternion.Identity, new Vector3(2, 1, 1.5f));
+            foreach ((Entity entity, Transform local) in gesture.Evaluate(after))
+            {
+                _world.Set(entity, local);
+            }
+
+            for (int i = 0; i < members.Length; i++)
+            {
+                Trs expected = GroupTransform.Apply(gesture.Pivot, after, starts[i], PivotMode.Center);
+                Trs actual = _world.ComputeWorldTransform(members[i]);
+                AssertNear(expected.Position, actual.Position, 1e-4);
+                AssertNear(Vector3.Transform(Vector3.One, expected.Rotation), Vector3.Transform(Vector3.One, actual.Rotation), 1e-5f);
+                AssertNear(expected.Scale, actual.Scale, 1e-4f);
+            }
+
+            // Back to the start for the second round.
+            for (int i = 0; i < members.Length; i++)
+            {
+                Entity parentOf = _world.GetParent(members[i]);
+                Trs local = parentOf.IsNull ? starts[i] : starts[i].InLocalOf(_world.ComputeWorldTransform(parentOf));
+                _world.Set(members[i], Transform.From(local));
+            }
+        }
+    }
+
+    [Fact]
+    public void AMirroredParentCarriesAGroupTurnTheWayItLooks()
+    {
+        // The parent mirrors X: its children at local x = 1 and 3 are at world x = -1 and -3. Their middle is (-2, 0, 0); a quarter turn about Y puts the first, which is +1 from it, at z = -1 and the other at z = +1.
+        Entity mirror = Make("mirror", new Double3(0, 0, 0), Quaternion.Identity, new Vector3(-1, 1, 1));
+        Entity near = Make("near", new Double3(1, 0, 0), parent: mirror);
+        Entity far = Make("far", new Double3(3, 0, 0), parent: mirror);
+        AssertNear(new Double3(-1, 0, 0), _world.ComputeWorldTransform(near).Position);
+
+        TransformGesture gesture = Begin([near, far], near, PivotMode.Center);
+        AssertNear(new Double3(-2, 0, 0), gesture.Pivot.Position);
+        foreach ((Entity entity, Transform local) in gesture.Evaluate(At(gesture.Pivot.Position, Quaternion.CreateFromAxisAngle(Vector3.UnitY, Quarter))))
+        {
+            _world.Set(entity, local);
+        }
+
+        AssertNear(new Double3(-2, 0, -1), _world.ComputeWorldTransform(near).Position);
+        AssertNear(new Double3(-2, 0, 1), _world.ComputeWorldTransform(far).Position);
+        AssertNear(new Vector3(0, 0, -1), Vector3.Transform(Vector3.UnitX, _world.ComputeWorldTransform(near).Rotation));
+    }
+
+    [Fact]
+    public void RotatingAndScalingTenMillionMetresOutAKilometreFromThePivotAgreeWithADoubleReference()
+    {
+        const double far = 10_000_000;
+        Trs a = At(new Double3(far, 0, 0));
+        Trs b = At(new Double3(far + 1000, 0, 0));
+        Trs before = GroupTransform.Pivot([a, b], NoBoxes(2), 0, PivotMode.Active, localAxes: false);       // on a, one kilometre from b
+        Trs quarter = At(before.Position, Quaternion.CreateFromAxisAngle(Vector3.UnitY, Quarter));
+
+        // A quarter turn about Y: b's offset (1000, 0, 0) becomes (0, 0, -1000), in plain double arithmetic; float quaternion rounding is worth about a tenth of a millimetre at that distance.
+        Trs turned = GroupTransform.Apply(before, quarter, b, PivotMode.Active);
+        Assert.InRange(turned.Position.X, far - 1e-3, far + 1e-3);
+        Assert.InRange(turned.Position.Z, -1000 - 1e-3, -1000 + 1e-3);
+        Assert.Equal(far, GroupTransform.Apply(before, quarter, a, PivotMode.Active).Position.X);   // the pivot's own member does not move at all
+
+        // Doubled along X: b is 2000 m away, a has not moved.
+        Trs wide = new(before.Position, Quaternion.Identity, new Vector3(2, 1, 1));
+        Assert.Equal(far + 2000, GroupTransform.Apply(before, wide, b, PivotMode.Active).Position.X, 6);
+        Assert.Equal(far, GroupTransform.Apply(before, wide, a, PivotMode.Active).Position.X);
+    }
+
+    [Fact]
+    public void AMemberTurned45DegreesGetsTheRootMeanSquareOfTheRatiosAndItRisesWithTheRatio()
+    {
+        // Turned 45 degrees about Y, the member's X and Z lie half way between the world's X and Z. A stretch (rx, 1, 1) of the world's X would shear it; the scale that fits keeps the axes
+        // perpendicular and gives both the length ratio sqrt((rx^2 + 1) / 2). Y is untouched.
+        Quaternion turned = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 4f);
+        float previous = 0;
+        foreach (float rx in new[] { 0.5f, 1.5f, 2f, 3f })
+        {
+            Vector3 scale = GroupTransform.StretchedScale(turned, Vector3.One, Quaternion.Identity, new Vector3(rx, 1, 1));
+            float expected = MathF.Sqrt(((rx * rx) + 1) / 2f);
+            AssertNear(new Vector3(expected, 1, expected), scale, 1e-5f);
+            Assert.True(scale.X > previous);
+            previous = scale.X;
+        }
+    }
+
+    [Fact]
+    public void AScaleRatioIsNeverBelowTheMinimumTheGizmoUses()
+    {
+        Trs member = At(new Double3(10, 0, 0));
+        Trs before = At(new Double3(12, 0, 0));
+        foreach (float ratio in new[] { 0f, -1f })
+        {
+            Trs moved = GroupTransform.Apply(before, new Trs(before.Position, Quaternion.Identity, new Vector3(ratio, 1, 1)), member, PivotMode.Center);
+            AssertNear(new Vector3(GroupTransform.MinimumRatio, 1, 1), moved.Scale, 1e-6f);
+            Assert.True(moved.Position.X > 11.99);                  // squeezed onto the pivot, not mirrored past it
+        }
+    }
+
+    [Fact]
+    public void AMemberThatDiesAfterTheDragBeganIsLeftOut()
+    {
+        Entity a = Make("a", new Double3(1, 0, 0));
+        Entity b = Make("b", new Double3(2, 0, 0));
+        TransformGesture gesture = Begin([a, b], a, PivotMode.Center);
+        _world.Destroy(b);
+
+        List<(Entity Entity, Transform Local)> result = gesture.Evaluate(At(gesture.Pivot.Position + new Double3(1, 0, 0)));
+        Assert.Equal(new[] { a }, result.Select(r => r.Entity));
+    }
+
+    // ---- The drag's life (what a window would otherwise be needed for) ----
+
+    private static (GizmoDrag Drag, EditHistory History) NewDrag()
+    {
+        var history = new EditHistory();
+        return (new GizmoDrag(history), history);
+    }
+
+    private static Func<TransformGesture?> Capture(World world, params Entity[] selected) =>
+        () => TransformGesture.Begin(world, selected, selected[^1], PivotMode.Center, false, _ => null);
+
+    private static SetTransformsCommand Move(World world, Entity entity, double by) =>
+        SetTransformsCommand.Create(world, [(entity, Transform.At(new Double3(world.Get<Transform>(entity).Position.X + by, 0, 0)))], "Move a")!;
+
+    [Fact]
+    public void ADragWhoseWorldWasReplacedIsDroppedWithoutTouchingTheOldWorld()
+    {
+        // A Play that fails replaces the session and disposes its world while the button is held: the drag must not use the dead world again.
+        (GizmoDrag drag, EditHistory history) = NewDrag();
+        var old = new World();
+        Entity inOld = old.CreateEntity("a");
+        old.Set(inOld, Transform.At(new Double3(1, 0, 0)));
+        Assert.NotNull(drag.Prepare(old, 1, editing: true, pointerDown: false, Capture(old, inOld)));
+        drag.Observe(gizmoUsing: true);
+        Assert.NotNull(drag.Active);
+        history.Execute(Move(old, inOld, 1));
+        old.Dispose();
+
+        Entity inNew = Make("b", new Double3(5, 0, 0));
+        TransformGesture? now = drag.Prepare(_world, 1, editing: true, pointerDown: true, Capture(_world, inNew));
+        Assert.Null(now);                                           // nothing is drawn while the old drag's button is still down
+        Assert.Null(drag.Active);
+
+        drag.Observe(gizmoUsing: true);                             // still no drag
+        Assert.Null(drag.Active);
+        history.Execute(Move(_world, inNew, 1));
+        Assert.Equal(2, history.Steps.Count);                       // sealed: the new edit is a step of its own
+        Assert.NotNull(drag.Prepare(_world, 1, editing: true, pointerDown: false, Capture(_world, inNew)));        // the button was let go
+    }
+
+    [Fact]
+    public void ADragCutShortIsSealedAndBlocksANewOneUntilTheButtonIsLetGo()
+    {
+        (GizmoDrag drag, EditHistory history) = NewDrag();
+        Entity a = Make("a", new Double3(1, 0, 0));
+        Entity b = Make("b", new Double3(4, 0, 0));
+        TransformGesture? gesture = drag.Prepare(_world, 7, editing: true, pointerDown: true, Capture(_world, a));
+        Assert.NotNull(gesture);
+        drag.Observe(true);
+        history.Execute(Move(_world, a, 1));
+        history.Execute(Move(_world, a, 1));                        // two frames: still one step
+        Assert.Single(history.Steps);
+
+        // The selection changes in the middle of the drag (Escape, or a click elsewhere).
+        Assert.Null(drag.Prepare(_world, 8, editing: true, pointerDown: true, Capture(_world, b)));
+        Assert.Null(drag.Active);
+        history.Execute(Move(_world, a, 1));                        // the next drag over the same entity must not merge into the cut one
+        Assert.Equal(2, history.Steps.Count);
+
+        Assert.Null(drag.Prepare(_world, 8, editing: true, pointerDown: true, Capture(_world, b)));       // button still down: blocked
+        TransformGesture? again = drag.Prepare(_world, 8, editing: true, pointerDown: false, Capture(_world, b));
+        Assert.NotNull(again);                                      // released: a new capture, of what is selected now
+        Assert.Equal(new[] { b }, again.Members);
+    }
+
+    [Fact]
+    public void PlayingCutsADragShortToo()
+    {
+        (GizmoDrag drag, EditHistory history) = NewDrag();
+        Entity a = Make("a", new Double3(1, 0, 0));
+        drag.Prepare(_world, 1, true, true, Capture(_world, a));
+        drag.Observe(true);
+        history.Execute(Move(_world, a, 1));
+
+        Assert.Null(drag.Prepare(_world, 1, editing: false, pointerDown: false, Capture(_world, a)));
+        Assert.Null(drag.Active);
+        history.Execute(Move(_world, a, 1));
+        Assert.Equal(2, history.Steps.Count);
+    }
+
+    [Fact]
+    public void ADragThatEndsNormallySealsAndTheGizmoUsedAgainStartsANewOne()
+    {
+        (GizmoDrag drag, EditHistory history) = NewDrag();
+        Entity a = Make("a", new Double3(1, 0, 0));
+        for (int round = 0; round < 2; round++)
+        {
+            Assert.NotNull(drag.Prepare(_world, 1, true, false, Capture(_world, a)));
+            drag.Observe(false);                                    // idle: no drag yet
+            Assert.Null(drag.Active);
+            Assert.NotNull(drag.Prepare(_world, 1, true, true, Capture(_world, a)));
+            drag.Observe(true);
+            Assert.NotNull(drag.Active);
+            history.Execute(Move(_world, a, 1));
+            history.Execute(Move(_world, a, 1));
+            Assert.NotNull(drag.Prepare(_world, 1, true, false, Capture(_world, a)));
+            drag.Observe(false);                                    // let go
+            Assert.Null(drag.Active);
+        }
+
+        Assert.Equal(2, history.Steps.Count);                       // two drags, two steps
+    }
 }
 
 /// <summary>A drag over a selection through the editor project: the top level only, and one undo step.</summary>
