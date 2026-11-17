@@ -76,7 +76,7 @@ Where each program gets the key:
 
 - **Development runs** (`--game <folder>`, the editor, `--pack`, `--export`) read `APOGEE_PACK_KEY` from the environment.
 - **An exported game** has it in its executable: [`--export`](../tools/export.md#the-pack-key) encrypts the pack with the key it finds in the environment and writes the key, masked, into a reserved slot of the
-  copy of the runtime (`PackKeySlot`). The game reads the slot first and the environment after it, so it needs no variable (and a variable does not override the embedded key).
+  copy of the runtime (`PackKeySlot`; into every copy of it, when the compiler emitted the data more than once). The game reads the slot first and the environment after it, so it needs no variable (and a variable does not override the embedded key).
 
 !!! warning "The embedded key is obfuscation, not protection"
     The slot keeps the key out of `strings` and out of a casual look at the file: the 32 bytes are XORed with a hash of a random salt and a constant, all of which are in the file next to them, and the

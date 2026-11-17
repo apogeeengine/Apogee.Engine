@@ -66,8 +66,10 @@ If `APOGEE_PACK_KEY` is set (64 hexadecimal digits, in the environment or in the
 executable, so that the game opens its own pack without the variable. Without a key the packs are plain, and the export warns about it. See [Encryption and the key](../content/packs.md#encryption-and-the-key).
 
 The key goes into a reserved **slot** of the runtime (`PackKeySlot`): the executable holds 68 bytes in its read-only data, which start with a 16-byte magic that appears nowhere else, and the export
-patches the copy: it finds the magic (exactly once, else it is not this engine's runtime and the export fails), and writes the key masked with a random salt. The running game reads it back
-before it looks at the environment. No recompiling is needed, which is why an export can be made for any platform.
+patches the copy: it finds every copy of the whole slot (at least one, else it is not this engine's runtime and the export fails; a magic that is not followed by the rest of a slot is other data and is left
+alone, and a file that ends inside a slot is refused), and writes the same key, masked with one random salt, into each. A compiler may emit the slot's data more than once (the NativeAOT executable for
+macOS on Apple silicon has two copies), and the game reads whichever copy its code refers to, so all of them are patched; the export log says how many places it wrote when there is more than one. The
+running game reads the key back before it looks at the environment. No recompiling is needed, which is why an export can be made for any platform.
 
 !!! warning "Obfuscation, not protection"
     The key is in the file, one XOR away from anyone who reads this page and the source, and in the memory of the running game. The slot keeps it out of `strings`, out of a quick look in a hex
@@ -205,8 +207,8 @@ Fixture Game.app/                      the bundle, named after the game's name
 
 An Apple-silicon Mac only runs a program that is signed, and the NativeAOT runtime comes with an *ad-hoc* signature: the linker signs it with no certificate, only hashes (`codesign -s -` makes the same kind, with an empty signature slot, and is accepted too). The signature is a table at the end of the
 file (the CodeDirectory) with the hash of every 16 KiB page of the program; the kernel checks a page's hash when it is loaded and kills the program if it does not match (`Killed: 9`). The export
-changes a page of the program, for it writes the [pack key](#the-pack-key) into it, so it has to make the hashes right again. `MachOSignature.Rehash` does that, after the key is written and as the last
-change to the program:
+changes a page of the program, for it writes the [pack key](#the-pack-key) into it (into each copy of the slot), so it has to make the hashes right again. `MachOSignature.Rehash` does that once, after the key is
+written everywhere and as the last change to the program:
 
 1. It reads the Mach-O header and finds the `LC_CODE_SIGNATURE` load command, which says where the signature is.
 2. It reads the signature's SuperBlob and finds every CodeDirectory in it (a program can have an alternate one with another hash function).
@@ -214,7 +216,7 @@ change to the program:
    SHA-384) and page size, and writes the hashes over the old ones in place.
 
 Nothing else is touched: not the length of the file, the header, the position of the signature, the identifier, or the other blobs. All of it is checked first: a file that is not a thin 64-bit Mach-O, or whose lengths
-and offsets do not fit it (or whose CodeDirectory is shorter than its version needs, or uses a scatter vector, or does not have the pack key slot inside the hashed code), fails the export and is not written (the program is untrusted input to this code, so every length is checked against the file with 64-bit arithmetic, and nothing is allocated or looped over by what the file
+and offsets do not fit it (or whose CodeDirectory is shorter than its version needs, or uses a scatter vector, or does not have every copy of the pack key slot inside the hashed code), fails the export and is not written (the program is untrusted input to this code, so every length is checked against the file with 64-bit arithmetic, and nothing is allocated or looped over by what the file
 claims).
 
 What it does **not** do:
@@ -289,6 +291,6 @@ game's icon (`Rgba(size)`, `Png(size)`: a box filter down, with a warning for an
 
 ## Tests
 
-`Tests/Apogee.Export.Tests`: the targets, reading the platform from an executable header, what is left out of a runtime folder, the key slot (written into the only slot, read back, no slot or two is an
-error, the key is not in the file in the clear), the icon sizes, the PE writer (the resource tree, the section that is rewritten or added, header room, signatures and overlays, the subsystem, the checksum, files that are damaged or hostile, the engine's vendored Windows libraries, damaged and hostile files), the Windows step (the version information and the icon images read back, the key kept), the Linux step (the executable bit, `icon.png` and the manifest's icon, the escaping of the desktop entry), the macOS step (the plist and its escaping, the `icns` structure and sizes, the bundle layout, the minimum system version, and the Mach-O signature: page hashes of every hash type and page size checked against an independent computation, real signatures from `ThirdParty` reproduced, and hostile lengths and offsets, truncation and random damage all ending in an `ExportException`), and exports for all four targets from any host with a synthesized runtime folder (layout, renamed executable, what is packed, the game
+`Tests/Apogee.Export.Tests`: the targets, reading the platform from an executable header, what is left out of a runtime folder, the key slot (written into every copy of the slot and read back, a magic without the rest of the template left alone, no slot, a slot cut by the end of the file and too many copies an
+error, the key is not in the file in the clear), the icon sizes, the PE writer (the resource tree, the section that is rewritten or added, header room, signatures and overlays, the subsystem, the checksum, files that are damaged or hostile, the engine's vendored Windows libraries, damaged and hostile files), the Windows step (the version information and the icon images read back, every copy of the key kept), the Linux step (the executable bit, `icon.png` and the manifest's icon, the escaping of the desktop entry), the macOS step (the plist and its escaping, the `icns` structure and sizes, the bundle layout, the minimum system version, and the Mach-O signature: page hashes of every hash type and page size checked against an independent computation, real signatures from `ThirdParty` reproduced, and hostile lengths and offsets, truncation and random damage all ending in an `ExportException`), and exports for all four targets from any host with a synthesized runtime folder (layout, renamed executable, what is packed, the game
 folder untouched, encrypted packs, the output folder rules). `Tests/Apogee.Runtime.Tests` runs an exported game from its folder, headless, on its encrypted pack.
