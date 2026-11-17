@@ -140,17 +140,25 @@ jobs:
             failed=$((failed + 1))
           fi
           cp "$app/Contents/MacOS/FixtureGame" "$RUNNER_TEMP/FixtureGame-copy"
-          if codesign --verify --strict --verbose=4 "$RUNNER_TEMP/FixtureGame-copy"; then
-            echo "OK: codesign verify"
-          else
-            echo "FAILED: codesign verify"
+          # The linker signs an arm64 program ad hoc (the export repairs that signature after it writes the key) and does not sign an x86_64 one: only a signed program has anything to verify.
+          if codesign -d "$RUNNER_TEMP/FixtureGame-copy" > /dev/null 2>&1; then
+            if codesign --verify --strict --verbose=4 "$RUNNER_TEMP/FixtureGame-copy"; then
+              echo "OK: codesign verify"
+            else
+              echo "FAILED: codesign verify"
+              failed=$((failed + 1))
+            fi
+            if codesign -dvvv "$RUNNER_TEMP/FixtureGame-copy"; then
+              echo "OK: codesign dump"
+            else
+              echo "FAILED: codesign dump"
+              failed=$((failed + 1))
+            fi
+          elif [ "${{ matrix.rid }}" = "osx-arm64" ]; then
+            echo "FAILED: an arm64 program must carry a signature"
             failed=$((failed + 1))
-          fi
-          if codesign -dvvv "$RUNNER_TEMP/FixtureGame-copy"; then
-            echo "OK: codesign dump"
           else
-            echo "FAILED: codesign dump"
-            failed=$((failed + 1))
+            echo "SKIPPED: codesign verify and dump (the ${{ matrix.rid }} program is not signed)"
           fi
           if plutil -lint "$app/Contents/Info.plist"; then
             echo "OK: plist is valid"
