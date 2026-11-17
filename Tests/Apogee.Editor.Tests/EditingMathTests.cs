@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Apogee.Core.Numerics;
 using Apogee.Editor.Editing;
@@ -9,6 +10,7 @@ using Xunit;
 namespace Apogee.Editor.Tests;
 
 /// <summary>The editor's logic with no window and no GPU: the field codec, the camera and picking.</summary>
+[Collection("editor")]
 public sealed unsafe class EditingMathTests
 {
     private static double[] RoundTrip(FieldKind kind, params double[] values)
@@ -162,6 +164,57 @@ public sealed unsafe class EditingMathTests
         Assert.Equal(10f - MathF.Sqrt(2), turned, 1e-3f);                                                                                                 // a corner towards us
         Assert.Null(Picking.HitBox(new PickRay(new Double3(0, 0, -10), new Vector3(0, 0, -1)), new Trs(Double3.Zero, Quaternion.Identity, Vector3.One), min, max));   // behind the ray
         Assert.Equal(0f, Picking.HitBox(new PickRay(Double3.Zero, new Vector3(0, 0, -1)), new Trs(Double3.Zero, Quaternion.Identity, Vector3.One), min, max)!.Value);  // starting inside
+    }
+
+    [Fact]
+    public void ABoxSelectsWhatIsInsideItAndInFrontOfTheCamera()
+    {
+        using var rig = new ProjectRig();
+        EditorProject project = rig.Project;
+        Entity centre = project.CreateEmpty(default, new Double3(0, 0, -5));
+        Entity right = project.CreateEmpty(default, new Double3(3, 0, -5));
+        Entity left = project.CreateEmpty(default, new Double3(-3, 0, -5));
+        Entity behind = project.CreateEmpty(default, new Double3(0, 0, 5));           // straight behind the camera: it would project onto the middle of the screen
+        Entity crate = project.CreateEmpty(default, new Double3(0, 0, -10));
+        rig.World.Set(crate, new ModelRenderer { Model = 1 });
+        Entity around = project.CreateEmpty(default, Double3.Zero);                   // the camera is inside this one's box
+        rig.World.Set(around, new ModelRenderer { Model = 2 });
+        Entity behindBox = project.CreateEmpty(default, new Double3(0, 0, 8));
+        rig.World.Set(behindBox, new ModelRenderer { Model = 1 });
+        project.World.Progress(0f);
+
+        var camera = new Camera { Position = Double3.Zero, Yaw = 0, Pitch = 0 };     // looking down -Z, 60 degrees
+        var size = new Vector2(800, 600);
+        static (Vector3, Vector3)? Bounds(uint model) => model == 1 ? (new Vector3(-1, -1, -1), new Vector3(1, 1, 1)) : model == 2 ? (new Vector3(-2, -2, -2), new Vector3(2, 2, 2)) : null;
+
+        // A rectangle round the middle of the screen: the entity ahead, and the box that surrounds the camera (its near part is in front of it), but not the ones at the sides or behind.
+        List<Entity> middle = Picking.InRect(rig.World, camera, size, new Vector2(380, 280), new Vector2(420, 320), Bounds);
+        Assert.Contains(centre, middle);
+        Assert.Contains(around, middle);
+        Assert.Contains(crate, middle);                                               // its projected box covers the middle
+        Assert.DoesNotContain(right, middle);
+        Assert.DoesNotContain(left, middle);
+        Assert.DoesNotContain(behind, middle);
+        Assert.DoesNotContain(behindBox, middle);
+
+        // The whole viewport: everything in front, and nothing behind.
+        List<Entity> all = Picking.InRect(rig.World, camera, size, Vector2.Zero, size, Bounds);
+        Assert.Equivalent(new[] { centre, right, left, crate, around }, all);
+
+        // Corners given in any order; a box on the right side picks the entity there and not the middle or left ones. (3 m across at 5 m ahead is about 711 pixels.)
+        List<Entity> side = Picking.InRect(rig.World, camera, size, new Vector2(760, 400), new Vector2(660, 200), Bounds);
+        Assert.Contains(right, side);
+        Assert.DoesNotContain(centre, side);
+        Assert.DoesNotContain(left, side);
+        Assert.DoesNotContain(crate, side);
+
+        // The rectangle is in viewport pixels from the top left: a box over the upper half holds nothing at eye level.
+        Assert.DoesNotContain(centre, Picking.InRect(rig.World, camera, size, new Vector2(0, 0), new Vector2(800, 100), Bounds));
+
+        // A model's box counts by its extent, not just its origin: a strip beside the crate's middle still touches it (its box reaches about 57 pixels from the middle).
+        List<Entity> strip = Picking.InRect(rig.World, camera, size, new Vector2(430, 0), new Vector2(445, 600), Bounds);
+        Assert.Contains(crate, strip);
+        Assert.DoesNotContain(centre, strip);
     }
 
     [Fact]

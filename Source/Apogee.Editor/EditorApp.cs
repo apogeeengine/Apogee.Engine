@@ -203,7 +203,7 @@ public static unsafe class EditorApp
             {
                 if (ctx.Gizmo.ShowHelpers)
                 {
-                    EditorHelpers.Draw(project.World, project.Session.Models, project.Session.DebugDraw, project.Selection, ctx.Camera.Target);
+                    EditorHelpers.Draw(project.World, project.Session.Models, project.Session.DebugDraw, project.Selected, ctx.Camera.Target);
                 }
 
                 if (project.IsPlaying && project.Session.Physics.DebugDraw)
@@ -396,7 +396,7 @@ public static unsafe class EditorApp
 
                 if (Gui.MenuItem("Delete", "Del", false, editing && project.Selection is not null))
                 {
-                    project.Delete(project.Selection!.Value);
+                    project.Delete(project.Selected.TopLevel());
                 }
 
                 Gui.EndMenu();

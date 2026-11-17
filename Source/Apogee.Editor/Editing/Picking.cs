@@ -133,6 +133,116 @@ public static class Picking
         return best;
     }
 
+    /// <summary>
+    /// The user entities that a box dragged on the viewport selects: those whose screen-space box intersects the rectangle from <paramref name="min"/> to <paramref name="max"/> (pixels from the viewport's
+    /// top left corner, <paramref name="viewportSize"/> its size) and that are in front of the camera. An entity with a <see cref="ModelRenderer"/> is its model's bounds (from <paramref name="boundsOf"/>:
+    /// null for a model that cannot be measured) projected, with the part behind the camera's near plane cut off; every other entity is its origin.
+    /// </summary>
+    public static List<Entity> InRect(World world, Camera camera, Vector2 viewportSize, Vector2 min, Vector2 max, Func<uint, (Vector3 Min, Vector3 Max)?> boundsOf)
+    {
+        var inside = new List<Entity>();
+        float aspect = viewportSize.X / MathF.Max(viewportSize.Y, 1f);
+        float tan = MathF.Tan(camera.VerticalFov * 0.5f);
+        Vector3 forward = camera.Forward;
+        Vector3 right = camera.Right;
+        Vector3 up = Vector3.Cross(right, forward);
+        float near = MathF.Max(camera.Near, 1e-3f);
+        var lo = new Vector2(MathF.Min(min.X, max.X), MathF.Min(min.Y, max.Y));
+        var hi = new Vector2(MathF.Max(min.X, max.X), MathF.Max(min.Y, max.Y));
+
+        // A point of the world as (x right, y up, z ahead) from the camera.
+        Vector3 ToCamera(Double3 point)
+        {
+            Vector3 relative = point.RelativeTo(camera.Position);
+            return new Vector3(Vector3.Dot(relative, right), Vector3.Dot(relative, up), Vector3.Dot(relative, forward));
+        }
+
+        Vector2 ToPixel(Vector3 p) => new(
+            ((p.X / (p.Z * tan * aspect) * 0.5f) + 0.5f) * viewportSize.X,
+            (0.5f - (p.Y / (p.Z * tan) * 0.5f)) * viewportSize.Y);
+
+        var points = new List<Vector2>(24);
+        Span<Vector3> corners = stackalloc Vector3[8];
+        foreach (Entity entity in world.UserEntities())
+        {
+            if (!world.TryGet(entity, out WorldTransform placed))
+            {
+                continue;
+            }
+
+            Trs placement = placed.ToTrs();
+            points.Clear();
+            if (world.TryGet(entity, out ModelRenderer renderer) && boundsOf(renderer.Model) is { } bounds)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    var local = new Vector3((i & 1) == 0 ? bounds.Min.X : bounds.Max.X, (i & 2) == 0 ? bounds.Min.Y : bounds.Max.Y, (i & 4) == 0 ? bounds.Min.Z : bounds.Max.Z);
+                    corners[i] = ToCamera(placement.TransformPoint(local));
+                }
+
+                // Each of the twelve edges (corners that differ in one bit), cut at the near plane.
+                for (int i = 0; i < 8; i++)
+                {
+                    for (int bit = 1; bit < 8; bit <<= 1)
+                    {
+                        int j = i | bit;
+                        if (j == i)
+                        {
+                            continue;
+                        }
+
+                        Vector3 a = corners[i];
+                        Vector3 b = corners[j];
+                        if (a.Z < near && b.Z < near)
+                        {
+                            continue;
+                        }
+
+                        if (a.Z < near)
+                        {
+                            a = Vector3.Lerp(a, b, (near - a.Z) / (b.Z - a.Z));
+                        }
+                        else if (b.Z < near)
+                        {
+                            b = Vector3.Lerp(a, b, (near - a.Z) / (b.Z - a.Z));
+                        }
+
+                        points.Add(ToPixel(a));
+                        points.Add(ToPixel(b));
+                    }
+                }
+            }
+            else
+            {
+                Vector3 origin = ToCamera(placement.Position);
+                if (origin.Z >= near)
+                {
+                    points.Add(ToPixel(origin));
+                }
+            }
+
+            if (points.Count == 0)
+            {
+                continue;
+            }
+
+            var boxMin = new Vector2(float.MaxValue);
+            var boxMax = new Vector2(float.MinValue);
+            foreach (Vector2 p in points)
+            {
+                boxMin = Vector2.Min(boxMin, p);
+                boxMax = Vector2.Max(boxMax, p);
+            }
+
+            if (boxMax.X >= lo.X && boxMin.X <= hi.X && boxMax.Y >= lo.Y && boxMin.Y <= hi.Y)
+            {
+                inside.Add(entity);
+            }
+        }
+
+        return inside;
+    }
+
     /// <summary>Where the ray meets the ground plane (y = 0), or null when it points away from it or along it: where a model dropped into the viewport lands.</summary>
     public static Double3? HitGround(PickRay ray)
     {

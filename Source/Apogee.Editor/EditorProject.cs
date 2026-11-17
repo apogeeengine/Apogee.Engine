@@ -9,6 +9,7 @@ using Apogee.Content.Import;
 using Apogee.Core.Logging;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
+using Apogee.Editor.Editing;
 using Apogee.Host;
 using Apogee.Host.Editing;
 using Apogee.Reflection;
@@ -35,7 +36,7 @@ public sealed class EditorProject : IDisposable
         UserFolder = userFolder;
         _worldRef = new WorldRef(() => Session?.World ?? throw new InvalidOperationException("The project has no session."));
         Session = Start(runScripts: false, scene: null, realAudio: false);
-        History.Changed += () => Dirty = true;
+        Selected = new Selection(() => World);
     }
 
     public string GameFolder { get; }
@@ -57,20 +58,31 @@ public sealed class EditorProject : IDisposable
 
     public EditHistory History { get; } = new();
 
-    /// <summary>The selected entity, or none. An entity that was destroyed by something else counts as none.</summary>
+    /// <summary>The selected entities (several can be), kept across Play and Stop. See <see cref="Editing.Selection"/>.</summary>
+    public Selection Selected { get; }
+
+    /// <summary>The active entity of <see cref="Selected"/> (the last one picked), or none. Setting it selects only that entity, or clears the selection. An entity that was destroyed counts as none.</summary>
     public Entity? Selection
     {
-        get => _selection is { } e && World.IsAlive(e) ? e : null;
-        set => _selection = value;
+        get => Selected.Active;
+        set
+        {
+            if (value is { } entity)
+            {
+                Selected.Set(entity);
+            }
+            else
+            {
+                Selected.Clear();
+            }
+        }
     }
-
-    private Entity? _selection;
 
     /// <summary>The virtual path of the scene file (<c>res://scenes/level.ascene</c>), or null for one that was never saved.</summary>
     public string? ScenePath { get; private set; }
 
-    /// <summary>The scene has changes that are not in its file.</summary>
-    public bool Dirty { get; private set; }
+    /// <summary>The scene has changes that are not in its file. Undoing back to the saved state clears it (see <see cref="EditHistory.IsAtSavePoint"/>).</summary>
+    public bool Dirty => !History.IsAtSavePoint;
 
     /// <summary>The last problem Play had (a script that failed): shown by the editor, cleared by the next Play.</summary>
     public string? PlayError { get; private set; }
@@ -96,9 +108,9 @@ public sealed class EditorProject : IDisposable
         }
 
         ScenePath = null;
-        Selection = null;
+        Selected.Clear();
         History.Clear();
-        Dirty = false;
+        History.MarkSaved();
     }
 
     /// <summary>Opens the scene file at <paramref name="path"/>, replacing the entities in the world.</summary>
@@ -117,9 +129,9 @@ public sealed class EditorProject : IDisposable
 
         World.LoadSceneFile(path);
         ScenePath = path;
-        Selection = null;
+        Selected.Clear();
         History.Clear();
-        Dirty = false;
+        History.MarkSaved();
         Log.Info("Editor", $"Opened {path}");
     }
 
@@ -145,7 +157,7 @@ public sealed class EditorProject : IDisposable
         StopIfPlaying();
         World.SaveSceneFile(path);
         ScenePath = path;
-        Dirty = false;
+        History.MarkSaved();
         Log.Info("Editor", $"Saved {path}");
     }
 
@@ -163,7 +175,7 @@ public sealed class EditorProject : IDisposable
         }
 
         PlayError = null;
-        Entity? selected = _selection;      // kept as it is, alive or not: the entity can be gone in the play world and back after Stop
+        // The selection is kept as ids, alive or not: an entity can be gone in the play world and back after Stop.
         _beforePlay = World.Snapshot();
         string scene = World.SaveScene();
         SessionReplacing?.Invoke();
@@ -178,7 +190,6 @@ public sealed class EditorProject : IDisposable
             Log.Error("Editor", $"Play failed: {e.Message}");
             Session = Start(runScripts: false, scene: null, realAudio: false);
             Session.World.Restore(_beforePlay);
-            _selection = selected;
             _beforePlay = null;
             SessionReplaced?.Invoke();
             return false;
@@ -186,7 +197,6 @@ public sealed class EditorProject : IDisposable
 
         IsPlaying = true;
         IsPaused = false;
-        _selection = selected;
         Log.Info("Editor", "Playing");
         SessionReplaced?.Invoke();
         return true;
@@ -200,7 +210,6 @@ public sealed class EditorProject : IDisposable
             return;
         }
 
-        Entity? selected = _selection;
         SessionReplacing?.Invoke();
         Session.Dispose();
         IsPlaying = false;
@@ -208,7 +217,6 @@ public sealed class EditorProject : IDisposable
         Session = Start(runScripts: false, scene: null, realAudio: false);
         Session.World.Restore(_beforePlay!);
         _beforePlay = null;
-        _selection = selected;
         Log.Info("Editor", "Stopped");
         SessionReplaced?.Invoke();
     }
@@ -328,14 +336,37 @@ public sealed class EditorProject : IDisposable
         return command.Entity;
     }
 
-    public void Delete(Entity entity)
+    public void Delete(Entity entity) => Delete([entity]);
+
+    /// <summary>
+    /// Deletes <paramref name="entities"/> with their branches as one step ("Delete 3 entities"; a single one is "Delete Cube"). An entity whose ancestor is in the list goes with that ancestor, once. What
+    /// was deleted leaves the selection.
+    /// </summary>
+    public void Delete(IReadOnlyList<Entity> entities)
     {
-        if (Selection is { } selected && World.Subtree(entity).Contains(selected))
+        IReadOnlyList<Entity> top = Editing.Selection.TopLevelOf(World, entities);
+        if (top.Count == 0)
         {
-            Selection = null;
+            return;
         }
 
-        History.Execute(new DestroyEntityCommand(_worldRef, entity));
+        foreach (Entity root in top)
+        {
+            foreach (Entity gone in World.Subtree(root))
+            {
+                Selected.Remove(gone);
+            }
+        }
+
+        if (top.Count == 1)
+        {
+            History.Execute(new DestroyEntityCommand(_worldRef, top[0]));
+        }
+        else
+        {
+            History.Execute(new CompositeCommand($"Delete {top.Count} entities", [.. top.Select(e => new DestroyEntityCommand(_worldRef, e))]));
+        }
+
         History.Seal();
     }
 
@@ -351,24 +382,54 @@ public sealed class EditorProject : IDisposable
         return true;
     }
 
-    public bool Reparent(Entity entity, Entity parent)
+    public bool Reparent(Entity entity, Entity parent) => Reparent([entity], parent);
+
+    /// <summary>
+    /// Makes <paramref name="entities"/> children of <paramref name="parent"/> (none: roots) as one step. An entity under another one of the list moves with it, an entity that cannot go there (under
+    /// itself) or is there already is left out; false when none moves. Names that a sibling under the new parent has (or that another moved entity just took) are made unique in the same step.
+    /// </summary>
+    public bool Reparent(IReadOnlyList<Entity> entities, Entity parent)
     {
-        if (!ReparentCommand.IsAllowed(World, entity, parent) || World.GetParent(entity) == parent)
+        IEnumerable<Entity> siblings = parent.IsNull ? World.Roots() : World.Children(parent);
+        HashSet<string?> taken = [.. siblings.Select(World.GetName)];
+        var steps = new List<IEditCommand>();
+        int moved = 0;
+        string? firstName = null;
+        foreach (Entity entity in Editing.Selection.TopLevelOf(World, entities))
+        {
+            if (!ReparentCommand.IsAllowed(World, entity, parent) || World.GetParent(entity) == parent)
+            {
+                continue;
+            }
+
+            // A name that a sibling under the new parent already has is made unique first.
+            string? name = World.GetName(entity);
+            if (name is not null && taken.Contains(name))
+            {
+                int n = 2;
+                while (taken.Contains($"{name} {n}"))
+                {
+                    n++;
+                }
+
+                steps.Add(new RenameCommand(_worldRef, entity, $"{name} {n}"));
+                name = $"{name} {n}";
+            }
+
+            taken.Add(name);
+            steps.Add(new ReparentCommand(_worldRef, entity, parent));
+            if (moved++ == 0)
+            {
+                firstName = World.GetName(entity);
+            }
+        }
+
+        if (moved == 0)
         {
             return false;
         }
 
-        // A name that a sibling under the new parent already has is made unique first, in the same step.
-        string? name = World.GetName(entity);
-        IEnumerable<Entity> siblings = parent.IsNull ? World.Roots() : World.Children(parent);
-        var steps = new List<IEditCommand>();
-        if (name is not null && siblings.Any(s => s != entity && World.GetName(s) == name))
-        {
-            steps.Add(new RenameCommand(_worldRef, entity, UniqueName(name, parent)));
-        }
-
-        steps.Add(new ReparentCommand(_worldRef, entity, parent));
-        History.Execute(new CompositeCommand("Move " + (name ?? "entity"), steps));
+        History.Execute(new CompositeCommand(moved == 1 ? "Move " + (firstName ?? "entity") : $"Move {moved} entities", steps));
         History.Seal();
         return true;
     }

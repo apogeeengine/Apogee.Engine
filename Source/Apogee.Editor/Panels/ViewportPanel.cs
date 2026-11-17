@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Apogee.Core.Numerics;
 using Apogee.DevTools;
@@ -21,6 +22,7 @@ public sealed unsafe class ViewportPanel
 {
     private bool _gizmoWasUsing;
     private Vector2 _pressAt;
+    private Vector2? _boxFrom;      // where a selection box was started, while the left button is held
 
     /// <summary>True when the panel asked for an image this frame, so the app records the scene into it.</summary>
     public bool Wanted { get; private set; }
@@ -249,6 +251,70 @@ public sealed unsafe class ViewportPanel
         return busy || Gizmo.IsUsingViewManipulate() || Gizmo.IsViewManipulateHovered();
     }
 
+    /// <summary>
+    /// A selection box dragged from empty space: drawn while the left button is down (Escape or another button cancels it), and on release it selects what <see cref="Picking.InRect"/> finds (Ctrl toggles
+    /// those, Shift adds them, otherwise they replace the selection). A press that did not move is a click, which <see cref="Navigate"/> handles.
+    /// </summary>
+    private void DrawSelectionBox(EditorContext ctx, ViewportRenderer renderer, Vector2 min, Vector2 size)
+    {
+        if (_boxFrom is not { } from)
+        {
+            return;
+        }
+
+        bool cancelled = Gui.MouseDown(ImGuiMouseButton.Right) || Gui.MouseDown(ImGuiMouseButton.Middle) || Gui.KeyPressed(ImGuiKey.ImGuiKeyEscape);
+        bool released = Gui.MouseReleased(ImGuiMouseButton.Left);
+        if (cancelled || (!released && !Gui.MouseDown(ImGuiMouseButton.Left)))
+        {
+            _boxFrom = null;
+            return;
+        }
+
+        Vector2 to = Vector2.Clamp(Gui.Mouse, min, min + size);
+        if (Vector2.Distance(to, from) < 4f)
+        {
+            if (released)
+            {
+                _boxFrom = null;
+            }
+
+            return;
+        }
+
+        Vector2 low = Vector2.Min(from, to);
+        Vector2 high = Vector2.Max(from, to);
+        if (!released)
+        {
+            ImDrawList* draw = ImGui.GetWindowDrawList();
+            ImGui.ImDrawListAddRectFilled(draw, Gui.V(low), Gui.V(high), 0x3028AAFF, 0f, ImDrawFlags.None);      // ImGui colours are 0xAABBGGRR: orange
+            ImGui.ImDrawListAddRect(draw, Gui.V(low), Gui.V(high), 0xFF28AAFF, 0f, 1f, ImDrawFlags.None);
+            return;
+        }
+
+        _boxFrom = null;
+        ModelLibrary models = ctx.Project.Session.Models;
+        List<Entity> inside = Picking.InRect(ctx.Project.World, renderer.Camera, size, low - min, high - min, id => models.BoundsOf(id));
+        Selection selection = ctx.Project.Selected;
+        if (Gui.Ctrl)
+        {
+            foreach (Entity entity in inside)
+            {
+                selection.Toggle(entity);
+            }
+        }
+        else if (Gui.Shift)
+        {
+            foreach (Entity entity in inside)
+            {
+                selection.Add(entity);
+            }
+        }
+        else
+        {
+            selection.Set(inside);
+        }
+    }
+
     private void Navigate(EditorContext ctx, ViewportRenderer renderer, bool hovered, bool gizmoBusy, Vector2 size, Vector2 min, float dt)
     {
         EditorCamera camera = ctx.Camera;
@@ -286,17 +352,50 @@ public sealed unsafe class ViewportPanel
                 camera.Zoom(io->MouseWheel);
             }
 
-            // A click that did not drag picks what is under the pointer.
+            // A click that did not drag picks what is under the pointer: Ctrl toggles it, Shift adds it, and a click on nothing clears the selection (unless one of them is held).
             if (Gui.MouseReleased(ImGuiMouseButton.Left) && Vector2.Distance(Gui.Mouse, _pressAt) < 4f)
             {
                 PickRay ray = Picking.RayThrough(renderer.Camera, Gui.Mouse - min, size);
                 ModelLibrary models = ctx.Project.Session.Models;
                 Entity? hit = Picking.Pick(ctx.Project.World, ray, id => models.BoundsOf(id));
-                if (hit is not null || !Gui.Ctrl)
+                Selection selection = ctx.Project.Selected;
+                if (hit is { } picked)
                 {
-                    ctx.Project.Selection = hit;
+                    if (Gui.Ctrl)
+                    {
+                        selection.Toggle(picked);
+                    }
+                    else if (Gui.Shift)
+                    {
+                        selection.Add(picked);
+                    }
+                    else
+                    {
+                        selection.Set(picked);
+                    }
+                }
+                else if (!Gui.Ctrl && !Gui.Shift)
+                {
+                    selection.Clear();
                 }
             }
+
+            // A left press on empty space (no entity, not the gizmo) starts a selection box.
+            if (Gui.MouseClicked(ImGuiMouseButton.Left) && !gizmoBusy && !rmb)
+            {
+                PickRay ray = Picking.RayThrough(renderer.Camera, Gui.Mouse - min, size);
+                ModelLibrary models = ctx.Project.Session.Models;
+                _boxFrom = Picking.Pick(ctx.Project.World, ray, id => models.BoundsOf(id)) is null ? Gui.Mouse : null;
+            }
+        }
+
+        bool boxing = _boxFrom is not null;
+        DrawSelectionBox(ctx, renderer, min, size);
+
+        // Escape cancels a box being dragged; otherwise it clears the selection.
+        if (ctx.ViewportFocused && !rmb && !ctx.Host.WantsKeyboard && !boxing && Gui.KeyPressed(ImGuiKey.ImGuiKeyEscape))
+        {
+            ctx.Project.Selected.Clear();
         }
 
         if (ctx.ViewportFocused && !rmb && !ctx.Host.WantsKeyboard && !ctx.Project.IsPlaying)

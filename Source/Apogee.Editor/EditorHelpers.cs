@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using Apogee.Editor.Editing;
 using Apogee.Core.Graphics;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
@@ -12,11 +14,15 @@ namespace Apogee.Editor;
 public static class EditorHelpers
 {
     private static readonly uint GridColor = DebugColor.Rgba(90, 90, 100, 120);
-    private static readonly uint SelectionColor = DebugColor.Rgba(255, 170, 40);
+    private static readonly uint SelectionColor = DebugColor.Rgba(200, 120, 30);
+    private static readonly uint ActiveColor = DebugColor.Rgba(255, 200, 70);
 
-    public static void Draw(World world, ModelLibrary models, DebugDraw debug, Entity? selection, Double3 around)
+    /// <summary>Draws the helpers: every selected entity gets its bounds, the active one in a brighter colour.</summary>
+    public static void Draw(World world, ModelLibrary models, DebugDraw debug, Selection selection, Double3 around)
     {
         DrawGrid(debug, around);
+        HashSet<Entity> selected = [.. selection.Items];
+        Entity? active = selection.Active;
         foreach (Entity entity in world.UserEntities())
         {
             if (!world.TryGet(entity, out WorldTransform placed))
@@ -25,7 +31,6 @@ public static class EditorHelpers
             }
 
             Trs placement = placed.ToTrs();
-            bool selected = selection == entity;
             if (world.TryGet(entity, out Light light))
             {
                 uint color = DebugColor.FromVector(new Vector4(light.Color, 1f));
@@ -45,9 +50,9 @@ public static class EditorHelpers
                 DrawCameraMark(debug, placement, world.Has<MainCamera>(entity) ? DebugColor.Cyan : DebugColor.Gray);
             }
 
-            if (selected)
+            if (selected.Contains(entity))
             {
-                DrawSelection(world, models, debug, entity, placement);
+                DrawSelection(world, models, debug, entity, placement, active == entity ? ActiveColor : SelectionColor);
             }
         }
     }
@@ -85,17 +90,17 @@ public static class EditorHelpers
         debug.Line(d, a, color);
     }
 
-    private static void DrawSelection(World world, ModelLibrary models, DebugDraw debug, Entity entity, Trs placement)
+    private static void DrawSelection(World world, ModelLibrary models, DebugDraw debug, Entity entity, Trs placement, uint color)
     {
         if (world.TryGet(entity, out ModelRenderer renderer) && models.BoundsOf(renderer.Model) is { } bounds)
         {
             Vector3 center = (bounds.Min + bounds.Max) * 0.5f;
             Vector3 half = (bounds.Max - bounds.Min) * 0.5f * placement.Scale;
-            debug.Box(placement.TransformPoint(center), half, placement.Rotation, SelectionColor);
+            debug.Box(placement.TransformPoint(center), half, placement.Rotation, color);
         }
         else
         {
-            debug.Sphere(placement.Position, Apogee.Editor.Editing.Picking.MarkerRadius, SelectionColor, 16);
+            debug.Sphere(placement.Position, Apogee.Editor.Editing.Picking.MarkerRadius, color, 16);
         }
     }
 }

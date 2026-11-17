@@ -49,7 +49,7 @@ public sealed class ViewportTests
                     Frame frame = loop.BeginFrame()!;
                     uint index = viewport.Acquire(frame, 320, 200);
                     Assert.NotEqual(0u, index);
-                    EditorHelpers.Draw(project.World, project.Session.Models, project.Session.DebugDraw, project.Selection, camera.Target);
+                    EditorHelpers.Draw(project.World, project.Session.Models, project.Session.DebugDraw, project.Selected, camera.Target);
                     Assert.False(project.Session.DebugDraw.IsEmpty);
                     viewport.Render(frame, camera, playing: false, preferGameCamera: true, density: 1f);
                     loop.EndFrame(frame);

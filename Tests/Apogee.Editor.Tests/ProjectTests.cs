@@ -2,11 +2,13 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Apogee.Content.Assets;
 using Apogee.Core.Assets;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
 using Apogee.Editor.Editing;
+using Apogee.Host.Editing;
 using Apogee.Native.Tests;
 using Apogee.Reflection;
 using Apogee.Rendering;
@@ -249,6 +251,144 @@ public sealed class ProjectTests
         Assert.True(rig.World.IsAlive(a));                               // the scene is as it was
         Assert.Equal(a, project.Selection);
         project.CreateEmpty();                                           // and editing works
+    }
+
+    [Fact]
+    public void DeletingSeveralIsOneStep()
+    {
+        using var rig = new ProjectRig();
+        EditorProject project = rig.Project;
+        Entity a = project.CreateEmpty();
+        Entity child = project.CreateEmpty(a);
+        Entity b = project.CreateEmpty();
+        Entity keep = project.CreateEmpty();
+        int steps = project.History.Steps.Count;
+
+        project.Selected.Set([a, child, b]);
+        project.Delete(project.Selected.TopLevel());                      // the child rides with a: two branches, three entities
+
+        Assert.False(rig.World.IsAlive(a));
+        Assert.False(rig.World.IsAlive(child));
+        Assert.False(rig.World.IsAlive(b));
+        Assert.True(rig.World.IsAlive(keep));
+        Assert.Equal(steps + 1, project.History.Steps.Count);
+        Assert.Equal("Delete 2 entities", project.History.UndoName);
+        Assert.True(project.Selected.IsEmpty);                            // what was deleted leaves the selection
+
+        project.History.Undo();                                           // one undo brings every one back, under the same ids and parents
+        Assert.True(rig.World.IsAlive(a));
+        Assert.True(rig.World.IsAlive(child));
+        Assert.True(rig.World.IsAlive(b));
+        Assert.Equal(a, rig.World.GetParent(child));
+        Assert.True(project.Selected.IsEmpty);                            // the selection is not part of the undo
+        Assert.Equal(steps, project.History.Steps.Count);
+
+        project.Delete(child);                                            // one entity keeps its own name
+        Assert.Equal("Delete Empty", project.History.UndoName);
+        project.Delete([]);                                               // nothing: no step
+        Assert.Equal(steps + 1, project.History.Steps.Count);
+    }
+
+    [Fact]
+    public void ReparentingSeveralIsOneStepAndKeepsNamesUnique()
+    {
+        using var rig = new ProjectRig();
+        EditorProject project = rig.Project;
+        Entity target = project.CreateEmpty();
+        Entity other = project.CreateEmpty();
+        Entity x = project.CreateEmpty();
+        Entity y = project.CreateEmpty(other);
+        project.Rename(target, "Target");
+        project.Rename(other, "Other");
+        project.Rename(x, "Item");
+        project.Rename(y, "Item");
+        int steps = project.History.Steps.Count;
+
+        Assert.True(project.Reparent([x, y], target));                    // two entities with the same name end up under one parent
+        Assert.Equal(steps + 1, project.History.Steps.Count);
+        Assert.Equal("Move 2 entities", project.History.UndoName);
+        Assert.Equal(target, rig.World.GetParent(x));
+        Assert.Equal(target, rig.World.GetParent(y));
+        Assert.Equal(["Item", "Item 2"], rig.World.Children(target).Select(rig.World.GetName).Order());
+        Assert.False(project.Reparent([x, y], target));                   // already there: nothing to do
+        Assert.False(project.Reparent([target], target));                 // not under itself
+
+        project.History.Undo();
+        Assert.True(rig.World.GetParent(x).IsNull);
+        Assert.Equal(other, rig.World.GetParent(y));
+        Assert.Equal("Item", rig.World.GetName(y));                       // and the names as they were
+        Assert.Equal("Item", rig.World.GetName(x));
+    }
+
+    [Fact]
+    public void SeveralSelectedEntitiesSurvivePlayAndStop()
+    {
+        using var rig = new ProjectRig();
+        EditorProject project = rig.Project;
+        Entity a = project.CreateEmpty();
+        Entity b = project.CreateEmpty();
+        Entity c = project.CreateEmpty();
+        project.Selected.Set([a, c, b], active: c);
+
+        Assert.True(project.Play(), project.PlayError);
+        project.Stop();                                                   // the editing world is back under the same ids
+
+        Assert.Equal([a, c, b], project.Selected.Items);
+        Assert.Equal(c, project.Selection);
+        project.Selected.Remove(c);                                       // and the selection is still editable
+        Assert.Equal(b, project.Selection);
+    }
+
+    [Fact]
+    public void UndoingBackToTheSavedSceneIsNotDirty()
+    {
+        using var rig = new ProjectRig();
+        EditorProject project = rig.Project;
+        Assert.False(project.Dirty);                                      // nothing yet
+
+        Entity a = project.CreateEmpty();
+        Assert.True(project.Dirty);
+        project.SaveSceneAs("res://scenes/level");
+        Assert.False(project.Dirty);
+
+        project.CreateEmpty();
+        Assert.True(project.Dirty);
+        project.History.Undo();
+        Assert.False(project.Dirty);                                      // back at the saved state
+        project.History.Undo();
+        Assert.True(project.Dirty);                                       // before it
+        project.History.Redo();
+        Assert.False(project.Dirty);
+        project.History.Redo();
+        Assert.True(project.Dirty);
+        project.History.Undo();
+
+        // A drag after the save is one step that merges within itself and leaves the saved state when it starts.
+        Assert.False(project.Dirty);
+        Entity transform = rig.World.Component<Transform>();
+        for (int i = 1; i <= 3; i++)
+        {
+            Transform moved = Transform.At(new Double3(i, 0, 0));
+            byte[] bytes = MemoryMarshal.AsBytes(new ReadOnlySpan<Transform>(in moved)).ToArray();
+            project.History.Execute(SetComponentCommand.Create(project.WorldRef, a, transform, bytes, "Move")!);
+            Assert.True(project.Dirty);
+        }
+
+        project.History.Seal();
+        project.History.Undo();                                           // the whole drag in one undo
+        Assert.False(project.Dirty);
+
+        // Saving again moves the save point; a new or opened scene starts clean whatever the history held.
+        project.CreateEmpty();
+        Assert.True(project.SaveScene());
+        Assert.False(project.Dirty);
+        project.History.Undo();
+        Assert.True(project.Dirty);
+        project.NewScene();
+        Assert.False(project.Dirty);
+        project.CreateEmpty();
+        project.OpenScene("res://scenes/level.ascene");
+        Assert.False(project.Dirty);
     }
 
     [Fact]

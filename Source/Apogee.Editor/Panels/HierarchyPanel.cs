@@ -1,17 +1,28 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using Apogee.DevTools;
 using Apogee.Ecs;
+using Apogee.Editor.Editing;
 using Apogee.Native.CImGui;
 using Apogee.Reflection;
 
 namespace Apogee.Editor.Panels;
 
-/// <summary>The scene as a tree: select, rename, create, duplicate, delete, and drag an entity onto another to make it a child (or onto the empty space below to make it a root).</summary>
-public sealed class HierarchyPanel
+/// <summary>
+/// The scene as a tree: select (click, Ctrl-click to toggle, Shift-click for a range, drag a box on the empty space), rename, create, duplicate, delete, and drag the selected entities onto another to
+/// make them children (or onto the empty space below to make them roots). ImGui's multi-select does the clicking and the box; what it asks for is applied to the project's selection by
+/// <see cref="SelectionRequests"/>, against the list of nodes that are visible (a collapsed branch is skipped by a range).
+/// </summary>
+public sealed unsafe class HierarchyPanel
 {
     private Entity? _renaming;
     private string _renameText = "";
     private bool _focusRename;
+    private List<Entity> _visible = [];       // the nodes drawn this frame, top to bottom: what a multi-select request's item indexes mean
+    private List<Entity> _drawnBefore = [];   // and last frame's, which the requests ImGui makes at the start of a frame refer to
+    private Entity? _clicked;
 
     public void Draw(EditorContext ctx)
     {
@@ -46,19 +57,33 @@ public sealed class HierarchyPanel
 
         Ui.Separator();
 
+        Selection selection = project.Selected;
+        ImGuiMultiSelectIO* io = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.BoxSelect1d | ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.ClearOnClickVoid, selection.Count, _drawnBefore.Count);
+        ApplyRequests(io, selection, _drawnBefore);
+        _visible.Clear();
+        _clicked = null;
         foreach (Entity root in world.Roots())
         {
             DrawNode(ctx, root, locked);
         }
 
-        // Empty space: a drop here makes an entity a root, a click clears the selection, a right click creates.
+        io = ImGui.EndMultiSelect();
+        ApplyRequests(io, selection, _visible);
+        if (_clicked is { } clicked)
+        {
+            selection.SetActive(clicked);
+        }
+
+        (_visible, _drawnBefore) = (_drawnBefore, _visible);
+
+        // Empty space: a drop here makes the dragged entities roots, a click clears the selection (the multi-select does), a drag draws the selection box, a right click creates.
         EmptySpace(ctx, locked);
 
         if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !ctx.Host.WantsKeyboard && !locked && project.Selection is { } selected)
         {
             if (Gui.KeyPressed(ImGuiKey.ImGuiKeyDelete))
             {
-                project.Delete(selected);
+                project.Delete(selection.TopLevel());
             }
             else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyD))
             {
@@ -73,31 +98,80 @@ public sealed class HierarchyPanel
         Ui.End();
     }
 
+    /// <summary>
+    /// Translates what ImGui's multi-select asked for (select all or none, select or deselect a range of items) into <see cref="SelectionRequest"/>s and applies them. <paramref name="visible"/> is the list the
+    /// item indexes were numbered from.
+    /// </summary>
+    private static void ApplyRequests(ImGuiMultiSelectIO* io, Selection selection, IReadOnlyList<Entity> visible)
+    {
+        var requests = new List<SelectionRequest>(io->Requests.Size);
+        for (int i = 0; i < io->Requests.Size; i++)
+        {
+            ImGuiSelectionRequest request = io->Requests.Data[i];
+            bool selected = request.Selected == true;
+            if (request.Type == ImGuiSelectionRequestType.SetAll)
+            {
+                requests.Add(SelectionRequest.SetAll(selected));
+            }
+            else if (request.Type == ImGuiSelectionRequestType.SetRange)
+            {
+                requests.Add(SelectionRequest.SetRange(selected, (int)request.RangeFirstItem, (int)request.RangeLastItem, request.RangeDirection));
+            }
+        }
+
+        SelectionRequests.Apply(selection, visible, requests);
+    }
+
+    /// <summary>The entities a drag carried: one under "ENTITY", several under "ENTITIES" (their ids in a row). Null when nothing was dropped.</summary>
+    private static List<Entity>? AcceptEntities()
+    {
+        if (Gui.AcceptId("ENTITY") is { } one)
+        {
+            return [new Entity(one)];
+        }
+
+        if (Gui.AcceptPayload("ENTITIES") is { } bytes)
+        {
+            var entities = new List<Entity>(bytes.Length / 8);
+            for (int i = 0; i + 8 <= bytes.Length; i += 8)
+            {
+                entities.Add(new Entity(BitConverter.ToUInt64(bytes, i)));
+            }
+
+            return entities;
+        }
+
+        return null;
+    }
+
     private static void EmptySpace(EditorContext ctx, bool locked)
     {
-        var size = Gui.Available;
+        // The space below the nodes is not an item (ImGui starts the selection box from empty space, and an item would be in the way): the drop target is a rectangle.
+        Vector2 size = Gui.Available;
         if (size.Y < 8)
         {
             size.Y = 8;
         }
 
-        Gui.InvisibleButton("##empty", size);
-        if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+        Vector2 min = Gui.CursorScreen;
+        var area = new ImRect { Min = Gui.V(min), Max = Gui.V(min + size) };
+        uint dropId;
+        fixed (byte* name = Apogee.Interop.Utf8.ToZeroTerminated("##empty_drop"))
         {
-            ctx.Project.Selection = null;
+            dropId = ImGui.GetIDStr(name);
         }
 
-        if (!locked && Gui.BeginDropTarget())
+        if (!locked && ImGui.BeginDragDropTargetCustom(area, dropId))
         {
-            if (Gui.AcceptId("ENTITY") is { } id)
+            if (AcceptEntities() is { } dropped)
             {
-                ctx.Project.Reparent(new Entity(id), default);
+                ctx.Project.Reparent(dropped, default);
             }
 
             Gui.EndDropTarget();
         }
 
-        if (!locked && Gui.BeginContextMenu("empty_menu", onItem: true))
+        if (!locked && Gui.BeginContextMenu("empty_menu", onItem: false))
         {
             CreateMenu(ctx.Project, default);
             Gui.EndPopup();
@@ -146,7 +220,8 @@ public sealed class HierarchyPanel
             flags |= ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen;
         }
 
-        if (project.Selection == entity)
+        Selection selection = project.Selected;
+        if (selection.Contains(entity))
         {
             flags |= ImGuiTreeNodeFlags.Selected;
         }
@@ -175,10 +250,12 @@ public sealed class HierarchyPanel
         }
         else
         {
+            ImGui.SetNextItemSelectionUserData(_visible.Count);     // the index in the list of visible nodes, which is what a request names
+            _visible.Add(entity);
             open = Gui.TreeNode(name, flags);
             if (ImGui.IsItemClicked(ImGuiMouseButton.Left) && !ImGui.IsItemToggledOpen())
             {
-                project.Selection = entity;
+                _clicked = entity;
             }
 
             if (!locked && ImGui.IsItemHovered(ImGuiHoveredFlags.None) && Gui.MouseClicked(ImGuiMouseButton.Left) == false && ImGui.IsMouseDoubleClickedNil(ImGuiMouseButton.Left))
@@ -188,16 +265,33 @@ public sealed class HierarchyPanel
 
             if (!locked && Gui.BeginDragSource())
             {
-                Gui.PayloadId("ENTITY", entity.Id);
-                Ui.Text(name);
+                // Dragging a selected node carries the whole selection (what has no selected ancestor); an unselected one goes alone.
+                IReadOnlyList<Entity> carried = selection.Contains(entity) ? selection.TopLevel() : [entity];
+                if (carried.Count == 1)
+                {
+                    Gui.PayloadId("ENTITY", carried[0].Id);
+                    Ui.Text(name);
+                }
+                else
+                {
+                    byte[] ids = new byte[carried.Count * 8];
+                    for (int i = 0; i < carried.Count; i++)
+                    {
+                        BitConverter.TryWriteBytes(ids.AsSpan(i * 8), carried[i].Id);
+                    }
+
+                    Gui.SetPayload("ENTITIES", ids);
+                    Ui.Text($"{carried.Count} entities");
+                }
+
                 Gui.EndDragSource();
             }
 
             if (!locked && Gui.BeginDropTarget())
             {
-                if (Gui.AcceptId("ENTITY") is { } id)
+                if (AcceptEntities() is { } dropped)
                 {
-                    project.Reparent(new Entity(id), entity);
+                    project.Reparent(dropped, entity);
                 }
 
                 Gui.EndDropTarget();
@@ -205,7 +299,11 @@ public sealed class HierarchyPanel
 
             if (!locked && Gui.BeginContextMenu())
             {
-                project.Selection = entity;
+                if (!selection.Contains(entity))
+                {
+                    selection.Set(entity);
+                }
+
                 if (Gui.MenuItem("Rename", "F2"))
                 {
                     BeginRename(world, entity);
@@ -216,9 +314,9 @@ public sealed class HierarchyPanel
                     project.Duplicate(entity);
                 }
 
-                if (Gui.MenuItem("Delete", "Del"))
+                if (Gui.MenuItem(selection.Count > 1 ? $"Delete {selection.Count} entities" : "Delete", "Del"))
                 {
-                    project.Delete(entity);
+                    project.Delete(selection.TopLevel());
                 }
 
                 Ui.Separator();
