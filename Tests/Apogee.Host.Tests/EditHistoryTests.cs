@@ -351,4 +351,73 @@ public sealed class EditHistoryTests : IDisposable
         _history.Undo();
         Assert.Equal(5, _world.Get<Hp>(e).Value);              // the command still points at the same entity
     }
+
+    private Entity[] Three() => [Make("a", at: new Double3(1, 0, 0)), Make("b", at: new Double3(2, 0, 0)), Make("c", at: new Double3(3, 0, 0))];
+
+    private SetTransformsCommand? Shift(Entity[] entities, double by, string name = "Move 3 entities") =>
+        SetTransformsCommand.Create(_world, entities.Select(e => (e, Transform.At(new Double3(_world.Get<Transform>(e).Position.X + by, 0, 0)))), name);
+
+    [Fact]
+    public void TransformsOfOneDragAreOneStep()
+    {
+        Entity[] drag = Three();
+        double[] start = [1, 2, 3];
+
+        // Five frames of one drag, each a command over the same three entities: one step, which undoes all three to where they started and redoes to where the last frame left them.
+        for (int frame = 1; frame <= 5; frame++)
+        {
+            _history.Execute(Shift(drag, 0.5)!);
+        }
+
+        Assert.Equal(["Move 3 entities"], _history.Steps);
+        Assert.Equal([3.5, 4.5, 5.5], drag.Select(e => _world.Get<Transform>(e).Position.X));
+
+        _history.Undo();
+        Assert.Equal(start, drag.Select(e => _world.Get<Transform>(e).Position.X));
+        Assert.False(_history.CanUndo);
+
+        _history.Redo();
+        Assert.Equal([3.5, 4.5, 5.5], drag.Select(e => _world.Get<Transform>(e).Position.X));
+    }
+
+    [Fact]
+    public void TransformsMergeOnlyWithinOneGestureOverTheSameEntities()
+    {
+        Entity[] all = Three();
+
+        _history.Execute(Shift(all, 1)!);
+        _history.Seal();                                           // the drag ended: the next one is a step of its own
+        _history.Execute(Shift(all, 1)!);
+        Assert.Equal(2, _history.Steps.Count);
+
+        _history.Seal();
+        _history.Execute(Shift(all[..2], 1)!);                     // another set of entities
+        _history.Execute(Shift(all, 1)!);
+        Assert.Equal(4, _history.Steps.Count);
+
+        // The entities in another order are the same set.
+        _history.Seal();
+        _history.Execute(Shift(all, 1)!);
+        _history.Execute(Shift([all[2], all[0], all[1]], 1)!);
+        Assert.Equal(5, _history.Steps.Count);
+        Assert.Equal([7.0, 8.0, 8.0], all.Select(e => _world.Get<Transform>(e).Position.X));
+    }
+
+    [Fact]
+    public void ATransformsCommandForWhatIsAlreadyThereIsNothingAndADeadEntityIsSkipped()
+    {
+        Entity[] all = Three();
+        Assert.Null(SetTransformsCommand.Create(_world, all.Select(e => (e, _world.Get<Transform>(e))), "Move"));
+
+        Entity noTransform = _world.CreateEntity("bare");
+        Assert.Null(SetTransformsCommand.Create(_world, [(noTransform, Transform.Identity)], "Move"));      // nothing to set a Transform on
+
+        SetTransformsCommand command = Shift(all, 10)!;
+        _history.Execute(command);
+        _world.Destroy(all[1]);
+        _history.Undo();                                           // the dead one is left alone, the others come back
+        Assert.False(_world.IsAlive(all[1]));
+        Assert.Equal(1, _world.Get<Transform>(all[0]).Position.X);
+        Assert.Equal(3, _world.Get<Transform>(all[2]).Position.X);
+    }
 }
