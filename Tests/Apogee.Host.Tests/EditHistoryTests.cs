@@ -239,6 +239,98 @@ public sealed class EditHistoryTests : IDisposable
     }
 
     [Fact]
+    public void TheSavePointFollowsUndoRedoAndMerges()
+    {
+        Entity e = Make("e");
+        Entity hp = _world.Component<Hp>();
+        _world.Set(e, new Hp { Value = 1 });
+        void Edit(int value, bool seal = true)
+        {
+            _history.Execute(SetComponentCommand.Create(_world, e, hp, Bytes(new Hp { Value = value }), "Set Hp")!);
+            if (seal)
+            {
+                _history.Seal();
+            }
+        }
+
+        Assert.True(_history.IsAtSavePoint);                    // a new history is at its save point
+        Edit(2);
+        Assert.False(_history.IsAtSavePoint);
+        _history.MarkSaved();
+        Assert.True(_history.IsAtSavePoint);
+
+        Edit(3);
+        Assert.False(_history.IsAtSavePoint);
+        _history.Undo();
+        Assert.True(_history.IsAtSavePoint);                    // back at the saved state: clean
+        _history.Undo();
+        Assert.False(_history.IsAtSavePoint);                   // before it: modified again
+        _history.Redo();
+        Assert.True(_history.IsAtSavePoint);
+        _history.Redo();
+        Assert.False(_history.IsAtSavePoint);
+
+        // A drag after the save is a step of its own (the save ended the gesture) and merges only within itself.
+        _history.Undo();                                        // at the save point again
+        Edit(10, seal: false);
+        Edit(11, seal: false);
+        Edit(12, seal: false);
+        Assert.Equal(2, _history.Steps.Count);                  // the saved edit and the drag
+        Assert.False(_history.IsAtSavePoint);                   // a merge made a new state, not the saved one
+        _history.Undo();
+        Assert.True(_history.IsAtSavePoint);
+        Assert.Equal(2, _world.Get<Hp>(e).Value);
+
+        // A new edit after undoing from the save point cannot come back to it: the saved state's redo list is gone.
+        _history.Undo();
+        Edit(7);
+        _history.Redo();
+        Assert.False(_history.IsAtSavePoint);
+        _history.Undo();
+        Assert.False(_history.IsAtSavePoint);
+    }
+
+    [Fact]
+    public void ClearKeepsTheSavePointWhereItWasAndAnOldSavePointDropsOutOfTheLimit()
+    {
+        Entity e = Make("e");
+        _history.Execute(new RenameCommand(_world, e, "a"));
+        _history.Seal();
+        _history.Clear();                                       // modified, and the history forgot how to go back
+        Assert.False(_history.IsAtSavePoint);
+        _history.MarkSaved();
+        Assert.True(_history.IsAtSavePoint);
+        _history.Clear();                                       // saved, and still saved
+        Assert.True(_history.IsAtSavePoint);
+
+        _history.Limit = 3;
+        _history.MarkSaved();
+        for (int i = 0; i < 3; i++)
+        {
+            _history.Execute(new RenameCommand(_world, e, $"n{i}"));
+            _history.Seal();
+        }
+
+        while (_history.Undo())
+        {
+        }
+
+        Assert.True(_history.IsAtSavePoint);                    // the saved state is still the oldest the history can reach
+        _history.Redo();
+        _history.Redo();
+        _history.Redo();
+        _history.Execute(new RenameCommand(_world, e, "n3"));   // a fourth step pushes the first out: the saved state is gone
+        _history.Seal();
+        while (_history.Undo())
+        {
+        }
+
+        Assert.False(_history.IsAtSavePoint);
+        _history.MarkSaved();
+        Assert.True(_history.IsAtSavePoint);
+    }
+
+    [Fact]
     public void PlayAndStopLeaveTheWorldAsItWasWhileTheHistoryStillWorks()
     {
         // What the editor does around a play session: snapshot, let the game change things, restore. The ids in the history stay valid.
