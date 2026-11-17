@@ -154,7 +154,9 @@ public static class RuntimeFolder
             return false;
         }
 
-        if (segments[0] == "Shaders" && segments.Length > 1 && segments[1] != "imported" && file.EndsWith(".slang", StringComparison.OrdinalIgnoreCase))
+        // A shader source and the file of its import settings (x.slang and x.slang.import.xml): a shipped game loads the compiled shaders of Shaders/imported and never reads either.
+        if (segments[0] == "Shaders" && segments.Length > 1 && segments[1] != "imported"
+            && (file.EndsWith(".slang", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".slang.import.xml", StringComparison.OrdinalIgnoreCase)))
         {
             return false;
         }

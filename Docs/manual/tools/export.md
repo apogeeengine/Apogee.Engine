@@ -36,7 +36,7 @@ export copies from such a folder. It reads the header of the program in it (PE, 
 
 So exporting for the machine you are on needs nothing but `./build.sh aot`; exporting for another platform needs a runtime published there (or downloaded from CI) and `--runtime`. A macOS runtime has to
 be a thin binary for one processor, not a universal one. Left out of the copy: debug files (`*.pdb`, `*.dbg`, `*.dSYM`), import libraries (`*.lib`, `*.exp`), the Slang compiler's libraries and the shader
-sources (`Shaders/*.slang`; the compiled `Shaders/imported` stays: a shipped game never loads the compiler), `steam_appid.txt`, and the runtime folder's own `game.xml` and `data/`.
+sources and their import settings (`Shaders/*.slang` and `Shaders/*.slang.import.xml`; the compiled `Shaders/imported` stays: a shipped game never loads the compiler), `steam_appid.txt`, and the runtime folder's own `game.xml` and `data/`.
 
 The continuous integration publishes the runtime of each platform it builds (`apogee-linux-x64`, `apogee-win-x64`, `apogee-osx-arm64`, `apogee-osx-x64`) as a workflow artifact for 14 days: download one,
 unzip it (an archive does not keep the executable bit; the export sets it on the program it writes), and pass the folder with `--runtime`. This is how to export for Windows or macOS without a computer of that kind.
