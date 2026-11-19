@@ -36,6 +36,11 @@ endif()
 if(NOT MSVC)
   set_source_files_properties(${KTX_ENCODER_SOURCES} "${KTX}/external/basisu/transcoder/basisu_transcoder.cpp" PROPERTIES COMPILE_OPTIONS "-fno-strict-aliasing")
 endif()
+# The SSE 4.1 kernels file insists on exactly SSE 4.1 (it stops with #error when AVX is on) and a toolchain whose default target is newer than baseline x86-64 turns AVX on for every file:
+# say so for this one (the order matters: these come after the default flags).
+if(NOT MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+  set_property(SOURCE "${KTX}/external/basisu/encoder/basisu_kernels_sse.cpp" APPEND PROPERTY COMPILE_OPTIONS -msse4.1 -mno-avx -mno-avx2 -mno-avx512f)
+endif()
 set_target_properties(ktx PROPERTIES C_VISIBILITY_PRESET default CXX_VISIBILITY_PRESET default WINDOWS_EXPORT_ALL_SYMBOLS ON)
 # zstd has to sit next to libktx at run time: ThirdParty/NativeLibraries.props copies both into every output folder, and the rpath is relative to this library.
 target_link_libraries(ktx PRIVATE zstd)
