@@ -17,7 +17,7 @@ env:
 jobs:
   tests:
     name: Tests (linux-x64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       APOGEE_REQUIRE_CLANG: "1"
@@ -56,7 +56,7 @@ jobs:
 
   aot:
     name: NativeAOT (linux-x64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
