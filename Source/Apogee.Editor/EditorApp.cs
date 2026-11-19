@@ -300,6 +300,23 @@ public static unsafe class EditorApp
             {
                 project.History.Redo();
             }
+            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyC))
+            {
+                project.Copy(ctx.Clipboard);
+            }
+            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyX) && !project.IsPlaying)
+            {
+                project.Cut(ctx.Clipboard);
+            }
+            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyV) && !project.IsPlaying)
+            {
+                // Ctrl+Shift+V pastes under the active entity, Ctrl+V next to it.
+                project.Paste(ctx.Clipboard, Gui.Shift ? project.Selected.Active : null);
+            }
+            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyD) && !project.IsPlaying)
+            {
+                project.Duplicate(project.Selected.TopLevel());
+            }
             else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyS))
             {
                 Save(project);
@@ -389,9 +406,31 @@ public static unsafe class EditorApp
                 }
 
                 Ui.Separator();
-                if (Gui.MenuItem("Duplicate", "Ctrl+D", false, editing && project.Selection is not null))
+                bool selected = project.Selection is not null;
+                bool canPaste = editing && ClipboardScene.LooksLikeScene(ctx.Clipboard.GetText());
+                if (Gui.MenuItem("Cut", "Ctrl+X", false, editing && selected))
                 {
-                    project.Duplicate(project.Selection!.Value);
+                    project.Cut(ctx.Clipboard);
+                }
+
+                if (Gui.MenuItem("Copy", "Ctrl+C", false, selected))
+                {
+                    project.Copy(ctx.Clipboard);
+                }
+
+                if (Gui.MenuItem("Paste", "Ctrl+V", false, canPaste))
+                {
+                    project.Paste(ctx.Clipboard);
+                }
+
+                if (Gui.MenuItem("Paste as child", "Ctrl+Shift+V", false, canPaste && selected))
+                {
+                    project.Paste(ctx.Clipboard, project.Selected.Active);
+                }
+
+                if (Gui.MenuItem("Duplicate", "Ctrl+D", false, editing && selected))
+                {
+                    project.Duplicate(project.Selected.TopLevel());
                 }
 
                 if (Gui.MenuItem("Delete", "Del", false, editing && project.Selection is not null))

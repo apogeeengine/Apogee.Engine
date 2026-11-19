@@ -167,6 +167,40 @@ public sealed class EditHistoryTests : IDisposable
     }
 
     [Fact]
+    public void CreatingSeveralBranchesIsOneStepUndoneAndRedoneUnderTheSameIds()
+    {
+        Entity a = Make("a");
+        Entity b = Make("b", a);
+        _world.Set(b, new Hp { Value = 5 });
+        Entity c = Make("c");
+
+        var create = new CreateEntitiesCommand(_world, "Duplicate 2 entities", () => [_world.Clone(a), _world.Clone(c)]);
+        _history.Execute(create);
+        Assert.Equal(2, create.Entities.Count);
+        Assert.Equal(4, _world.Roots().Count);
+        Assert.Equal("Duplicate 2 entities", _history.UndoName);
+        Entity[] made = [.. create.Entities];
+        Entity madeChild = _world.Children(made[0]).Single();
+
+        Assert.True(_history.Undo());                       // one step takes both away, with the branch
+        Assert.Equal(2, _world.Roots().Count);
+        Assert.All(made, e => Assert.False(_world.IsAlive(e)));
+        Assert.False(_world.IsAlive(madeChild));
+        Assert.False(_history.CanUndo);
+
+        Assert.True(_history.Redo());                       // and one step brings them back under the same ids
+        Assert.All(made, e => Assert.True(_world.IsAlive(e)));
+        Assert.Equal(madeChild, _world.Children(made[0]).Single());
+        Assert.Equal(5, _world.Get<Hp>(madeChild).Value);
+
+        var none = new CreateEntitiesCommand(_world, "nothing", () => []);
+        none.Apply();
+        none.Undo();
+        Assert.Empty(none.Entities);
+        Assert.False(none.TryMerge(create));
+    }
+
+    [Fact]
     public void ReparentingKeepsTheEntityWhereItIsAndIsRefusedUnderItself()
     {
         Entity parent = Make("parent", at: new Double3(10, 0, 0));

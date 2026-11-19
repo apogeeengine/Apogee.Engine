@@ -85,10 +85,6 @@ public sealed unsafe class HierarchyPanel
             {
                 project.Delete(selection.TopLevel());
             }
-            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyD))
-            {
-                project.Duplicate(selected);
-            }
             else if (Gui.KeyPressed(ImGuiKey.ImGuiKeyF2))
             {
                 BeginRename(world, selected);
@@ -173,6 +169,12 @@ public sealed unsafe class HierarchyPanel
 
         if (!locked && Gui.BeginContextMenu("empty_menu", onItem: false))
         {
+            if (Gui.MenuItem("Paste", "Ctrl+V", false, ClipboardScene.LooksLikeScene(ctx.Clipboard.GetText())))
+            {
+                ctx.Project.Paste(ctx.Clipboard, default(Entity));
+            }
+
+            Ui.Separator();
             CreateMenu(ctx.Project, default);
             Gui.EndPopup();
         }
@@ -309,10 +311,34 @@ public sealed unsafe class HierarchyPanel
                     BeginRename(world, entity);
                 }
 
+                Ui.Separator();
+                bool canPaste = ClipboardScene.LooksLikeScene(ctx.Clipboard.GetText());
+                if (Gui.MenuItem("Cut", "Ctrl+X"))
+                {
+                    project.Cut(ctx.Clipboard);
+                }
+
+                if (Gui.MenuItem("Copy", "Ctrl+C"))
+                {
+                    project.Copy(ctx.Clipboard);
+                }
+
+                if (Gui.MenuItem("Paste", "Ctrl+V", false, canPaste))
+                {
+                    project.Paste(ctx.Clipboard, world.GetParent(entity));
+                }
+
+                if (Gui.MenuItem("Paste as child", "Ctrl+Shift+V", false, canPaste))
+                {
+                    project.Paste(ctx.Clipboard, entity);
+                }
+
                 if (Gui.MenuItem("Duplicate", "Ctrl+D"))
                 {
-                    project.Duplicate(entity);
+                    project.Duplicate(selection.TopLevel());
                 }
+
+                Ui.Separator();
 
                 if (Gui.MenuItem(selection.Count > 1 ? $"Delete {selection.Count} entities" : "Delete", "Del"))
                 {

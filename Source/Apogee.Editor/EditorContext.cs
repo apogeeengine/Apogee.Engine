@@ -17,6 +17,9 @@ public sealed class EditorContext(EditorProject project, EditorCamera camera, Ed
 
     public ImGuiHost Host { get; } = host;
 
+    /// <summary>The system clipboard that Copy, Cut and Paste of entities use.</summary>
+    public IClipboard Clipboard { get; init; } = new SdlClipboard();
+
     public DevOverlay Profiler { get; } = new() { Visible = false };
 
     /// <summary>Filled by the app each frame: GPU name, timings and the render graph.</summary>

@@ -24,7 +24,7 @@ The layout (a dock space: hierarchy on the left, inspector on the right, the vie
   (W, E and R choose; local or world axes; optional snapping; the *Pivot* box chooses where a group turns, see [Group transforms](#group-transforms)); a drag is one undo step. The view cube in the corner turns the camera. The helpers drawn as debug lines (a ground grid, the bounds of every selected entity,
   the active one brighter, a mark for each light and camera) can be turned off. Dropping a `.glb` or `.gltf` from the assets panel makes an entity at the point of the ground under the pointer.
 - **Hierarchy.** The scene as a tree: click to select, **Ctrl-click to toggle, Shift-click to select a range** (in the order the tree shows, so entities inside a collapsed branch are skipped), **drag on the empty space to
-  select with a box**, Ctrl+A for all and Escape for none. Double click or F2 renames the active entity, Ctrl+D duplicates it, **Delete removes every selected entity as one undo step** ("Delete 3 entities"), right click
+  select with a box**, Ctrl+A for all and Escape for none. Double click or F2 renames the active entity, Ctrl+X, Ctrl+C, Ctrl+V and Ctrl+D cut, copy, paste and duplicate the selection (see [Copy and paste](#copy-and-paste)), **Delete removes every selected entity as one undo step** ("Delete 3 entities"), right click
   opens the menu, and **dragging a node drags the whole selection** (or only that node when it is not selected) **onto another to make them children** (onto the empty space below to make them roots), as one step.
   An entity keeps its place in the world when it changes parent, and a name a sibling already has is made unique, also between the entities that move together.
 - **Inspector.** The components of the active entity (the last one picked; editing several at once comes later), drawn from the registry's descriptions: a checkbox, drag field, slider (when `[Property]` gives a `Min` and a `Max`), three drag fields for a vector or a double
@@ -40,7 +40,7 @@ The layout (a dock space: hierarchy on the left, inspector on the right, the vie
 
 The selection is a list of entities in the order they were picked, and one of them is the **active** entity: the last one picked, the one the inspector shows and the gizmo sits on (when the active one is deleted,
 the last of the others takes over). Several entities can be selected in the hierarchy and in the viewport (see the panels above). What a delete, a drag in the hierarchy, a group transform (and, later, a copy) acts
-on is the selection's **top level**: the selected entities that have no selected ancestor, because a branch is carried by its top and its selected descendants would be handled twice.
+on (and a copy, a cut and a duplicate) is the selection's **top level**: the selected entities that have no selected ancestor, because a branch is carried by its top and its selected descendants would be handled twice.
 
 The selection is not an undo step. It is kept as entity ids: an entity that was destroyed drops out of it, and comes back into it when an undo brings the entity back under the same id; creating an entity selects it,
 deleting entities takes them out of the selection (undoing the delete does not select them again), and the selection survives Play and Stop like the history does. While the game plays, selecting works and every edit
@@ -74,6 +74,29 @@ takes the length ratio that the stretch gives its direction, so a member whose a
 non-uniform stretch is only approximated (its axes stay perpendicular and only their lengths follow the stretch). A uniform scale is always exact. Scaling about *Individual* or *Active* has the same rule. The maths is in
 `Source/Apogee.Editor/Editing/GroupTransform.cs`, `TransformGesture.cs` and `GizmoDrag.cs` (plain functions over placements, with no ImGui, tested without a window); the undo step is `SetTransformsCommand` in `Apogee.Host`.
 
+## Copy and paste
+
+**Ctrl+C** copies the selection (its top level, each entity with everything below it) to the system clipboard as **scene text**: the same XML a scene file holds ([scenes](../content/scenes.md)), written by
+`World.SaveSceneDocument`, with no `uid`, because a copy is not a file. Several selected entities are one document. **Ctrl+V** reads the text back with `World.LoadScene`, so it works between scenes, between projects
+and between editor instances, and the text can be edited or written by hand. **Ctrl+X** is a copy followed by a delete (one step). **Ctrl+D** duplicates without touching the clipboard. The same commands are in
+the *Edit* menu and the hierarchy's context menu, which also has *Paste as child* (Ctrl+Shift+V).
+
+- **Where it goes.** A paste lands next to the active entity (under the same parent; at the root when nothing is selected); *Paste as child* puts it under the active entity. The new entities are selected, and the paste
+  is one undo step ("Paste Cube", "Paste 3 entities"); undoing removes them, redoing brings them back under the same ids. A pasted entity keeps its local transform, so under another parent it moves with that parent.
+- **Names.** The pasted top-level entities get names no sibling has ("Cube", then "Cube 2"), also among themselves when they come from different parents. Names below them are kept.
+- **References.** An `Entity` field that points to an entity inside the copied set is written as that entity's number in the document, and a paste points it at the new copy, so a copied branch stays wired to itself
+  (and several selected entities to each other). A field that points outside the copied set is left empty: the scene format cannot name an entity that is not in the document. Asset fields travel as
+  `path|uid` (the model's path, and its UID once it is imported) and are found again by the pasting project; one that cannot be found is left empty and logged. Components that a script defined travel in the
+  document's `<Components>` header. A prefab instance is pasted as plain entities.
+- **Duplicate** is not a paste: it clones each top-level entity with `World.Clone` under the same parent ("Cube (copy)") as one step, and a clone keeps the references of its components as they are, so one that
+  pointed at another entity still points at the original (including inside the duplicated branch).
+- **Playing.** Copy works while the game plays (it copies the running state); Cut, Paste and Duplicate are off, like every edit.
+- **Bad text.** Whatever is on the clipboard is untrusted. Text that is not a scene (not XML, another root element, a DTD, nesting that is too deep, more than 16 MB), a scene of a newer version, or one with no
+  entities changes nothing: the console says why. *Paste* is greyed in the menus when the text cannot be a scene.
+
+The code is `Source/Apogee.Editor/Editing/ClipboardScene.cs` (the `IClipboard` interface, `SdlClipboard` over SDL's clipboard, `MemoryClipboard` for tests, and the checks of the text), the project's `Copy`, `Cut`,
+`Paste` and `Duplicate`, and `CreateEntitiesCommand` in `Apogee.Host` (the undo step that makes several branches).
+
 ## Scenes and undo
 
 *File* creates, opens and saves scenes (`.ascene` XML, see [scenes](../content/scenes.md)); *Save as* takes a virtual path (`res://scenes/level`), and the scenes of the game are listed by *Open*. Every edit is a command on an `EditHistory`
@@ -102,7 +125,7 @@ Sound plays in play mode through OpenAL Soft ([Audio](../audio/index.md)), which
 ## Tests
 
 `Tests/Apogee.Editor.Tests`: the field codec for every `FieldKind` (a rotation as angles, integers clamped), the editor camera, picking (rays, boxes, spheres, the ground, and the selection box with what is behind the
-camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the project (creating, naming, reparenting,
+camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), copy, cut, paste and duplicate through a memory clipboard (the same tree under new ids as one step, next to the active entity or under it, unique names, references inside the copy followed and outside ones dropped, models by path, undo of a cut, text that is not a scene, duplicating several, playing), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the project (creating, naming, reparenting,
 duplicating and deleting, one or several, through the history; the modified mark clearing when undo returns to the saved scene; a scene saved to a file and opened again with the model's path; Play running the game's
 scripts over the scene and Stop restoring the world under the same ids with the selection and history intact; a failing game), and, on a GPU (skipped without one), a frame of the viewport with no validation errors whose render graph lays out as nodes. `Tests/Apogee.Host.Tests` covers the history and
 its commands (a drag over several entities is one step).

@@ -6,6 +6,7 @@ using System.Numerics;
 using Apogee.Content;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Import;
+using Apogee.Content.Xml;
 using Apogee.Core.Logging;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
@@ -327,13 +328,159 @@ public sealed class EditorProject : IDisposable
         return Create("Add " + name, name, parent, at, e => World.Set(e, new ModelRenderer { Model = id }));
     }
 
-    public Entity Duplicate(Entity entity)
+    /// <summary>
+    /// Duplicates <paramref name="entity"/> with its branch next to it (see <see cref="Duplicate(IReadOnlyList{Entity})"/>), and selects the copy. Returns the copy, or none when nothing was duplicated
+    /// (the entity is gone, or the editor is playing).
+    /// </summary>
+    public Entity Duplicate(Entity entity) => Duplicate([entity]) is [var copy, ..] ? copy : default;
+
+    /// <summary>
+    /// Duplicates <paramref name="entities"/> as one step ("Duplicate Cube", "Duplicate 3 entities"): each top-level one is cloned with its branch under the same parent, and the copies become the selection.
+    /// An entity under another one of the list is carried by that one. A copy keeps the references its components hold to other entities, the copy's own included (they point at the originals), unlike
+    /// a paste, which connects the copies among themselves and drops what points outside. Nothing happens while playing.
+    /// </summary>
+    public IReadOnlyList<Entity> Duplicate(IReadOnlyList<Entity> entities)
     {
-        var command = new CreateEntityCommand(_worldRef, "Duplicate " + (World.GetName(entity) ?? "entity"), () => World.Clone(entity));
+        IReadOnlyList<Entity> top = Editing.Selection.TopLevelOf(World, entities);
+        if (top.Count == 0 || IsPlaying)
+        {
+            return [];
+        }
+
+        string name = top.Count == 1 ? "Duplicate " + (World.GetName(top[0]) ?? "entity") : $"Duplicate {top.Count} entities";
+        var command = new CreateEntitiesCommand(_worldRef, name, () => [.. top.Select(root => World.Clone(root))]);
         History.Execute(command);
         History.Seal();
-        Selection = command.Entity;
-        return command.Entity;
+        Selected.Set(command.Entities);
+        return command.Entities;
+    }
+
+    // ---- The clipboard: scene text, so a paste works across projects and editor instances ----
+
+    /// <summary>
+    /// Puts the selected entities (the top-level ones, each with its branch) on <paramref name="clipboard"/> as scene text. Works while playing (it copies the running state). Returns how many trees were
+    /// copied: 0 when nothing is selected, or the text is too long to paste back (said on the console).
+    /// </summary>
+    public int Copy(IClipboard clipboard)
+    {
+        IReadOnlyList<Entity> top = Selected.TopLevel();
+        if (top.Count == 0)
+        {
+            return 0;
+        }
+
+        string text = ClipboardScene.Copy(World, top);
+        if (text.Length > ClipboardScene.MaxLength)
+        {
+            Log.Warn("Editor", $"Nothing copied: the scene text of the selection is longer than {ClipboardScene.MaxLength / (1024 * 1024)} MB");
+            return 0;
+        }
+
+        clipboard.SetText(text);
+        return top.Count;
+    }
+
+    /// <summary>Copies the selection (<see cref="Copy"/>) and deletes it as one step. Nothing happens while playing, or when nothing was copied. Returns how many trees were cut.</summary>
+    public int Cut(IClipboard clipboard)
+    {
+        if (IsPlaying)
+        {
+            return 0;
+        }
+
+        int copied = Copy(clipboard);
+        if (copied > 0)
+        {
+            Delete(Selected.TopLevel());
+        }
+
+        return copied;
+    }
+
+    /// <summary>
+    /// Makes the entities of the scene text on <paramref name="clipboard"/> as one step ("Paste Cube", "Paste 3 entities") and selects them. They go next to the active entity (under its parent; the
+    /// root with no selection), or under <paramref name="parent"/> when one is given (<c>default</c> is the root). Names that a sibling has are made unique ("Cube 2"); entity references among the pasted
+    /// entities are kept and the ones to anything else are empty; assets are found again by their path and UID. Text that is not a scene changes nothing and says why on the console. Nothing happens
+    /// while playing. Returns the new top-level entities.
+    /// </summary>
+    public IReadOnlyList<Entity> Paste(IClipboard clipboard, Entity? parent = null)
+    {
+        if (IsPlaying)
+        {
+            return [];
+        }
+
+        if (!ClipboardScene.TryRead(clipboard.GetText(), out XmlNode scene, out string problem))
+        {
+            Log.Warn("Editor", $"Nothing pasted: {problem}");
+            return [];
+        }
+
+        List<XmlNode> tops = [.. scene.Children.Where(node => node.Name == "Entity" && !node.HasAttribute("prefab"))];
+        if (tops.Count == 0)
+        {
+            Log.Warn("Editor", "Nothing pasted: the scene on the clipboard has no entities");
+            return [];
+        }
+
+        Entity under = parent ?? (Selected.Active is { } active ? World.GetParent(active) : default);
+        if (!under.IsNull && !World.IsAlive(under))
+        {
+            under = default;
+        }
+
+        string name = tops.Count == 1 ? "Paste " + (tops[0].Attribute("name") ?? "entity") : $"Paste {tops.Count} entities";
+        var command = new CreateEntitiesCommand(_worldRef, name, () =>
+        {
+            List<Entity> roots = ClipboardScene.RootsOf(World, World.LoadScene(scene, under), under);
+            NameUniquely(roots, [.. tops.Select(node => node.Attribute("name"))], under);
+            return roots;
+        });
+        try
+        {
+            History.Execute(command);
+        }
+        catch (FormatException e)
+        {
+            Log.Warn("Editor", $"Nothing pasted: {e.Message}");
+            return [];
+        }
+
+        History.Seal();
+        Selected.Set(command.Entities);
+        return command.Entities;
+    }
+
+    // Gives pasted roots the names the scene text had (`names`, in the same order), made unique among the siblings that were there and the roots before them. The scene loader checks a name with a lookup
+    // that also finds the engine's own entities (there is one called "Empty"), so it can turn a free name into "Empty 2"; here the siblings' names decide.
+    private void NameUniquely(List<Entity> roots, IReadOnlyList<string?> names, Entity under)
+    {
+        if (roots.Count != names.Count)
+        {
+            return;
+        }
+
+        IEnumerable<Entity> siblings = under.IsNull ? World.Roots() : World.Children(under);
+        HashSet<string?> taken = [.. siblings.Where(s => !roots.Contains(s)).Select(World.GetName)];
+        for (int i = 0; i < roots.Count; i++)
+        {
+            if (names[i] is not { Length: > 0 } baseName)
+            {
+                continue;
+            }
+
+            string chosen = baseName;
+            for (int n = 2; taken.Contains(chosen); n++)
+            {
+                chosen = $"{baseName} {n}";
+            }
+
+            taken.Add(chosen);
+            if (World.GetName(roots[i]) != chosen)
+            {
+                World.SetName(roots[i], chosen);
+            }
+        }
     }
 
     public void Delete(Entity entity) => Delete([entity]);
