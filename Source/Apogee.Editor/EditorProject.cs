@@ -117,7 +117,10 @@ public sealed class EditorProject : IDisposable
         History.MarkSaved();
     }
 
-    /// <summary>Opens the scene file at <paramref name="path"/>, replacing the entities in the world.</summary>
+    /// <summary>
+    /// Opens the scene file at <paramref name="path"/>, replacing the entities in the world. When the file cannot be loaded (it does not parse, it is from a newer engine) the exception is thrown and the world, the
+    /// scene's path, the history and the selection are exactly as they were: the entities that were taken out come back under the same ids.
+    /// </summary>
     public void OpenScene(string path)
     {
         StopIfPlaying();
@@ -126,17 +129,75 @@ public sealed class EditorProject : IDisposable
             throw new FileNotFoundException($"The scene {path} does not exist.", path); // before the scene being edited is cleared
         }
 
+        // The file can still fail halfway (a version check, a component): the world is put back from this, so nothing is lost and the next Save cannot write an empty scene over the old one.
+        WorldSnapshot before = World.Snapshot();
         foreach (Entity root in World.Roots())
         {
             World.Destroy(root);
         }
 
-        World.LoadSceneFile(path);
+        try
+        {
+            World.LoadSceneFile(path);
+        }
+        catch
+        {
+            World.Restore(before);
+            throw;
+        }
+
         ScenePath = path;
         Selected.Clear();
         History.Clear();
         History.MarkSaved();
         Log.Info("Editor", $"Opened {path}");
+    }
+
+    /// <summary>The problems a scene file's reading or writing can end in: what the editor reports in a message instead of failing.</summary>
+    internal static bool IsFileProblem(Exception e) => e is IOException or ContentException or FormatException or UnauthorizedAccessException;
+
+    /// <summary><see cref="OpenScene"/> that reports a file problem in <paramref name="error"/> (the world untouched) instead of throwing it.</summary>
+    public bool TryOpenScene(string path, out string? error)
+    {
+        try
+        {
+            OpenScene(path);
+            error = null;
+            return true;
+        }
+        catch (Exception e) when (IsFileProblem(e))
+        {
+            Log.Error("Editor", $"Could not open {path}: {e.Message}");
+            error = $"The scene {path} could not be opened:\n{e.Message}";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Saves the scene to its file, or says why not: false with no <paramref name="error"/> when the scene has no file yet (use <see cref="TrySaveSceneAs"/>), false with one when writing failed (a read-only
+    /// file or part of the game); the scene is then still modified.
+    /// </summary>
+    public bool TrySaveScene(out string? error)
+    {
+        error = null;
+        return ScenePath is { } path && TrySaveSceneAs(path, out error);
+    }
+
+    /// <summary><see cref="SaveSceneAs"/> that reports a file problem in <paramref name="error"/> instead of throwing it.</summary>
+    public bool TrySaveSceneAs(string path, out string? error)
+    {
+        try
+        {
+            SaveSceneAs(path);
+            error = null;
+            return true;
+        }
+        catch (Exception e) when (IsFileProblem(e))
+        {
+            Log.Error("Editor", $"Could not save {path}: {e.Message}");
+            error = $"The scene could not be saved to {path}:\n{e.Message}";
+            return false;
+        }
     }
 
     /// <summary>Saves the scene to its file; false when it has none yet (use <see cref="SaveSceneAs"/>).</summary>

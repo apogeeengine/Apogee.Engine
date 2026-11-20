@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Apogee.Content;
+using Apogee.Content.FileSystem;
 using Apogee.Core.Logging;
 using Apogee.Platform;
-using Apogee.Scripting;
 
 namespace Apogee.Editor.Editing;
 
@@ -37,7 +36,7 @@ public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> curren
     /// <summary>Asks for a scene file of the game and opens it.</summary>
     public void OpenScene()
     {
-        if (current() is not { } project || !Begin())
+        if (current() is not { } project || !Begin(DialogKind.OpenScene))
         {
             return;
         }
@@ -49,7 +48,7 @@ public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> curren
     /// <summary>Asks where to save the scene and saves it there.</summary>
     public void SaveSceneAs()
     {
-        if (current() is not { } project || !Begin())
+        if (current() is not { } project || !Begin(DialogKind.SaveSceneAs))
         {
             return;
         }
@@ -61,20 +60,45 @@ public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> curren
     /// <summary>Asks for a game folder and hands it to <c>openProject</c>. Works on the start screen too.</summary>
     public void OpenProject()
     {
-        if (!Begin())
+        if (!Begin(DialogKind.OpenProject))
         {
             return;
         }
 
         EditorProject? started = current();
-        _ = dialogs.OpenFolder(started?.GameFolder, result => Finish(started, DialogKind.OpenProject, result, path => openProject(path)));
+        _ = dialogs.OpenFolder(started?.GameFolder, result => Finish(started, DialogKind.OpenProject, result, ChooseProject));
     }
 
-    private bool Begin()
+    /// <summary>
+    /// A game folder was chosen (by the dialog or the editor's own path entry): checks it looks like a game (<see cref="ProjectHost.CheckGameFolder"/>: a mistaken pick such as the home folder must not close the
+    /// open project, nor have the editor watch a whole disk) and hands it to <c>openProject</c>. Choosing the folder that is already open does nothing.
+    /// </summary>
+    public void ChooseProject(string folder)
+    {
+        if (ProjectHost.CheckGameFolder(folder) is { } problem)
+        {
+            tell(problem);
+        }
+        else if (current() is { } open && string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(open.GameFolder)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)), StringComparison.Ordinal))
+        {
+            Log.Info("Editor", $"{folder} is already the open project.");
+        }
+        else
+        {
+            openProject(folder);
+        }
+    }
+
+    /// <summary>
+    /// A dialog is wanted: false when one is still open (or its answer is awaited). The system's dialog cannot be opened twice, so the editor's own entry for the same job opens instead, which stays usable if the
+    /// open dialog is stuck (see <see cref="DialogGate"/>).
+    /// </summary>
+    private bool Begin(DialogKind kind)
     {
         if (dialogs.Busy)
         {
-            tell("A file dialog is already open. Finish or close it first.");
+            Log.Info("Editor", $"The {kind} dialog was asked for while another file dialog is open: using the built-in entry.");
+            unavailable(kind);
             return false;
         }
 
@@ -123,14 +147,15 @@ public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> curren
             return;
         }
 
-        try
+        if (project.Session.Files is { } files && !VirtualPaths.ResolvesTo(files, virtualPath, path))
         {
-            project.OpenScene(virtualPath);
+            tell(ShadowedMessage(virtualPath));
+            return;
         }
-        catch (Exception e) when (e is IOException or ContentException or FormatException or ScriptException or UnauthorizedAccessException)
+
+        if (!project.TryOpenScene(virtualPath, out string? error))
         {
-            Log.Error("Editor", $"Could not open {virtualPath}: {e.Message}");
-            tell($"The scene could not be opened:\n{e.Message}");
+            tell(error!);
         }
     }
 
@@ -147,22 +172,35 @@ public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> curren
             return;
         }
 
-        if (project.Session.Files is { } files && !files.CanWrite(virtualPath))
+        if (!VfsPath.TryParse(virtualPath, out _, out string? nameProblem))
         {
-            tell($"{virtualPath} cannot be written: that part of the game is read-only.");
+            tell($"The game cannot use the name {Path.GetFileName(path)}: {nameProblem}. Choose another name.");
             return;
         }
 
-        try
+        if (project.Session.Files is { } files)
         {
-            project.SaveSceneAs(virtualPath);
+            if (!files.CanWrite(virtualPath))
+            {
+                tell($"{virtualPath} cannot be written: that part of the game is read-only.");
+                return;
+            }
+
+            if (!VirtualPaths.ResolvesTo(files, virtualPath, path))
+            {
+                tell(ShadowedMessage(virtualPath));
+                return;
+            }
         }
-        catch (Exception e) when (e is IOException or ContentException or FormatException or UnauthorizedAccessException)
+
+        if (!project.TrySaveSceneAs(virtualPath, out string? error))
         {
-            Log.Error("Editor", $"Could not save {virtualPath}: {e.Message}");
-            tell($"The scene could not be saved:\n{e.Message}");
+            tell(error!);
         }
     }
+
+    private static string ShadowedMessage(string virtualPath) =>
+        $"{virtualPath} is provided by another part of the game (a pack mounted over the folder), not by the file you chose. Choose a file that the game does not already provide.";
 
     private static string OutsideMessage(EditorProject project, string path) =>
         $"{path} is outside the game folder.\nChoose a file inside {project.GameFolder}: only files there can be opened or saved as part of the game.";

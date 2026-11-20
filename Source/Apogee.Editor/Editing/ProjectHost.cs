@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Apogee.Content;
+using Apogee.Content.Packages;
 using Apogee.Core.Logging;
 using Apogee.Scripting;
 
@@ -12,9 +13,8 @@ namespace Apogee.Editor.Editing;
 /// </summary>
 public sealed class ProjectHost : IDisposable
 {
-    private readonly string? _userFolder;
-
-    public ProjectHost(string? userFolder = null) => _userFolder = userFolder;
+    // The user folder the open project was started with (null: the game's own default). Kept to reopen it when a switch fails.
+    private string? _currentUserFolder;
 
     /// <summary>The open project, or null on the start screen.</summary>
     public EditorProject? Current { get; private set; }
@@ -25,12 +25,30 @@ public sealed class ProjectHost : IDisposable
     /// <summary>Raised with the new project once it is open (also when a project that failed to open is replaced by the one that was open before).</summary>
     public event Action<EditorProject>? Opened;
 
+    /// <summary>Why <paramref name="folder"/> cannot be taken for a game folder, or null when it can: it has to exist and hold a <c>game.xml</c> or a <c>packages</c> folder. Opening anything else would close the open project for nothing.</summary>
+    public static string? CheckGameFolder(string folder)
+    {
+        ArgumentNullException.ThrowIfNull(folder);
+        if (!Directory.Exists(folder))
+        {
+            return $"{folder} is not a folder.";
+        }
+
+        if (!File.Exists(Path.Combine(folder, GameManifest.FileName)) && !Directory.Exists(Path.Combine(folder, "packages")))
+        {
+            return $"{folder} does not look like a game folder: it has no {GameManifest.FileName} and no packages folder.\nChoose the folder of the game itself.";
+        }
+
+        return null;
+    }
+
     /// <summary>
-    /// Closes the open project (its session is disposed) and opens the game folder <paramref name="folder"/>. When the folder cannot be opened (no such folder, a game that fails to start) the previous
-    /// project is opened again, as it was saved, and the reason is in <paramref name="error"/>; with no previous project (or one that does not reopen either) the host ends with none.
-    /// Unsaved changes are the caller's to ask about before: they are lost here.
+    /// Closes the open project (its session is disposed) and opens the game folder <paramref name="folder"/>. <paramref name="userFolder"/> is the <c>--user</c> folder of the command line, for the folder the
+    /// editor was started with; a project chosen later passes null and gets its own default (what <c>game.xml</c> says), so two games never share a <c>user://</c>. When the folder cannot be opened (no such folder, a
+    /// game that fails to start) the previous project is opened again with the user folder it had, and the reason is in <paramref name="error"/>; with no previous project (or one that does not reopen either) the host ends
+    /// with none. Unsaved changes are the caller's to ask about before: they are lost here.
     /// </summary>
-    public bool TryOpen(string folder, out string? error)
+    public bool TryOpen(string folder, string? userFolder, out string? error)
     {
         ArgumentNullException.ThrowIfNull(folder);
         if (!Directory.Exists(folder))
@@ -40,10 +58,11 @@ public sealed class ProjectHost : IDisposable
         }
 
         string? previous = Current?.GameFolder;
+        string? previousUser = _currentUserFolder;
         Close();
         try
         {
-            Attach(Create(folder));
+            Attach(Create(folder, userFolder), userFolder);
             error = null;
             return true;
         }
@@ -57,7 +76,7 @@ public sealed class ProjectHost : IDisposable
         {
             try
             {
-                Attach(Create(previous));
+                Attach(Create(previous, previousUser), previousUser);
             }
             catch (Exception e) when (IsOpenFailure(e))
             {
@@ -83,11 +102,12 @@ public sealed class ProjectHost : IDisposable
 
     public void Dispose() => Close();
 
-    private EditorProject Create(string folder) => new(folder, _userFolder);
+    private static EditorProject Create(string folder, string? userFolder) => new(folder, userFolder);
 
-    private void Attach(EditorProject project)
+    private void Attach(EditorProject project, string? userFolder)
     {
         Current = project;
+        _currentUserFolder = userFolder;
         Opened?.Invoke(project);
     }
 

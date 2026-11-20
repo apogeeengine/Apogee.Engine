@@ -106,9 +106,9 @@ public static unsafe class EditorApp
             host.IO->IniFilename = (byte*)ini;
             bool hasLayout = File.Exists(Path.Combine(EditorFolder, "imgui.ini"));
             using var imgui = new ImGuiRenderer(device, shaders);
-            using var projects = new ProjectHost(user);
+            using var projects = new ProjectHost();
             var app = new Frames(log, window, device, loop, pool, imgui, host, shaders, projects, new SdlFileDialogs(window), hasLayout);
-            if (gameFolder is not null && !projects.TryOpen(gameFolder, out string? error))
+            if (gameFolder is not null && !projects.TryOpen(gameFolder, user, out string? error))
             {
                 Console.Error.WriteLine(error);
                 return 2;
@@ -223,14 +223,10 @@ public static unsafe class EditorApp
             }
         }
 
-        /// <summary>The user chose a game folder to switch to (a dialog or the path entry): after the question about unsaved changes, the switch happens at the start of the next frame.</summary>
+        /// <summary>The user chose a game folder to switch to (checked by <see cref="DialogFlow.ChooseProject"/>, whether it came from a dialog or the path entry): after the question about unsaved changes, the switch happens at the start of the next frame.</summary>
         private void RequestProject(string folder)
         {
-            if (!Directory.Exists(folder))
-            {
-                Say($"{folder} is not a folder.");
-            }
-            else if (_projects.Current is { Dirty: true })
+            if (_projects.Current is { Dirty: true })
             {
                 _confirmSwitch = folder;
                 _openConfirmSwitch = true;
@@ -295,7 +291,7 @@ public static unsafe class EditorApp
 
         private void SwitchProject(string folder)
         {
-            if (!_projects.TryOpen(folder, out string? error))
+            if (!_projects.TryOpen(folder, null, out string? error)) // --user belongs to the folder of the command line only
             {
                 _window.Title = WindowTitle(_projects.Current?.GameFolder);
                 Say($"The project could not be opened:\n{error}" + (_projects.Current is null ? "" : "\nThe previous project was opened again."));
@@ -314,7 +310,7 @@ public static unsafe class EditorApp
                 previous = now;
                 long cpuStart = Stopwatch.GetTimestamp();
 
-                PlatformHost.PumpEvents(); // also delivers the results of file dialogs: they only set what happens next
+                PlatformHost.PumpEvents(); // also runs the continuations of file dialogs that ended: a chosen scene opens or saves here, a chosen project is only noted for the switch below, all before the frame's UI
                 if (_switchTo is { } folder)
                 {
                     _switchTo = null;
@@ -536,12 +532,20 @@ public static unsafe class EditorApp
         /// <summary>Saves the scene to its file; a scene that has none yet asks where (the Save as dialog) and is not saved yet when this returns.</summary>
         private bool Save(EditorProject project)
         {
-            if (project.SaveScene())
+            if (project.TrySaveScene(out string? error))
             {
                 return true;
             }
 
-            _dialogFlow.SaveSceneAs();
+            if (error is not null)
+            {
+                Say(error); // a file that cannot be written: the scene stays modified, and a quit or a project switch that waited for this does not happen
+            }
+            else
+            {
+                _dialogFlow.SaveSceneAs();
+            }
+
             return false;
         }
 
@@ -566,13 +570,13 @@ public static unsafe class EditorApp
 
             if (Gui.BeginMenu("File"))
             {
-                if (Gui.MenuItem("New scene"))
+                // The system's dialog may stay open while the editor runs on (it is not modal on every platform): the entries that would open another one are greyed meanwhile.
+                bool dialogFree = !_dialogFlow.Busy;
+                if (Gui.MenuItem("New scene", null, false, dialogFree)) // a Save as that is answered after a New scene would write the empty scene
                 {
                     project.NewScene();
                 }
 
-                // The system's dialog may stay open while the editor runs on (it is not modal on every platform): the entries that would open another one are greyed meanwhile.
-                bool dialogFree = !_dialogFlow.Busy;
                 if (Gui.MenuItem("Open scene...", null, false, dialogFree))
                 {
                     _dialogFlow.OpenScene();
@@ -772,13 +776,9 @@ public static unsafe class EditorApp
                 Gui.InputText("Path", ref _savePath);
                 if (Gui.Button("Save"))
                 {
-                    try
+                    if (!project.TrySaveSceneAs(_savePath, out string? error))
                     {
-                        project.SaveSceneAs(_savePath);
-                    }
-                    catch (Exception e) when (e is IOException or ContentException or FormatException or UnauthorizedAccessException)
-                    {
-                        Say($"The scene could not be saved:\n{e.Message}");
+                        Say(error!);
                     }
 
                     Gui.ClosePopup();
@@ -805,7 +805,11 @@ public static unsafe class EditorApp
                 {
                     if (Gui.Selectable(scene, project.ScenePath == scene))
                     {
-                        project.OpenScene(scene);
+                        if (!project.TryOpenScene(scene, out string? error))
+                        {
+                            Say(error!);
+                        }
+
                         Gui.ClosePopup();
                     }
                 }
@@ -820,11 +824,11 @@ public static unsafe class EditorApp
 
             if (Modal("Open project"))
             {
-                Ui.Text("This system has no file dialog. Type the path of the game folder.");
+                Ui.Text("The system's file dialog is not available now (the log says why). Type the path of the game folder.");
                 Gui.InputText("Folder", ref _projectPath);
                 if (Gui.Button("Open"))
                 {
-                    RequestProject(_projectPath.Trim());
+                    _dialogFlow.ChooseProject(_projectPath.Trim());
                     Gui.ClosePopup();
                 }
 
