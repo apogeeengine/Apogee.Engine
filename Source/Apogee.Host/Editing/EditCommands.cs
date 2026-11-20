@@ -239,9 +239,17 @@ public sealed class ReparentCommand(WorldRef worldRef, Entity entity, Entity new
 
     public string Name => _name;
 
-    /// <summary>Whether <paramref name="entity"/> may go under <paramref name="parent"/>: not under itself or one of its own descendants, and the parent has to be a user entity (or none).</summary>
+    /// <summary>
+    /// Whether <paramref name="entity"/> may go under <paramref name="parent"/>: not under itself or one of its own descendants, the parent has to be a user entity (or none), and the entity is not a
+    /// member of a prefab instance (<see cref="World.IsPrefabMember"/>: an entity of an instance is named by its place there, so it stays where its prefab puts it; the instance itself can move).
+    /// </summary>
     public static bool IsAllowed(World world, Entity entity, Entity parent)
     {
+        if (world.IsPrefabMember(entity))
+        {
+            return false;
+        }
+
         if (parent.IsNull)
         {
             return true;
@@ -267,7 +275,7 @@ public sealed class ReparentCommand(WorldRef worldRef, Entity entity, Entity new
     {
         if (!IsAllowed(world, entity, newParent))
         {
-            throw new InvalidOperationException("An entity cannot become a child of itself or of one of its descendants.");
+            throw new InvalidOperationException("An entity cannot become a child of itself or of one of its descendants, and a member of a prefab instance cannot be moved out of it.");
         }
 
         Entity transformId = world.Component<Transform>();

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.IO;
 using Apogee.Content;
 using Apogee.Content.Assets;
@@ -28,12 +29,14 @@ namespace Apogee.Ecs;
 //   </Scene>
 //
 // "id" is the entity's number in the file (what Entity-typed fields refer to, and what a patch matches on: DefDatabase.Merge pairs children by name and id), not its id in a world.
-// docs/manual/content/scenes.md is the reference; Scene/scene.xsd describes the structure.
+// An <Entity prefab="…"> is an instance of a prefab: it holds only what differs from the prefab (World.Prefabs.cs, Prefabs/ScenePlan.cs to load, Prefabs/PrefabDiff.cs to save), and a document that has
+// one is version 2. docs/manual/content/scenes.md is the reference; Scene/scene.xsd describes the structure.
 public sealed unsafe partial class World
 {
     private const string SceneRoot = "Scene";
     private const string SceneEntity = "Entity";
-    private const int SceneVersion = 1;
+    private const int SceneVersion = 1;           // what a scene without instances is written as
+    private const int SceneVersionWithInstances = 2;   // a scene that holds an instance: an engine that does not know instances refuses it instead of loading them empty
 
     private readonly Dictionary<string, (Func<uint, AssetRef?> ToRef, Func<AssetRef, uint> FromRef)> _assetTypes = new(StringComparer.Ordinal);
     private readonly object _origin = new();   // what a snapshot says about the world it came from (see WorldSnapshot)
@@ -225,7 +228,7 @@ public sealed unsafe partial class World
     }
 
     // The same without the warning, for what is not saved (a snapshot): null for a type nobody registered and for what the type cannot name.
-    private AssetRef? QuietAssetRefOf(FieldDef field, uint handle) =>
+    internal AssetRef? QuietAssetRefOf(FieldDef field, uint handle) =>
         field.AssetType is { } type && _assetTypes.TryGetValue(type, out var registered) && registered.ToRef(handle) is { IsEmpty: false } named ? named : null;
 
     // The handle of this run for the text of a reference; 0 for no text, for a type nobody registered (said once), and for an asset that cannot be loaded (logged).
@@ -295,6 +298,7 @@ public sealed unsafe partial class World
     /// <summary>
     /// Creates the entities of scene text, under <paramref name="parent"/> when given, and returns them in the order of the file (parents first). A component the file names that this world cannot
     /// find, and a field it does not have, are logged and skipped; components that scripts defined are defined again from the file. Throws <see cref="FormatException"/> when the text is not a scene.
+    /// An <c>&lt;Entity prefab="…"&gt;</c> is an instance of a prefab: its entities are made from the prefab file with the element's changes applied (<see cref="PrefabInstance"/>); one the world cannot read is left empty and its element kept for saving. The whole load is checked against <see cref="MaxLoadEntities"/> before any entity is made.
     /// </summary>
     [Method]
     public List<Entity> LoadScene(string text, Entity parent = default)
@@ -334,56 +338,110 @@ public sealed unsafe partial class World
                 throw new FormatException($"the scene has the version '{versionText}', which is not a number");
             }
 
-            if (version > SceneVersion)
+            if (version > SceneVersionWithInstances)
             {
-                throw new FormatException($"the scene is version {version}; this engine reads up to {SceneVersion}");
+                throw new FormatException($"the scene is version {version}; this engine reads up to {SceneVersionWithInstances}");
             }
         }
 
-        return LoadEntities(root, parent, out _);
+        return Load(root, parent);
     }
 
-    // The entities of the document's <Entity> children (a scene's, or a prefab's one root), created in the order of the file; `nodes` gets the element each came from, in the same order.
-    private List<Entity> LoadEntities(XmlNode root, Entity parent, out List<XmlNode> nodes)
+    // Plans the document (see ScenePlan: plain entities and instances, expanded, against one budget), then makes what the plan says. A document that is too big or too nested fails in the plan, before
+    // any entity is made.
+    private List<Entity> Load(XmlNode document, Entity parent)
     {
-        if (root.Child("Components") is { } schemas)
+        var budget = new ExpansionBudget(MaxLoadEntities);
+        return Create(ScenePlan.Build(document, NewExpander(budget), budget), parent);
+    }
+
+    // Makes the entities of a plan in its order and returns them. Every entity is made first so that entity fields can refer to the ones that come later; the parents next (they decide whether a name is
+    // free), then the names and components, and last the links to prefabs.
+    private List<Entity> Create(ScenePlan plan, Entity parent)
+    {
+        foreach (XmlNode schemas in plan.Schemas)
         {
             DefineSceneComponents(schemas);
         }
 
-        // Every entity first, in the order of the file, so that entity-typed fields can refer to the ones that come later in it; the parents next (they decide whether a name is free), then the names and components.
-        var created = new List<Entity>();
-        nodes = [];
-        var under = new List<Entity>();
-        var byLocal = new Dictionary<int, Entity>();
-        CreateSceneEntities(root, parent, created, nodes, under, byLocal);
-
-        for (int i = 0; i < created.Count; i++)
+        List<PlannedEntity> items = plan.Items;
+        var created = new List<Entity>(items.Count);
+        for (int i = 0; i < items.Count; i++)
         {
-            if (!under[i].IsNull)
-            {
-                SetParent(created[i], under[i]);
-            }
+            created.Add(CreateEntity());
         }
 
         for (int i = 0; i < created.Count; i++)
         {
+            Entity under = items[i].Parent >= 0 ? created[items[i].Parent] : parent;
+            if (!under.IsNull)
+            {
+                SetParent(created[i], under);
+            }
+        }
+
+        var byAddress = new Dictionary<string, Entity>(plan.Addresses.Count, StringComparer.Ordinal);
+        foreach ((string address, int at) in plan.Addresses)
+        {
+            byAddress[address] = created[at];
+        }
+
+        var handles = new Dictionary<string, uint>(StringComparer.Ordinal);
+        for (int i = 0; i < created.Count; i++)
+        {
             Entity entity = created[i];
-            if (nodes[i].Attribute("name") is { Length: > 0 } entityName)
+            PlannedEntity item = items[i];
+            if (item.Name is { Length: > 0 } entityName)
             {
                 TrySetName(entity, entityName);
             }
 
-            foreach (XmlNode component in nodes[i].Children)
+            foreach (XmlNode component in item.Components)
             {
-                if (component.Name != SceneEntity)
-                {
-                    ReadComponent(entity, component, byLocal);
-                }
+                ReadComponent(entity, component, byAddress);
             }
+
+            LinkToPrefabs(entity, item, handles);
         }
 
         return created;
+    }
+
+    // What ties an entity to the prefabs it came from: its id in the prefab file that holds it, the instance it is the root of, and what its instance element could not apply (kept as written, as copies:
+    // the nodes belong to documents the library shares).
+    private void LinkToPrefabs(Entity entity, PlannedEntity item, Dictionary<string, uint> handles)
+    {
+        uint HandleOf(string key)
+        {
+            if (!handles.TryGetValue(key, out uint handle))
+            {
+                handles[key] = handle = HandleOfKey(key);
+            }
+
+            return handle;
+        }
+
+        if (item.MemberId is { } id && item.MemberPrefab is { } file)
+        {
+            Set(entity, new PrefabMember { Id = (uint)id, Prefab = HandleOf(file) });
+        }
+
+        if (item.InstancePrefab is { } prefab)
+        {
+            uint handle = HandleOf(prefab);
+            Set(entity, new PrefabInstance { Prefab = handle });
+
+            // The root of an instance that is not inside another prefab's file is the root entity of its own prefab, the one that file calls by its id (what saving the prefab keeps).
+            if (item.MemberId is null && item.InstanceRootId > 0)
+            {
+                Set(entity, new PrefabMember { Id = (uint)item.InstanceRootId, Prefab = handle });
+            }
+        }
+
+        if (item.Unapplied is { Count: > 0 } kept)
+        {
+            _unapplied[entity.Id] = [.. kept.Select(static node => node.Clone())];
+        }
     }
 
     /// <summary>
@@ -450,44 +508,6 @@ public sealed unsafe partial class World
 
     private string ResolveScenePath(string path) => Assets is { } assets ? assets.ResolvePath(path) : path;
 
-    // The <Entity> children of a node, depth first and in order (the order the ids of a scene count in). Recursion is bounded by XmlNode.MaxDepth, which the parser and the cooked reader enforce.
-    private void CreateSceneEntities(XmlNode container, Entity parent, List<Entity> created, List<XmlNode> nodes, List<Entity> under, Dictionary<int, Entity> byLocal)
-    {
-        foreach (XmlNode node in container.Children)
-        {
-            if (node.Name != SceneEntity)
-            {
-                continue;
-            }
-
-            if (node.HasAttribute("prefab"))
-            {
-                // An instance of another prefab holds patches, not whole components: made as a plain entity it would hold zeros. This version does not expand it.
-                Log.Warn("Scene", $"{node.Origin}:{node.Line}: <Entity> '{node.Attribute("name")}' names a prefab, which this version does not expand: skipped with everything under it");
-                continue;
-            }
-
-            Entity entity = CreateEntity();
-            if (node.Attribute("id") is { } idText)
-            {
-                if (!int.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int localId))
-                {
-                    Log.Warn("Scene", $"{node.Origin}:{node.Line}: the entity id '{idText}' is not a number: nothing can refer to it");
-                }
-                else if (!byLocal.TryAdd(localId, entity))
-                {
-                    Log.Warn("Scene", $"{node.Origin}:{node.Line}: the entity id {localId} is used twice: references to it go to the later one");
-                    byLocal[localId] = entity;
-                }
-            }
-
-            created.Add(entity);
-            nodes.Add(node);
-            under.Add(parent);
-            CreateSceneEntities(node, entity, created, nodes, under, byLocal);
-        }
-    }
-
     private void TrySetName(Entity entity, string name)
     {
         Entity parent = GetParent(entity);
@@ -552,7 +572,7 @@ public sealed unsafe partial class World
         }
     }
 
-    private void ReadComponent(Entity entity, XmlNode node, Dictionary<int, Entity> byLocal)
+    private void ReadComponent(Entity entity, XmlNode node, Dictionary<string, Entity> byAddress)
     {
         string name = node.Name;
         if (name is nameof(PrefabInstance) or nameof(PrefabMember))
@@ -594,7 +614,7 @@ public sealed unsafe partial class World
 
                 try
                 {
-                    ReadField(info, def, attribute.Value, bytes + def.Offset, byLocal);
+                    ReadField(info, def, attribute.Value, bytes + def.Offset, byAddress);
                 }
                 catch (Exception e) when (e is FormatException or InvalidOperationException)
                 {
@@ -606,13 +626,13 @@ public sealed unsafe partial class World
         }
     }
 
-    private void ReadField(ComponentInfo info, FieldDef field, string text, byte* at, Dictionary<int, Entity> byLocal)
+    private void ReadField(ComponentInfo info, FieldDef field, string text, byte* at, Dictionary<string, Entity> byAddress)
     {
         switch (field.Kind)
         {
             case FieldKind.Entity:
-                // The number of an entity of the file; one that is not there is no reference (the same as the attribute left out).
-                *(ulong*)at = int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int local) && byLocal.TryGetValue(local, out Entity target) ? target.Id : 0;
+                // The address of an entity of the document (its number, or its place in an instance); text that is no address, and one that names nothing, is no reference (the same as the attribute left out).
+                *(ulong*)at = EntityAddress.IsValid(text) && byAddress.TryGetValue(text, out Entity target) ? target.Id : 0;
                 break;
             case FieldKind.AssetRef:
                 // A path alone is a reference too, which is how a scene written before UIDs holds a model.

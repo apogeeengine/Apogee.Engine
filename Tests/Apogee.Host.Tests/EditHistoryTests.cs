@@ -1,6 +1,8 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Numerics;
+using Apogee.Content.FileSystem;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
 using Apogee.Host.Editing;
@@ -225,6 +227,43 @@ public sealed class EditHistoryTests : IDisposable
         Assert.True(ReparentCommand.IsAllowed(_world, grandchild, parent));
         Assert.True(ReparentCommand.IsAllowed(_world, grandchild, default));
         Assert.Throws<InvalidOperationException>(() => new ReparentCommand(_world, child, grandchild).Apply());
+    }
+
+    [Fact]
+    public void AMemberCannotBeReparented()
+    {
+        string folder = Directory.CreateTempSubdirectory("apogee-member").FullName;
+        try
+        {
+            var files = new VirtualFileSystem();
+            files.Mount("res://", new DirectorySource(folder, writable: true));
+            File.WriteAllText(Path.Combine(folder, "pair.aprefab"), "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"1\" name=\"Pair\"><Entity id=\"2\" name=\"Left\"/><Entity id=\"3\" name=\"Right\"/></Entity></Prefab>");
+            using var world = new World { Files = files };
+            Entity pair = world.Instantiate("res://pair.aprefab");
+            Entity left = world.Children(pair)[0];
+            Entity right = world.Children(pair)[1];
+            Entity other = world.CreateEntity("other");
+
+            // An entity of an instance is named by its place in it: it does not move out, to the top level or under a sibling...
+            Assert.False(ReparentCommand.IsAllowed(world, left, other));
+            Assert.False(ReparentCommand.IsAllowed(world, left, default));
+            Assert.False(ReparentCommand.IsAllowed(world, left, right));
+            Assert.Throws<InvalidOperationException>(() => new ReparentCommand(world, left, other).Apply());
+            Assert.Equal(pair, world.GetParent(left));
+
+            // ...while the instance itself moves like any entity, and entities of the scene can go under a member.
+            Assert.True(ReparentCommand.IsAllowed(world, pair, other));
+            Assert.True(ReparentCommand.IsAllowed(world, other, left));
+            _history.Execute(new ReparentCommand(world, pair, other));
+            Assert.Equal(other, world.GetParent(pair));
+            Assert.False(ReparentCommand.IsAllowed(world, other, left));         // now left is below it: the rule against cycles still holds on top
+            _history.Undo();
+            Assert.True(world.GetParent(pair).IsNull);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
     }
 
     [Fact]

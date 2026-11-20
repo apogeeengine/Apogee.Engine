@@ -371,14 +371,17 @@ public sealed class PrefabFileTests : IDisposable
     }
 
     [Fact]
-    public void AnInstanceElementInsideAPrefabIsSkippedWithAWarning()
+    public void AnInstanceElementInsideAPrefabIsExpandedWithItsPatches()
     {
         Write("prefabs/nested.aprefab", "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"1\" name=\"Outer\"><Entity id=\"2\" name=\"Inner\" prefab=\"res://prefabs/lamp.aprefab\"><Transform Position=\"2 0 0\"/></Entity><Entity id=\"3\" name=\"Plain\"/></Entity></Prefab>");
 
-        Entity outer = WithWarnings(() => _world.Instantiate("res://prefabs/nested.aprefab"), out List<string> warnings);
+        Entity outer = _world.Instantiate("res://prefabs/nested.aprefab");
 
-        Assert.Equal(["Plain"], _world.Children(outer).Select(c => _world.GetName(c)));
-        Assert.Contains(warnings, w => w.Contains("Inner", StringComparison.Ordinal));
+        Assert.Equal(["Inner", "Plain"], _world.Children(outer).Select(c => _world.GetName(c)));
+        Entity inner = Child(outer, "Inner");
+        Assert.Equal(new Double3(2, 0, 0), _world.Get<Transform>(inner).Position);
+        Assert.Equal(["Bulb", "Base"], _world.Children(inner).Select(c => _world.GetName(c)));
+        Assert.True(_world.IsPrefabInstance(inner));
     }
 
     [Fact]

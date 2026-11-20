@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Apogee.Content.Xml;
 using Apogee.Core.Assets;
 using Apogee.Core.Logging;
 using Apogee.Native.Flecs;
@@ -21,8 +22,11 @@ public struct EditorOnly;
 /// </summary>
 internal readonly record struct CapturedComponent(ComponentInfo Info, byte[]? Data, AssetRef?[]? Assets);
 
-/// <summary>One entity as it was: its id (the generation too), name, parent and its components.</summary>
-internal sealed record EntityState(ulong Id, string? Name, ulong Parent, CapturedComponent[] Components);
+/// <summary>
+/// One entity as it was: its id (the generation too), name, parent and its components, and, for the root of a prefab instance, what its element held that could not be applied (kept as written, never
+/// changed: the nodes may be shared with the world and other snapshots).
+/// </summary>
+internal sealed record EntityState(ulong Id, string? Name, ulong Parent, CapturedComponent[] Components, IReadOnlyList<XmlNode>? Unapplied = null);
 
 /// <summary>
 /// The user entities of a world as they were (<see cref="Snapshot"/>), or a part of them (<see cref="SnapshotTree"/>): ids, names, parents and component bytes. Restoring it brings the entities back
@@ -233,25 +237,28 @@ public sealed unsafe partial class World
     public Entity Clone(Entity source, Entity? parent = null)
     {
         Entity under = parent ?? GetParent(source);
-        Entity copy = CloneOne(source, under);
+
+        // A member's id means something only inside the instance it is a member of: a copy keeps it only when that instance is copied too.
+        var branch = new HashSet<ulong>(Subtree(source).Select(entity => entity.Id));
+        Entity copy = CloneOne(source, under, branch);
         foreach (Entity child in Children(source))
         {
-            CloneInto(child, copy);
+            CloneInto(child, copy, branch);
         }
 
         return copy;
     }
 
-    private void CloneInto(Entity source, Entity parent)
+    private void CloneInto(Entity source, Entity parent, HashSet<ulong> branch)
     {
-        Entity copy = CloneOne(source, parent);
+        Entity copy = CloneOne(source, parent, branch);
         foreach (Entity child in Children(source))
         {
-            CloneInto(child, copy);
+            CloneInto(child, copy, branch);
         }
     }
 
-    private Entity CloneOne(Entity source, Entity parent)
+    private Entity CloneOne(Entity source, Entity parent, HashSet<ulong> branch)
     {
         string? name = CopyName(source, parent);
         Entity copy = CreateEntity(name: null);
@@ -267,6 +274,11 @@ public sealed unsafe partial class World
 
         foreach ((Entity id, ComponentInfo info) in ComponentsOf(source))
         {
+            if (info.Name == nameof(PrefabMember) && !(TryGet(source, out PrefabMember member) && OwnerOf(source, member.Prefab) is { IsNull: false } owner && branch.Contains(owner.Id)))
+            {
+                continue; // a copy of a member whose instance is not copied: a plain entity
+            }
+
             if (info.IsTag)
             {
                 Add(copy, id);
@@ -275,6 +287,11 @@ public sealed unsafe partial class World
             {
                 SetPointer(copy, id, info.Size, GetPointer(source, id));
             }
+        }
+
+        if (_unapplied.TryGetValue(source.Id, out List<XmlNode>? kept))
+        {
+            _unapplied[copy.Id] = [.. kept]; // the nodes are never changed: shared
         }
 
         return copy;
@@ -326,7 +343,7 @@ public sealed unsafe partial class World
             captured[i] = new CapturedComponent(info, data, data is null ? null : CaptureAssets(info, data));
         }
 
-        return new EntityState(entity.Id, GetName(entity), GetParent(entity).Id, captured);
+        return new EntityState(entity.Id, GetName(entity), GetParent(entity).Id, captured, _unapplied.TryGetValue(entity.Id, out List<XmlNode>? kept) ? [.. kept] : null);
     }
 
     // The references the asset fields of one component's bytes name (null when it has none of those fields), for restoring into another world.
@@ -374,6 +391,8 @@ public sealed unsafe partial class World
             {
                 Destroy(extra);
             }
+
+            _unapplied.Remove(extra.Id);
         }
 
         RestoreEntities(snapshot);
@@ -467,6 +486,15 @@ public sealed unsafe partial class World
                 {
                     Remove(entity, id);
                 }
+            }
+
+            if (state.Unapplied is { Count: > 0 } kept)
+            {
+                _unapplied[state.Id] = [.. kept];
+            }
+            else
+            {
+                _unapplied.Remove(state.Id);
             }
         }
 
