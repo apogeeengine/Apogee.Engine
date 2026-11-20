@@ -24,14 +24,14 @@ using Apogee.Content;
 namespace Apogee.Editor;
 
 /// <summary>
-/// The editor program: a window with a dock space, the panels, the menu and the play controls, over an <see cref="EditorProject"/>. Run as <c>Apogee.Editor &lt;game folder&gt; [--user &lt;folder&gt;]</c>.
-/// The layout is saved to <c>imgui.ini</c> in the user's editor folder; the first time (no file) a default one is built.
+/// The editor program: a window with a dock space, the panels, the menu and the play controls, over an <see cref="EditorProject"/>. Run as <c>Apogee.Editor [game folder] [--user &lt;folder&gt;]</c>; without a
+/// folder it shows a start screen, and <b>File &gt; Open project</b> switches to another game in the same process. The layout is saved to <c>imgui.ini</c> in the user's editor folder; the first time (no file) a default one is built.
 /// </summary>
 public static unsafe class EditorApp
 {
     private static readonly Vector4 Background = new(0.1f, 0.1f, 0.12f, 1f);
 
-    public const string Usage = "Usage: Apogee.Editor <game folder> [--user <folder>]";
+    public const string Usage = "Usage: Apogee.Editor [game folder] [--user <folder>]";
 
     public static int Run(string[] args)
     {
@@ -59,9 +59,9 @@ public static unsafe class EditorApp
             }
         }
 
-        if (folder is null || !Directory.Exists(folder))
+        if (folder is not null && !Directory.Exists(folder))
         {
-            Console.Error.WriteLine(folder is null ? Usage : $"{folder} is not a folder.");
+            Console.Error.WriteLine($"{folder} is not a folder.");
             return 1;
         }
 
@@ -78,7 +78,7 @@ public static unsafe class EditorApp
 
     private static string EditorFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Apogee", "Editor");
 
-    private static int RunWindow(string gameFolder, string? user)
+    private static int RunWindow(string? gameFolder, string? user)
     {
         Directory.CreateDirectory(EditorFolder);
         var log = new EditorLog { EchoToConsole = true };
@@ -88,13 +88,12 @@ public static unsafe class EditorApp
         var recent = new RecentLogSink();
         Log.AddSink(recent);
         CrashHandler.Install(Path.Combine(EditorFolder, "crashes"), recent);
-        CrashHandler.SetContext("Edited game", Path.GetFullPath(gameFolder));
         using FileLogSink logFile = RunDiagnostics.Start(EditorFolder, "Apogee Editor");
         PlatformHost.Initialize();
         nint ini = Marshal.StringToCoTaskMemUTF8(Path.Combine(EditorFolder, "imgui.ini"));
         try
         {
-            using var window = new Window("Apogee Editor: " + Path.GetFileName(Path.GetFullPath(gameFolder)), 1600, 900, WindowOptions.Resizable | WindowOptions.HighPixelDensity | GraphicsDevice.RequiredWindowOptions());
+            using var window = new Window(WindowTitle(gameFolder), 1600, 900, WindowOptions.Resizable | WindowOptions.HighPixelDensity | GraphicsDevice.RequiredWindowOptions());
             using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Apogee editor", Window = window });
             CrashHandler.SetContext("GPU", device.Name);
             using var swapchain = device.CreateSwapchain();
@@ -107,23 +106,17 @@ public static unsafe class EditorApp
             host.IO->IniFilename = (byte*)ini;
             bool hasLayout = File.Exists(Path.Combine(EditorFolder, "imgui.ini"));
             using var imgui = new ImGuiRenderer(device, shaders);
-            using var project = new EditorProject(gameFolder, user);
-            var ctx = new EditorContext(project, new EditorCamera(), log, host);
-
-            void MakeViewport() => ctx.Viewport = new ViewportRenderer(device, shaders, project.Session, loop.FramesInFlight, project.IsPlaying, () => ctx.ViewportFocused, () => ctx.ViewportHovered, window.Id);
-            project.SessionReplacing += () =>
+            using var projects = new ProjectHost(user);
+            var app = new Frames(log, window, device, loop, pool, imgui, host, shaders, projects, new SdlFileDialogs(window), hasLayout);
+            if (gameFolder is not null && !projects.TryOpen(gameFolder, out string? error))
             {
-                ctx.Viewport?.Dispose();
-                ctx.Viewport = null;
-            };
-            project.SessionReplaced += MakeViewport;
-            MakeViewport();
+                Console.Error.WriteLine(error);
+                return 2;
+            }
 
-            var app = new Frames(ctx, window, device, loop, pool, imgui, host, hasLayout);
             app.Loop();
             loop.WaitIdle();
-            ctx.Viewport?.Dispose();
-            ctx.Viewport = null;
+            app.Release();
             return device.ValidationErrorCount == 0 ? 0 : 3;
         }
         finally
@@ -133,25 +126,184 @@ public static unsafe class EditorApp
         }
     }
 
+    /// <summary>The window title for the game folder being edited (none: the start screen).</summary>
+    private static string WindowTitle(string? gameFolder) =>
+        gameFolder is null ? "Apogee Editor" : "Apogee Editor: " + Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(gameFolder)));
+
     /// <summary>The frame loop and the panels it draws.</summary>
-    private sealed class Frames(EditorContext ctx, Window window, GraphicsDevice device, FrameLoop loop, TransientPool pool, ImGuiRenderer imgui, ImGuiHost host, bool hasLayout)
+    private sealed class Frames
     {
-        private readonly HierarchyPanel _hierarchy = new();
-        private readonly InspectorPanel _inspector = new();
-        private readonly AssetBrowserPanel _assets = new();
+        private readonly EditorLog _log;
+        private readonly Window _window;
+        private readonly GraphicsDevice _device;
+        private readonly FrameLoop _loop;
+        private readonly TransientPool _pool;
+        private readonly ImGuiRenderer _imgui;
+        private readonly ImGuiHost _host;
+        private readonly ShaderLibrary _shaders;
+        private readonly ProjectHost _projects;
+        private readonly DialogFlow _dialogFlow;
         private readonly ConsolePanel _console = new();
         private readonly RenderGraphPanel _graph = new();
         private readonly ViewportPanel _viewport = new();
-        private bool _layoutBuilt = hasLayout;
+        private EditorContext? _context;
+        private HierarchyPanel _hierarchy = new();
+        private InspectorPanel _inspector = new();
+        private AssetBrowserPanel _assets = new();
+        private bool _layoutBuilt;
         private string _savePath = "res://scenes/untitled";
+        private string _projectPath = "";
+        private string? _startMessage;
+
+        // The path entries that stand in for the system's dialogs when it has none.
         private bool _openSaveAs;
         private bool _openOpen;
+        private bool _openProjectPath;
+
         private bool _openQuit;
         private bool _quit;
 
+        /// <summary>The game folder the user chose and the editor will switch to at the start of the next frame (a switch in the middle of a frame would draw half of it for each project).</summary>
+        private string? _switchTo;
+
+        /// <summary>A game folder the user chose while the scene has unsaved changes: the prompt is open for it.</summary>
+        private string? _confirmSwitch;
+        private bool _openConfirmSwitch;
+
+        public Frames(EditorLog log, Window window, GraphicsDevice device, FrameLoop loop, TransientPool pool, ImGuiRenderer imgui, ImGuiHost host, ShaderLibrary shaders, ProjectHost projects, IFileDialogs dialogs, bool hasLayout)
+        {
+            _log = log;
+            _window = window;
+            _device = device;
+            _loop = loop;
+            _pool = pool;
+            _imgui = imgui;
+            _host = host;
+            _shaders = shaders;
+            _projects = projects;
+            _layoutBuilt = hasLayout;
+            _dialogFlow = new DialogFlow(dialogs, () => _projects.Current, Say, RequestProject, UseBuiltIn);
+            projects.Closing += OnClosing;
+            projects.Opened += OnOpened;
+        }
+
+        /// <summary>The context of the open project; only used while one is open.</summary>
+        private EditorContext ctx => _context!;
+
+        private string? Message
+        {
+            get => _context?.Message ?? _startMessage;
+            set
+            {
+                if (_context is not null)
+                {
+                    _context.Message = value;
+                }
+
+                _startMessage = value;
+            }
+        }
+
+        private void Say(string text) => Message = text;
+
+        /// <summary>The system has no file dialog (no backend): the editor's own entry for the same job opens.</summary>
+        private void UseBuiltIn(DialogKind kind)
+        {
+            switch (kind)
+            {
+                case DialogKind.OpenScene:
+                    _openOpen = true;
+                    break;
+                case DialogKind.SaveSceneAs:
+                    _openSaveAs = true;
+                    break;
+                default:
+                    _openProjectPath = true;
+                    break;
+            }
+        }
+
+        /// <summary>The user chose a game folder to switch to (a dialog or the path entry): after the question about unsaved changes, the switch happens at the start of the next frame.</summary>
+        private void RequestProject(string folder)
+        {
+            if (!Directory.Exists(folder))
+            {
+                Say($"{folder} is not a folder.");
+            }
+            else if (_projects.Current is { Dirty: true })
+            {
+                _confirmSwitch = folder;
+                _openConfirmSwitch = true;
+            }
+            else
+            {
+                _switchTo = folder;
+            }
+        }
+
+        private void OnClosing(EditorProject project)
+        {
+            // The GPU may still be reading what the last frames drew from this project: wait before its models and renderer go.
+            _ = project;
+            _loop.WaitIdle();
+            ctx.Viewport?.Dispose();
+            ctx.Viewport = null;
+        }
+
+        private void OnOpened(EditorProject project)
+        {
+            if (_context is null)
+            {
+                _context = new EditorContext(project, new EditorCamera(), _log, _host);
+            }
+            else
+            {
+                _context.Project = project;
+                _context.Camera.Reset();
+                _context.Message = null;
+            }
+
+            _startMessage = null;
+
+            // Panels keep what they looked at (a rename in progress, the folder shown): a new project starts them afresh.
+            _hierarchy = new HierarchyPanel();
+            _inspector = new InspectorPanel();
+            _assets = new AssetBrowserPanel();
+
+            project.SessionReplacing += () =>
+            {
+                ctx.Viewport?.Dispose();
+                ctx.Viewport = null;
+            };
+            project.SessionReplaced += MakeViewport;
+            _shortcuts = null; // the shortcuts act on the project that was open when they were built
+            MakeViewport();
+            string folder = Path.GetFullPath(project.GameFolder);
+            _window.Title = WindowTitle(folder);
+            CrashHandler.SetContext("Edited game", folder);
+            Log.Info("Editor", $"Opened the project {folder}");
+        }
+
+        private void MakeViewport()
+        {
+            EditorProject project = _projects.Current!;
+            ctx.Viewport = new ViewportRenderer(_device, _shaders, project.Session, _loop.FramesInFlight, project.IsPlaying, () => ctx.ViewportFocused, () => ctx.ViewportHovered, _window.Id);
+        }
+
+        /// <summary>Lets go of the open project's GPU objects; the loop has ended.</summary>
+        public void Release() => _projects.Close();
+
+        private void SwitchProject(string folder)
+        {
+            if (!_projects.TryOpen(folder, out string? error))
+            {
+                _window.Title = WindowTitle(_projects.Current?.GameFolder);
+                Say($"The project could not be opened:\n{error}" + (_projects.Current is null ? "" : "\nThe previous project was opened again."));
+            }
+        }
+
         public void Loop()
         {
-            EditorProject project = ctx.Project;
             var clock = Stopwatch.StartNew();
             double previous = 0;
             double cpuMilliseconds = 0;
@@ -162,11 +314,18 @@ public static unsafe class EditorApp
                 previous = now;
                 long cpuStart = Stopwatch.GetTimestamp();
 
-                PlatformHost.PumpEvents();
-                if (window.CloseRequested)
+                PlatformHost.PumpEvents(); // also delivers the results of file dialogs: they only set what happens next
+                if (_switchTo is { } folder)
                 {
-                    window.ClearCloseRequest();
-                    if (project.Dirty)
+                    _switchTo = null;
+                    SwitchProject(folder);
+                }
+
+                EditorProject? project = _projects.Current;
+                if (_window.CloseRequested)
+                {
+                    _window.ClearCloseRequest();
+                    if (project is { Dirty: true })
                     {
                         _openQuit = true;
                     }
@@ -176,31 +335,38 @@ public static unsafe class EditorApp
                     }
                 }
 
-                ctx.Viewport?.UpdateInput(window);
-                project.Update(delta);
-                Frame? frame = loop.BeginFrame();
-                host.BeginFrame(Math.Max(delta, 1e-4f));
+                if (project is not null)
+                {
+                    ctx.Viewport?.UpdateInput(_window);
+                    project.Update(delta);
+                }
+
+                Frame? frame = _loop.BeginFrame();
+                _host.BeginFrame(Math.Max(delta, 1e-4f));
                 Gizmo.BeginFrame();
-                DrawUi(frame, window.PixelDensity, delta, now);
-                ctx.ProfilerData = new DevOverlayData { GpuName = device.Name, CpuFrameMilliseconds = cpuMilliseconds, GpuTimings = loop.Timings, ShaderErrors = [] };
-                ctx.Profiler.Draw(ctx.ProfilerData);
-                host.EndFrame();
+                DrawUi(project, frame, _window.PixelDensity, delta, now);
+                if (project is not null)
+                {
+                    ctx.ProfilerData = new DevOverlayData { GpuName = _device.Name, CpuFrameMilliseconds = cpuMilliseconds, GpuTimings = _loop.Timings, ShaderErrors = [] };
+                    ctx.Profiler.Draw(ctx.ProfilerData);
+                }
+
+                _host.EndFrame();
 
                 if (frame is not null)
                 {
-                    Record(frame);
-                    loop.EndFrame(frame);
+                    Record(project, frame);
+                    _loop.EndFrame(frame);
                 }
 
-                project.Session.EndFrame();
+                project?.Session.EndFrame();
                 cpuMilliseconds = (Stopwatch.GetTimestamp() - cpuStart) * 1000.0 / Stopwatch.Frequency;
             }
         }
 
-        private void Record(Frame frame)
+        private void Record(EditorProject? project, Frame frame)
         {
-            EditorProject project = ctx.Project;
-            if (_viewport.Wanted && ctx.Viewport is { } viewport)
+            if (project is not null && _viewport.Wanted && ctx.Viewport is { } viewport)
             {
                 if (ctx.Gizmo.ShowHelpers)
                 {
@@ -212,19 +378,25 @@ public static unsafe class EditorApp
                     project.Session.Physics.DrawDebug(project.Session.DebugDraw, camera: viewport.Camera.Position);
                 }
 
-                viewport.Render(frame, ctx.Camera, project.IsPlaying, ctx.Gizmo.PreferGameCamera, window.PixelDensity);
+                viewport.Render(frame, ctx.Camera, project.IsPlaying, ctx.Gizmo.PreferGameCamera, _window.PixelDensity);
             }
 
-            var graph = new RenderGraph(device, pool);
+            var graph = new RenderGraph(_device, _pool);
             ImageHandle output = graph.ImportBackbuffer(frame.Backbuffer!.Value);
             graph.AddPass("Clear", PassType.Graphics, pass => pass.WriteColor(output, Background));
-            imgui.AddPasses(graph, output, frame);
+            _imgui.AddPasses(graph, output, frame);
             graph.Execute(frame);
         }
 
-        private void DrawUi(Frame? frame, float density, float delta, double now)
+        private void DrawUi(EditorProject? project, Frame? frame, float density, float delta, double now)
         {
-            EditorProject project = ctx.Project;
+            if (project is null)
+            {
+                DrawStart();
+                DrawModals(null);
+                return;
+            }
+
             ImGuiViewport* main = ImGui.GetMainViewport();
             uint dock = ImGui.DockSpaceOverViewport(0, main, ImGuiDockNodeFlags.None, null);
             if (!_layoutBuilt)
@@ -282,6 +454,48 @@ public static unsafe class EditorApp
         /// <summary>The global shortcuts: what each action of the keymap does and when it is allowed. Only one fires per frame.</summary>
         private List<(string Id, Func<bool> Enabled, Action Run)>? _shortcuts;
 
+        /// <summary>The start screen: no project is open. It offers the system's folder dialog, and the menu has what works without a project.</summary>
+        private void DrawStart()
+        {
+            if (Gui.BeginMainMenuBar())
+            {
+                if (Gui.BeginMenu("File"))
+                {
+                    if (Gui.MenuItem("Open project...", null, false, !_dialogFlow.Busy))
+                    {
+                        _dialogFlow.OpenProject();
+                    }
+
+                    Ui.Separator();
+                    if (Gui.MenuItem("Quit"))
+                    {
+                        _quit = true;
+                    }
+
+                    Gui.EndMenu();
+                }
+
+                Gui.EndMainMenuBar();
+            }
+
+            ImGuiViewport* main = ImGui.GetMainViewport();
+            ImGui.SetNextWindowPos(new ImVec2 { X = main->Pos.X + main->Size.X * 0.5f, Y = main->Pos.Y + main->Size.Y * 0.4f }, ImGuiCond.Always, new ImVec2 { X = 0.5f, Y = 0.5f });
+            if (Ui.Begin("Apogee Editor##start", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
+            {
+                Ui.Text("Open a game folder to edit it.");
+                Ui.Text("A game folder holds game.xml, its packages and its assets.");
+                Gui.Disabled(_dialogFlow.Busy, () =>
+                {
+                    if (Gui.Button("Open project..."))
+                    {
+                        _dialogFlow.OpenProject();
+                    }
+                });
+            }
+
+            Ui.End();
+        }
+
         private List<(string Id, Func<bool> Enabled, Action Run)> BuildShortcuts()
         {
             EditorProject project = ctx.Project;
@@ -295,8 +509,8 @@ public static unsafe class EditorApp
                 ("edit.paste", Editing, () => project.Paste(ctx.Clipboard)),
                 ("edit.paste_child", Editing, () => project.Paste(ctx.Clipboard, project.Selected.Active)),
                 ("edit.duplicate", Editing, () => project.Duplicate(project.Selected.TopLevel())),
-                ("file.save", () => true, () => Save(project)),
-                ("file.save_as", () => true, () => _openSaveAs = true),
+                ("file.save", () => true, () => _ = Save(project)),
+                ("file.save_as", () => true, _dialogFlow.SaveSceneAs),
                 ("play.toggle", () => true, () => TogglePlay(project)),
             ];
         }
@@ -319,12 +533,16 @@ public static unsafe class EditorApp
             }
         }
 
-        private void Save(EditorProject project)
+        /// <summary>Saves the scene to its file; a scene that has none yet asks where (the Save as dialog) and is not saved yet when this returns.</summary>
+        private bool Save(EditorProject project)
         {
-            if (!project.SaveScene())
+            if (project.SaveScene())
             {
-                _openSaveAs = true;
+                return true;
             }
+
+            _dialogFlow.SaveSceneAs();
+            return false;
         }
 
         private void TogglePlay(EditorProject project)
@@ -335,7 +553,7 @@ public static unsafe class EditorApp
             }
             else if (!project.Play())
             {
-                ctx.Message = "The game did not start:\n" + project.PlayError;
+                Say("The game did not start:\n" + project.PlayError);
             }
         }
 
@@ -353,19 +571,27 @@ public static unsafe class EditorApp
                     project.NewScene();
                 }
 
-                if (Gui.MenuItem("Open scene..."))
+                // The system's dialog may stay open while the editor runs on (it is not modal on every platform): the entries that would open another one are greyed meanwhile.
+                bool dialogFree = !_dialogFlow.Busy;
+                if (Gui.MenuItem("Open scene...", null, false, dialogFree))
                 {
-                    _openOpen = true;
+                    _dialogFlow.OpenScene();
                 }
 
-                if (Gui.MenuItem("Save", ctx.Shortcut("file.save")))
+                if (Gui.MenuItem("Save", ctx.Shortcut("file.save"), false, dialogFree || project.ScenePath is not null))
                 {
-                    Save(project);
+                    _ = Save(project);
                 }
 
-                if (Gui.MenuItem("Save as...", ctx.Shortcut("file.save_as")))
+                if (Gui.MenuItem("Save as...", ctx.Shortcut("file.save_as"), false, dialogFree))
                 {
-                    _openSaveAs = true;
+                    _dialogFlow.SaveSceneAs();
+                }
+
+                Ui.Separator();
+                if (Gui.MenuItem("Open project...", null, false, dialogFree))
+                {
+                    _dialogFlow.OpenProject();
                 }
 
                 Ui.Separator();
@@ -501,19 +727,26 @@ public static unsafe class EditorApp
             Gui.EndMainMenuBar();
         }
 
-        private void DrawModals(EditorProject project)
+        private void DrawModals(EditorProject? project)
         {
-            if (_openSaveAs)
+            if (_openSaveAs && project is not null)
             {
                 _openSaveAs = false;
                 _savePath = project.ScenePath ?? "res://scenes/untitled";
                 Gui.OpenPopup("Save scene as");
             }
 
-            if (_openOpen)
+            if (_openOpen && project is not null)
             {
                 _openOpen = false;
                 Gui.OpenPopup("Open scene");
+            }
+
+            if (_openProjectPath)
+            {
+                _openProjectPath = false;
+                _projectPath = project?.GameFolder ?? "";
+                Gui.OpenPopup("Open project");
             }
 
             if (_openQuit)
@@ -522,17 +755,32 @@ public static unsafe class EditorApp
                 Gui.OpenPopup("Unsaved changes");
             }
 
-            if (ctx.Message is not null)
+            if (_openConfirmSwitch)
+            {
+                _openConfirmSwitch = false;
+                Gui.OpenPopup("Unsaved changes in this project");
+            }
+
+            if (Message is not null)
             {
                 Gui.OpenPopup("Message");
             }
 
-            if (Modal("Save scene as"))
+            // The path entries below are what the editor falls back on when the system has no file dialog (see UseBuiltIn).
+            if (project is not null && Modal("Save scene as"))
             {
                 Gui.InputText("Path", ref _savePath);
                 if (Gui.Button("Save"))
                 {
-                    project.SaveSceneAs(_savePath);
+                    try
+                    {
+                        project.SaveSceneAs(_savePath);
+                    }
+                    catch (Exception e) when (e is IOException or ContentException or FormatException or UnauthorizedAccessException)
+                    {
+                        Say($"The scene could not be saved:\n{e.Message}");
+                    }
+
                     Gui.ClosePopup();
                 }
 
@@ -545,7 +793,7 @@ public static unsafe class EditorApp
                 Gui.EndPopup();
             }
 
-            if (Modal("Open scene"))
+            if (project is not null && Modal("Open scene"))
             {
                 var scenes = project.SceneFiles();
                 if (scenes.Count == 0)
@@ -570,13 +818,31 @@ public static unsafe class EditorApp
                 Gui.EndPopup();
             }
 
-            if (Modal("Unsaved changes"))
+            if (Modal("Open project"))
+            {
+                Ui.Text("This system has no file dialog. Type the path of the game folder.");
+                Gui.InputText("Folder", ref _projectPath);
+                if (Gui.Button("Open"))
+                {
+                    RequestProject(_projectPath.Trim());
+                    Gui.ClosePopup();
+                }
+
+                Gui.SameLine();
+                if (Gui.Button("Cancel"))
+                {
+                    Gui.ClosePopup();
+                }
+
+                Gui.EndPopup();
+            }
+
+            if (project is not null && Modal("Unsaved changes"))
             {
                 Ui.Text("The scene has changes that are not saved.");
                 if (Gui.Button("Save and quit"))
                 {
-                    Save(project);
-                    _quit = !_openSaveAs;
+                    _quit = Save(project);
                     Gui.ClosePopup();
                 }
 
@@ -596,12 +862,44 @@ public static unsafe class EditorApp
                 Gui.EndPopup();
             }
 
+            if (Modal("Unsaved changes in this project"))
+            {
+                Ui.Text("The scene has changes that are not saved. Opening another project closes this one.");
+                if (project?.ScenePath is not null && Gui.Button("Save and open"))
+                {
+                    if (Save(project))
+                    {
+                        _switchTo = _confirmSwitch;
+                    }
+
+                    _confirmSwitch = null;
+                    Gui.ClosePopup();
+                }
+
+                Gui.SameLine();
+                if (Gui.Button("Open without saving"))
+                {
+                    _switchTo = _confirmSwitch;
+                    _confirmSwitch = null;
+                    Gui.ClosePopup();
+                }
+
+                Gui.SameLine();
+                if (Gui.Button("Cancel"))
+                {
+                    _confirmSwitch = null;
+                    Gui.ClosePopup();
+                }
+
+                Gui.EndPopup();
+            }
+
             if (Modal("Message"))
             {
-                Ui.Text(ctx.Message ?? "");
+                Ui.Text(Message ?? "");
                 if (Gui.Button("OK"))
                 {
-                    ctx.Message = null;
+                    Message = null;
                     Gui.ClosePopup();
                 }
 

@@ -10,7 +10,8 @@ namespace Apogee.Editor;
 /// <summary>What the panels share: the project, the camera, the log, the profiler and the viewport renderer of the current session.</summary>
 public sealed class EditorContext(EditorProject project, EditorCamera camera, EditorLog log, ImGuiHost host)
 {
-    public EditorProject Project { get; } = project;
+    /// <summary>The open project. Opening another project (<see cref="Editing.ProjectHost"/>) replaces it; the rest of the context (the log, the keymap, the gizmo settings) stays.</summary>
+    public EditorProject Project { get; set; } = project;
 
     public EditorCamera Camera { get; } = camera;
 

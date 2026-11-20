@@ -42,6 +42,9 @@ public sealed class EditorProject : IDisposable
 
     public string GameFolder { get; }
 
+    /// <summary>The project was disposed: its session is gone (see <see cref="Dispose"/>), and the editor no longer shows it.</summary>
+    public bool IsDisposed => _disposed;
+
     public string? UserFolder { get; }
 
     /// <summary>The current session: an editing one, or while playing the game's.</summary>

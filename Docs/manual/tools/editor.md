@@ -7,8 +7,10 @@
 [`Apogee.Host`](../scripting/runtime.md#apogeehost-what-runs-a-game) and the [scene format](../core/ecs.md#editing-hierarchy-copies-snapshots-and-scenes).
 
 ```sh
-dotnet run --project Source/Apogee.Editor -- <game folder> [--user <folder>]
+dotnet run --project Source/Apogee.Editor -- [game folder] [--user <folder>]
 ```
+
+With no game folder the editor shows its [start screen](#the-start-screen-and-opening-a-project).
 
 The layout (a dock space: hierarchy on the left, inspector on the right, the viewport in the middle, tabs of assets, console, profiler and render graph below) is saved to `imgui.ini` in
 `~/.local/share/Apogee/Editor` (the platform's local application data folder); the first run, with no file, builds the default one. Quitting with unsaved changes asks first.
@@ -142,13 +144,34 @@ The matching is `Keymap.Pressed` and `Keymap.IsHeld` over `IKeyState` (ImGui's k
 
 ## Scenes and undo
 
-*File* creates, opens and saves scenes (`.ascene` XML, see [scenes](../content/scenes.md)); *Save as* takes a virtual path (`res://scenes/level`), and the scenes of the game are listed by *Open*. Every edit is a command on an `EditHistory`
+*File* creates, opens and saves scenes (`.ascene` XML, see [scenes](../content/scenes.md)); *Open scene...* and *Save as...* use the system's [file dialogs](#file-dialogs). Every edit is a command on an `EditHistory`
 (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z): component values (a drag is one step), adding and removing components, creating, duplicating and deleting entities (a deleted branch comes back under the same ids; deleting or
 moving several at once is one step), renaming and reparenting. Opening or creating a scene clears the history.
 
 The history remembers the state the scene was saved in (its **save point**): the scene is *modified* (the `*` after its name, and the question when quitting) only when it differs from the file. Undo back to the saved
 state and the mark goes away; undo past it, or make a new edit after undoing from it, and it comes back. A drag that is still going (its steps merge) is not the saved state either. With more than 500 steps (the
 history's `Limit`) the oldest are forgotten, and if the saved state was among them the scene stays modified until it is saved again.
+
+## File dialogs
+
+*Open scene...*, *Save as...* (Ctrl+Shift+S, and *Save* on a scene that has no file yet) and *Open project...* show the operating system's own dialog: the open dialog starts in the game's `scenes` folder (or the game folder) and filters
+on `.ascene`; the save dialog adds `.ascene` when the name has none. The dialogs come from SDL ([`FileDialog`](../platform/platform.md#file-dialogs)); they are asynchronous, so the editor goes on running while one is open, and the
+*Open scene*, *Save as* and *Open project* entries are greyed until it closes (a second dialog is never opened). A dialog that is cancelled changes nothing.
+
+A scene belongs to the game, so only a file **inside the game folder** can be opened or saved: the dialog gives an operating system path, and the editor turns it into the game's virtual path (`<game folder>/scenes/level.ascene`
+becomes `res://scenes/level.ascene`). A path outside the folder, a file that is not an `.ascene`, or a place in a read-only part of the game is refused with a message that says why, and nothing is written. If the project was
+switched while a dialog was open, its late result is dropped.
+
+On Linux SDL asks the desktop's file chooser through `xdg-desktop-portal`, or runs `zenity`. A machine with neither has no system dialog: the editor then falls back to its own entries (a list of the game's scenes for *Open
+scene*, a path field for *Save as* and for *Open project*), so everything stays reachable.
+
+## The start screen and opening a project
+
+Started without a game folder, the editor opens its window on a start screen with an *Open project...* button (and *File > Open project...*): choose a game folder (the one with `game.xml` or `packages`) in the system's folder
+dialog. The same entry in the *File* menu of an open project **switches projects inside the same process**: if the scene has unsaved changes the editor asks first (*Save and open*, *Open without saving*, *Cancel*); then the
+old project is closed (the GPU is waited for, the viewport and the session are disposed, since one session exists at a time) and the new folder is opened at the start of the next frame, with a fresh camera, panels and undo history. The window title
+and the crash reports' *Edited game* line follow the project. If the folder cannot be opened (a `game.xml` that is wrong, say) the editor says why and opens the previous project again. A folder that does not exist is refused
+without closing anything.
 
 ## Play
 
@@ -162,13 +185,13 @@ Editing is off while playing: the panels show the game's world, read-only.
 
 ## What is not here
 
-Importing 3D models and other assets from inside the editor (new files go through `Apogee.Runtime --import`, see [Asset import](../content/import.md)), materials, animations, an Export dialog (a game is exported with [`./build.sh export`](export.md)), editing several selected entities at once in the inspector (it shows the active one), a scene file dialog beyond a list, material and logic graph editors (imnodes is ready for them), multi-viewport windows, and a physics ray cast for picking (an editing session has no physics bodies).
+Importing 3D models and other assets from inside the editor (new files go through `Apogee.Runtime --import`, see [Asset import](../content/import.md)), materials, animations, an Export dialog (a game is exported with [`./build.sh export`](export.md)), editing several selected entities at once in the inspector (it shows the active one), material and logic graph editors (imnodes is ready for them), multi-viewport windows, and a physics ray cast for picking (an editing session has no physics bodies).
 Sound plays in play mode through OpenAL Soft ([Audio](../audio/index.md)), which ships beside the editor like any other library.
 
 ## Tests
 
 `Tests/Apogee.Editor.Tests`: the field codec for every `FieldKind` (a rotation as angles, integers clamped), the editor camera, picking (rays, boxes, spheres, the ground, and the selection box with what is behind the
-camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), copy, cut, paste and duplicate through a memory clipboard (the same tree under new ids as one step, next to the active entity or under it, unique names, references inside the copy followed and outside ones dropped, models by path, undo of a cut, text that is not a scene, duplicating several, playing), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the keymap (chords parsed and printed for each platform, the defaults and their menu text, conflicts in a context or against an *Anywhere* shortcut, exact modifiers, contexts, no shortcut while typing, held keys, and this page's table equal to the real one), the project (creating, naming, reparenting,
+camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), copy, cut, paste and duplicate through a memory clipboard (the same tree under new ids as one step, next to the active entity or under it, unique names, references inside the copy followed and outside ones dropped, models by path, undo of a cut, text that is not a scene, duplicating several, playing), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the keymap (chords parsed and printed for each platform, the defaults and their menu text, conflicts in a context or against an *Anywhere* shortcut, exact modifiers, contexts, no shortcut while typing, held keys, and this page's table equal to the real one), the file dialogs through a scripted fake (an OS path becoming a game path only inside the game folder; Save as writing the chosen file, adding the extension, refusing a path outside the game; Open scene opening it, refusing other paths, files that are not scenes and missing ones; a cancel doing nothing and an error asking for the built-in entry; a second dialog refused; a result that arrives after the project changed dropped), switching projects (the old project disposed first, the events in order, a missing folder keeping the open project, a game that fails to start reported and the previous project reopened), the project (creating, naming, reparenting,
 duplicating and deleting, one or several, through the history; the modified mark clearing when undo returns to the saved scene; a scene saved to a file and opened again with the model's path; Play running the game's
 scripts over the scene and Stop restoring the world under the same ids with the selection and history intact; a failing game), and, on a GPU (skipped without one), a frame of the viewport with no validation errors whose render graph lays out as nodes. `Tests/Apogee.Host.Tests` covers the history and
 its commands (a drag over several entities is one step).

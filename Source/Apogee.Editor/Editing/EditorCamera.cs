@@ -36,6 +36,15 @@ public sealed class EditorCamera
 
     public Double3 Position => Target - (Double3)(Forward * Distance);
 
+    /// <summary>Puts the camera back where a new editor starts (another project was opened).</summary>
+    public void Reset()
+    {
+        Target = new Double3(0, 1, 0);
+        Distance = 8f;
+        Yaw = 0.6f;
+        Pitch = -0.4f;
+    }
+
     /// <summary>Turns around the target: radians of yaw and pitch, from a mouse drag.</summary>
     public void Orbit(float deltaYaw, float deltaPitch)
     {
