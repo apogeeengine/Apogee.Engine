@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Numerics;
@@ -278,52 +279,43 @@ public static unsafe class EditorApp
             }
         }
 
+        /// <summary>The global shortcuts: what each action of the keymap does and when it is allowed. Only one fires per frame.</summary>
+        private List<(string Id, Func<bool> Enabled, Action Run)>? _shortcuts;
+
+        private List<(string Id, Func<bool> Enabled, Action Run)> BuildShortcuts()
+        {
+            EditorProject project = ctx.Project;
+            bool Editing() => !project.IsPlaying;
+            return
+            [
+                ("edit.undo", Editing, () => project.History.Undo()),
+                ("edit.redo", Editing, () => project.History.Redo()),
+                ("edit.copy", () => true, () => project.Copy(ctx.Clipboard)),
+                ("edit.cut", Editing, () => project.Cut(ctx.Clipboard)),
+                ("edit.paste", Editing, () => project.Paste(ctx.Clipboard)),
+                ("edit.paste_child", Editing, () => project.Paste(ctx.Clipboard, project.Selected.Active)),
+                ("edit.duplicate", Editing, () => project.Duplicate(project.Selected.TopLevel())),
+                ("file.save", () => true, () => Save(project)),
+                ("file.save_as", () => true, () => _openSaveAs = true),
+                ("play.toggle", () => true, () => TogglePlay(project)),
+            ];
+        }
+
         private void Shortcuts(EditorProject project)
         {
-            if (host.WantsKeyboard)
+            _ = project;
+            _shortcuts ??= BuildShortcuts();
+            foreach ((string id, Func<bool> enabled, Action run) in _shortcuts)
             {
-                return;
-            }
+                if (ctx.Pressed(id))
+                {
+                    if (enabled())
+                    {
+                        run();
+                    }
 
-            if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyZ) && !project.IsPlaying)
-            {
-                if (Gui.Shift)
-                {
-                    project.History.Redo();
+                    break;
                 }
-                else
-                {
-                    project.History.Undo();
-                }
-            }
-            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyY) && !project.IsPlaying)
-            {
-                project.History.Redo();
-            }
-            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyC))
-            {
-                project.Copy(ctx.Clipboard);
-            }
-            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyX) && !project.IsPlaying)
-            {
-                project.Cut(ctx.Clipboard);
-            }
-            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyV) && !project.IsPlaying)
-            {
-                // Ctrl+Shift+V pastes under the active entity, Ctrl+V next to it.
-                project.Paste(ctx.Clipboard, Gui.Shift ? project.Selected.Active : null);
-            }
-            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyD) && !project.IsPlaying)
-            {
-                project.Duplicate(project.Selected.TopLevel());
-            }
-            else if (Gui.Ctrl && Gui.KeyPressed(ImGuiKey.ImGuiKeyS))
-            {
-                Save(project);
-            }
-            else if (Gui.KeyPressed(ImGuiKey.ImGuiKeyF5))
-            {
-                TogglePlay(project);
             }
         }
 
@@ -366,12 +358,12 @@ public static unsafe class EditorApp
                     _openOpen = true;
                 }
 
-                if (Gui.MenuItem("Save", "Ctrl+S"))
+                if (Gui.MenuItem("Save", ctx.Shortcut("file.save")))
                 {
                     Save(project);
                 }
 
-                if (Gui.MenuItem("Save as..."))
+                if (Gui.MenuItem("Save as...", ctx.Shortcut("file.save_as")))
                 {
                     _openSaveAs = true;
                 }
@@ -395,12 +387,12 @@ public static unsafe class EditorApp
             if (Gui.BeginMenu("Edit"))
             {
                 bool editing = !project.IsPlaying;
-                if (Gui.MenuItem(project.History.UndoName is { } undo ? $"Undo {undo}" : "Undo", "Ctrl+Z", false, editing && project.History.CanUndo))
+                if (Gui.MenuItem(project.History.UndoName is { } undo ? $"Undo {undo}" : "Undo", ctx.Shortcut("edit.undo"), false, editing && project.History.CanUndo))
                 {
                     project.History.Undo();
                 }
 
-                if (Gui.MenuItem(project.History.RedoName is { } redo ? $"Redo {redo}" : "Redo", "Ctrl+Y", false, editing && project.History.CanRedo))
+                if (Gui.MenuItem(project.History.RedoName is { } redo ? $"Redo {redo}" : "Redo", ctx.Shortcut("edit.redo"), false, editing && project.History.CanRedo))
                 {
                     project.History.Redo();
                 }
@@ -408,32 +400,32 @@ public static unsafe class EditorApp
                 Ui.Separator();
                 bool selected = project.Selection is not null;
                 bool canPaste = editing && ClipboardScene.LooksLikeScene(ctx.Clipboard.GetText());
-                if (Gui.MenuItem("Cut", "Ctrl+X", false, editing && selected))
+                if (Gui.MenuItem("Cut", ctx.Shortcut("edit.cut"), false, editing && selected))
                 {
                     project.Cut(ctx.Clipboard);
                 }
 
-                if (Gui.MenuItem("Copy", "Ctrl+C", false, selected))
+                if (Gui.MenuItem("Copy", ctx.Shortcut("edit.copy"), false, selected))
                 {
                     project.Copy(ctx.Clipboard);
                 }
 
-                if (Gui.MenuItem("Paste", "Ctrl+V", false, canPaste))
+                if (Gui.MenuItem("Paste", ctx.Shortcut("edit.paste"), false, canPaste))
                 {
                     project.Paste(ctx.Clipboard);
                 }
 
-                if (Gui.MenuItem("Paste as child", "Ctrl+Shift+V", false, canPaste && selected))
+                if (Gui.MenuItem("Paste as child", ctx.Shortcut("edit.paste_child"), false, canPaste && selected))
                 {
                     project.Paste(ctx.Clipboard, project.Selected.Active);
                 }
 
-                if (Gui.MenuItem("Duplicate", "Ctrl+D", false, editing && selected))
+                if (Gui.MenuItem("Duplicate", ctx.Shortcut("edit.duplicate"), false, editing && selected))
                 {
                     project.Duplicate(project.Selected.TopLevel());
                 }
 
-                if (Gui.MenuItem("Delete", "Del", false, editing && project.Selection is not null))
+                if (Gui.MenuItem("Delete", ctx.Shortcut("edit.delete"), false, editing && project.Selection is not null))
                 {
                     project.Delete(project.Selected.TopLevel());
                 }

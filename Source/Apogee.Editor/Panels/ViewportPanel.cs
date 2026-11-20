@@ -6,6 +6,7 @@ using Apogee.Core.Numerics;
 using Apogee.DevTools;
 using Apogee.Ecs;
 using Apogee.Editor.Editing;
+using Apogee.Editor.Input;
 using Apogee.Graphics;
 using Apogee.Host.Editing;
 using Apogee.Native.CImGui;
@@ -282,7 +283,7 @@ public sealed unsafe class ViewportPanel
             return;
         }
 
-        bool cancelled = Gui.MouseDown(ImGuiMouseButton.Right) || Gui.MouseDown(ImGuiMouseButton.Middle) || Gui.KeyPressed(ImGuiKey.ImGuiKeyEscape);
+        bool cancelled = Gui.MouseDown(ImGuiMouseButton.Right) || Gui.MouseDown(ImGuiMouseButton.Middle) || ctx.Pressed("selection.clear", KeyContext.Viewport);
         bool released = Gui.MouseReleased(ImGuiMouseButton.Left);
         if (cancelled || (!released && !Gui.MouseDown(ImGuiMouseButton.Left)))
         {
@@ -353,12 +354,12 @@ public sealed unsafe class ViewportPanel
                 camera.Orbit(-delta.X * 0.005f, -delta.Y * 0.005f);
                 float speed = (Gui.Shift ? 18f : 6f);
                 Vector3 move = default;
-                if (Gui.KeyDown(ImGuiKey.ImGuiKeyW)) { move.Z += speed; }
-                if (Gui.KeyDown(ImGuiKey.ImGuiKeyS)) { move.Z -= speed; }
-                if (Gui.KeyDown(ImGuiKey.ImGuiKeyD)) { move.X += speed; }
-                if (Gui.KeyDown(ImGuiKey.ImGuiKeyA)) { move.X -= speed; }
-                if (Gui.KeyDown(ImGuiKey.ImGuiKeyE)) { move.Y += speed; }
-                if (Gui.KeyDown(ImGuiKey.ImGuiKeyQ)) { move.Y -= speed; }
+                if (ctx.IsHeld("view.fly_forward", KeyContext.ViewportFly)) { move.Z += speed; }
+                if (ctx.IsHeld("view.fly_back", KeyContext.ViewportFly)) { move.Z -= speed; }
+                if (ctx.IsHeld("view.fly_right", KeyContext.ViewportFly)) { move.X += speed; }
+                if (ctx.IsHeld("view.fly_left", KeyContext.ViewportFly)) { move.X -= speed; }
+                if (ctx.IsHeld("view.fly_up", KeyContext.ViewportFly)) { move.Y += speed; }
+                if (ctx.IsHeld("view.fly_down", KeyContext.ViewportFly)) { move.Y -= speed; }
                 camera.Fly(move, dt);
             }
             else if (Gui.MouseDown(ImGuiMouseButton.Middle))
@@ -412,18 +413,19 @@ public sealed unsafe class ViewportPanel
         bool boxing = _boxFrom is not null;
         DrawSelectionBox(ctx, renderer, min, size);
 
-        // Escape cancels a box being dragged; otherwise it clears the selection.
-        if (ctx.ViewportFocused && !rmb && !ctx.Host.WantsKeyboard && !boxing && Gui.KeyPressed(ImGuiKey.ImGuiKeyEscape))
+        // Escape cancels a box being dragged; otherwise it clears the selection. The keymap says which keys; the viewport has to be focused and not flying.
+        KeyContext keys = ctx.ViewportFocused && !rmb ? KeyContext.Viewport : KeyContext.Global;
+        if (!boxing && ctx.Pressed("selection.clear", keys))
         {
             ctx.Project.Selected.Clear();
         }
 
-        if (ctx.ViewportFocused && !rmb && !ctx.Host.WantsKeyboard && !ctx.Project.IsPlaying)
+        if (!ctx.Project.IsPlaying)
         {
-            if (Gui.KeyPressed(ImGuiKey.ImGuiKeyW)) { ctx.Gizmo.Operation = (int)AgzOperation.Translate; }
-            if (Gui.KeyPressed(ImGuiKey.ImGuiKeyE)) { ctx.Gizmo.Operation = (int)AgzOperation.Rotate; }
-            if (Gui.KeyPressed(ImGuiKey.ImGuiKeyR)) { ctx.Gizmo.Operation = (int)AgzOperation.Scale; }
-            if (Gui.KeyPressed(ImGuiKey.ImGuiKeyF) && ctx.Project.Selection is { } selected && ctx.Project.World.TryGet(selected, out WorldTransform placed))
+            if (ctx.Pressed("gizmo.move", keys)) { ctx.Gizmo.Operation = (int)AgzOperation.Translate; }
+            if (ctx.Pressed("gizmo.rotate", keys)) { ctx.Gizmo.Operation = (int)AgzOperation.Rotate; }
+            if (ctx.Pressed("gizmo.scale", keys)) { ctx.Gizmo.Operation = (int)AgzOperation.Scale; }
+            if (ctx.Pressed("view.frame", keys) && ctx.Project.Selection is { } selected && ctx.Project.World.TryGet(selected, out WorldTransform placed))
             {
                 camera.Frame(placed.Position, 2f);
             }

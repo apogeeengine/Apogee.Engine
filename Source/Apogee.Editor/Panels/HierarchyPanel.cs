@@ -5,6 +5,7 @@ using System.Numerics;
 using Apogee.DevTools;
 using Apogee.Ecs;
 using Apogee.Editor.Editing;
+using Apogee.Editor.Input;
 using Apogee.Native.CImGui;
 using Apogee.Reflection;
 
@@ -79,13 +80,13 @@ public sealed unsafe class HierarchyPanel
         // Empty space: a drop here makes the dragged entities roots, a click clears the selection (the multi-select does), a drag draws the selection box, a right click creates.
         EmptySpace(ctx, locked);
 
-        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !ctx.Host.WantsKeyboard && !locked && project.Selection is { } selected)
+        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && !locked && project.Selection is { } selected)
         {
-            if (Gui.KeyPressed(ImGuiKey.ImGuiKeyDelete))
+            if (ctx.Pressed("edit.delete", KeyContext.Hierarchy))
             {
                 project.Delete(selection.TopLevel());
             }
-            else if (Gui.KeyPressed(ImGuiKey.ImGuiKeyF2))
+            else if (ctx.Pressed("entity.rename", KeyContext.Hierarchy))
             {
                 BeginRename(world, selected);
             }
@@ -169,7 +170,7 @@ public sealed unsafe class HierarchyPanel
 
         if (!locked && Gui.BeginContextMenu("empty_menu", onItem: false))
         {
-            if (Gui.MenuItem("Paste", "Ctrl+V", false, ClipboardScene.LooksLikeScene(ctx.Clipboard.GetText())))
+            if (Gui.MenuItem("Paste", ctx.Shortcut("edit.paste"), false, ClipboardScene.LooksLikeScene(ctx.Clipboard.GetText())))
             {
                 ctx.Project.Paste(ctx.Clipboard, default(Entity));
             }
@@ -306,41 +307,41 @@ public sealed unsafe class HierarchyPanel
                     selection.Set(entity);
                 }
 
-                if (Gui.MenuItem("Rename", "F2"))
+                if (Gui.MenuItem("Rename", ctx.Shortcut("entity.rename")))
                 {
                     BeginRename(world, entity);
                 }
 
                 Ui.Separator();
                 bool canPaste = ClipboardScene.LooksLikeScene(ctx.Clipboard.GetText());
-                if (Gui.MenuItem("Cut", "Ctrl+X"))
+                if (Gui.MenuItem("Cut", ctx.Shortcut("edit.cut")))
                 {
                     project.Cut(ctx.Clipboard);
                 }
 
-                if (Gui.MenuItem("Copy", "Ctrl+C"))
+                if (Gui.MenuItem("Copy", ctx.Shortcut("edit.copy")))
                 {
                     project.Copy(ctx.Clipboard);
                 }
 
-                if (Gui.MenuItem("Paste", "Ctrl+V", false, canPaste))
+                if (Gui.MenuItem("Paste", ctx.Shortcut("edit.paste"), false, canPaste))
                 {
                     project.Paste(ctx.Clipboard, world.GetParent(entity));
                 }
 
-                if (Gui.MenuItem("Paste as child", "Ctrl+Shift+V", false, canPaste))
+                if (Gui.MenuItem("Paste as child", ctx.Shortcut("edit.paste_child"), false, canPaste))
                 {
                     project.Paste(ctx.Clipboard, entity);
                 }
 
-                if (Gui.MenuItem("Duplicate", "Ctrl+D"))
+                if (Gui.MenuItem("Duplicate", ctx.Shortcut("edit.duplicate")))
                 {
                     project.Duplicate(selection.TopLevel());
                 }
 
                 Ui.Separator();
 
-                if (Gui.MenuItem(selection.Count > 1 ? $"Delete {selection.Count} entities" : "Delete", "Del"))
+                if (Gui.MenuItem(selection.Count > 1 ? $"Delete {selection.Count} entities" : "Delete", ctx.Shortcut("edit.delete")))
                 {
                     project.Delete(selection.TopLevel());
                 }

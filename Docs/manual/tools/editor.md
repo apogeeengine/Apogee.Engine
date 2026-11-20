@@ -97,6 +97,49 @@ the *Edit* menu and the hierarchy's context menu, which also has *Paste as child
 The code is `Source/Apogee.Editor/Editing/ClipboardScene.cs` (the `IClipboard` interface, `SdlClipboard` over SDL's clipboard, `MemoryClipboard` for tests, and the checks of the text), the project's `Copy`, `Cut`,
 `Paste` and `Duplicate`, and `CreateEntitiesCommand` in `Apogee.Host` (the undo step that makes several branches).
 
+## Shortcuts
+
+Every shortcut is a row of one table, the keymap (`Source/Apogee.Editor/Input/Keymap.cs`): an action id (`edit.undo`), the chord or chords that fire it, and the **context** it applies in. The menus show the
+shortcut text from the same table, so a label never disagrees with the key. On macOS the primary modifier is Cmd, shown as `Cmd+Z`; everywhere else it is Ctrl.
+
+<!-- keymap:begin (checked against Keymap.Defaults by KeymapTests) -->
+| Action | Shortcut | Where |
+| --- | --- | --- |
+| Undo | Ctrl+Z | Anywhere |
+| Redo | Ctrl+Y or Ctrl+Shift+Z | Anywhere |
+| Save | Ctrl+S | Anywhere |
+| Save as | Ctrl+Shift+S | Anywhere |
+| Play or stop | F5 | Anywhere |
+| Cut | Ctrl+X | Anywhere |
+| Copy | Ctrl+C | Anywhere |
+| Paste | Ctrl+V | Anywhere |
+| Paste as child | Ctrl+Shift+V | Anywhere |
+| Duplicate | Ctrl+D | Anywhere |
+| Delete | Delete | Hierarchy focused |
+| Rename | F2 | Hierarchy focused |
+| Clear the selection | Escape | Viewport focused |
+| Frame the selection | F | Viewport focused |
+| Move tool | W | Viewport focused |
+| Rotate tool | E | Viewport focused |
+| Scale tool | R | Viewport focused |
+| Fly forward | W | Viewport, right mouse button held |
+| Fly back | S | Viewport, right mouse button held |
+| Fly left | A | Viewport, right mouse button held |
+| Fly right | D | Viewport, right mouse button held |
+| Fly up | E | Viewport, right mouse button held |
+| Fly down | Q | Viewport, right mouse button held |
+<!-- keymap:end -->
+
+- **Contexts.** *Anywhere* shortcuts work whichever panel has the keyboard; the others only while that panel is focused. While the right mouse button is held in the viewport the camera flies: the
+  fly keys are held rather than pressed (extra modifiers, such as Shift to go faster, do not stop them), and the viewport's own keys (W, E, R, F, Escape) are off so that W flies instead of choosing the Move tool.
+- **Exact modifiers.** A chord fires only with exactly its modifiers: Ctrl+Shift+V pastes as a child and does not also paste, Shift+Z is not Z.
+- **Typing.** While a text field (or any widget that uses the keyboard) is active, no shortcut fires, so typing a name never deletes entities or switches the tool.
+- **Conflicts.** `Keymap.Conflicts()` reports two actions that share a chord where both could be active: in the same context, or when one of them is *Anywhere*. The defaults have none (a test checks it); a
+  rebinding that collides is reported, not refused. The table can be changed in memory (`Rebind`, `Reset`); saving it and a screen to edit it come later.
+- **ImGui's own keys.** Ctrl+A (select all), Shift-click ranges, Ctrl-click and Escape in the hierarchy are ImGui's multi-select, not keymap rows.
+
+The matching is `Keymap.Pressed` and `Keymap.IsHeld` over `IKeyState` (ImGui's keyboard in the editor, a fake in the tests), so it is tested without a window. The manual's table above is checked against the real one by a test.
+
 ## Scenes and undo
 
 *File* creates, opens and saves scenes (`.ascene` XML, see [scenes](../content/scenes.md)); *Save as* takes a virtual path (`res://scenes/level`), and the scenes of the game are listed by *Open*. Every edit is a command on an `EditHistory`
@@ -125,7 +168,7 @@ Sound plays in play mode through OpenAL Soft ([Audio](../audio/index.md)), which
 ## Tests
 
 `Tests/Apogee.Editor.Tests`: the field codec for every `FieldKind` (a rotation as angles, integers clamped), the editor camera, picking (rays, boxes, spheres, the ground, and the selection box with what is behind the
-camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), copy, cut, paste and duplicate through a memory clipboard (the same tree under new ids as one step, next to the active entity or under it, unique names, references inside the copy followed and outside ones dropped, models by path, undo of a cut, text that is not a scene, duplicating several, playing), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the project (creating, naming, reparenting,
+camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), copy, cut, paste and duplicate through a memory clipboard (the same tree under new ids as one step, next to the active entity or under it, unique names, references inside the copy followed and outside ones dropped, models by path, undo of a cut, text that is not a scene, duplicating several, playing), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the keymap (chords parsed and printed for each platform, the defaults and their menu text, conflicts in a context or against an *Anywhere* shortcut, exact modifiers, contexts, no shortcut while typing, held keys, and this page's table equal to the real one), the project (creating, naming, reparenting,
 duplicating and deleting, one or several, through the history; the modified mark clearing when undo returns to the saved scene; a scene saved to a file and opened again with the model's path; Play running the game's
 scripts over the scene and Stop restoring the world under the same ids with the selection and history intact; a failing game), and, on a GPU (skipped without one), a frame of the viewport with no validation errors whose render graph lays out as nodes. `Tests/Apogee.Host.Tests` covers the history and
 its commands (a drag over several entities is one step).
