@@ -68,6 +68,14 @@ public sealed class Keymap
     private readonly List<EditorAction> _order = [];
     private readonly Dictionary<string, KeyChord[]> _bindings = [];
 
+    /// <summary>Raised after a binding changed (<see cref="Rebind"/>, <see cref="SetBindings"/>, <see cref="Reset"/>, <see cref="ResetAll"/>): what keeps the table in the preferences listens.</summary>
+    public event Action? Changed;
+
+    /// <summary>
+    /// True while no shortcut may fire (<see cref="Pressed"/> and <see cref="IsHeld"/> answer false): the rebinding screen is waiting for a key, and the key it gets must not also do what it is bound to.
+    /// </summary>
+    public bool Suspended { get; set; }
+
     /// <summary>The default actions and their chords: today's shortcuts.</summary>
     public static IReadOnlyList<EditorAction> Defaults { get; } =
     [
@@ -142,14 +150,22 @@ public sealed class Keymap
     }
 
     /// <summary>Binds the action to this one chord, replacing what it had. <see cref="KeyChord.None"/> unbinds it. Collisions are not refused: <see cref="Conflicts"/> reports them.</summary>
-    public void Rebind(string id, KeyChord chord)
+    public void Rebind(string id, KeyChord chord) => SetBindings(id, chord.IsNone ? [] : [chord]);
+
+    /// <summary>Binds the action to exactly these chords (none: it is unbound), replacing what it had; a chord that is <see cref="KeyChord.None"/> and a repeated one are dropped.</summary>
+    public void SetBindings(string id, IEnumerable<KeyChord> chords)
     {
         _ = Action(id);
-        _bindings[id] = chord.IsNone ? [] : [chord];
+        _bindings[id] = [.. chords.Where(c => !c.IsNone).Distinct()];
+        Changed?.Invoke();
     }
 
     /// <summary>Puts the action back to its default chords.</summary>
-    public void Reset(string id) => _bindings[id] = [.. Action(id).Defaults];
+    public void Reset(string id)
+    {
+        _bindings[id] = [.. Action(id).Defaults];
+        Changed?.Invoke();
+    }
 
     /// <summary>Puts every action back to its default chords.</summary>
     public void ResetAll()
@@ -158,7 +174,12 @@ public sealed class Keymap
         {
             _bindings[action.Id] = [.. action.Defaults];
         }
+
+        Changed?.Invoke();
     }
+
+    /// <summary>True when the action is bound to its default chords (what the preferences write nothing for).</summary>
+    public bool IsDefault(string id) => Chords(id).AsSpan().SequenceEqual(Action(id).Defaults.ToArray());
 
     /// <summary>
     /// The pairs of actions that share a chord where both could be active: the same context, or one of them <see cref="KeyContext.Global"/> (which is active in every panel). An action's own chords
@@ -192,6 +213,9 @@ public sealed class Keymap
         return found;
     }
 
+    /// <summary>The collisions that involve the action <paramref name="id"/>, as <see cref="Conflicts()"/> reports them.</summary>
+    public IReadOnlyList<KeyConflict> Conflicts(string id) => [.. Conflicts().Where(c => c.A == id || c.B == id)];
+
     /// <summary>
     /// True on the frame the action's chord went down (the key pressed with exactly its modifiers: Shift+Z is not Z) while <paramref name="focused"/> is the action's context or the action is
     /// <see cref="KeyContext.Global"/>. Nothing fires while <see cref="IKeyState.KeyboardCaptured"/> is true.
@@ -202,7 +226,7 @@ public sealed class Keymap
     public bool Pressed(string id, KeyContext focused, IKeyState keys)
     {
         EditorAction action = Action(id);
-        if (!Applies(action, focused, keys))
+        if (Suspended || !Applies(action, focused, keys))
         {
             return false;
         }
@@ -229,7 +253,7 @@ public sealed class Keymap
     public bool IsHeld(string id, KeyContext focused, IKeyState keys)
     {
         EditorAction action = Action(id);
-        if (!Applies(action, focused, keys))
+        if (Suspended || !Applies(action, focused, keys))
         {
             return false;
         }
@@ -275,7 +299,8 @@ public sealed class Keymap
     private static bool Applies(EditorAction action, KeyContext focused, IKeyState keys) =>
         !keys.KeyboardCaptured && (action.Context == KeyContext.Global || action.Context == focused);
 
-    private static KeyMods Modifiers(IKeyState keys)
+    /// <summary>The modifier keys that are down now (either Ctrl, either Shift, either Alt).</summary>
+    public static KeyMods Modifiers(IKeyState keys)
     {
         KeyMods mods = KeyMods.None;
         if (keys.IsDown(ImGuiKey.ImGuiKeyLeftCtrl) || keys.IsDown(ImGuiKey.ImGuiKeyRightCtrl))

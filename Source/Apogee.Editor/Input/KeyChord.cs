@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Apogee.Native.CImGui;
 
@@ -29,6 +30,9 @@ public readonly record struct KeyChord(ImGuiKey Key, KeyMods Mods = KeyMods.None
 {
     private static readonly Dictionary<string, ImGuiKey> KeysByName = BuildNames();
     private static readonly Dictionary<ImGuiKey, string> NamesByKey = BuildReverse();
+
+    /// <summary>Every key a chord can be made of (letters, digits, F1 to F12, Escape, Delete, the arrows and so on), in a fixed order: what the rebinding screen looks through for the key that was pressed.</summary>
+    public static IReadOnlyList<ImGuiKey> Keys { get; } = [.. NamesByKey.Keys.Order()];
 
     /// <summary>The chord that is no key at all: an action bound to it never fires.</summary>
     public static KeyChord None => default;
