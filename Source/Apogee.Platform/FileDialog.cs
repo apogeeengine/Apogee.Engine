@@ -37,7 +37,7 @@ public sealed record FileDialogResult(IReadOnlyList<string> Paths, bool Cancelle
 /// </para>
 /// <para>
 /// <b>Memory</b>: SDL keeps the <c>filters</c> table, the filter strings and the default location, and requires them to stay valid until it has called back. Each request therefore gets one unmanaged block
-/// (<see cref="FilterBlock"/>) that is freed only when its result is dispatched (or at <see cref="PlatformHost.Shutdown"/>). The list of paths in the callback belongs to SDL and is freed when the callback
+/// (<see cref="FilterBlock"/>) that is freed only when its result is dispatched (a dialog still open at <see cref="PlatformHost.Shutdown"/> keeps its block: see <c>Reset</c>). The list of paths in the callback belongs to SDL and is freed when the callback
 /// returns, so the callback copies every string into managed memory before it returns.
 /// </para>
 /// </summary>
@@ -148,14 +148,13 @@ public static unsafe class FileDialog
         }
     }
 
-    /// <summary>Forgets every open dialog and frees their memory: <see cref="PlatformHost.Shutdown"/> calls it. A callback that still arrives is dropped by <see cref="Dispatch"/> (ids are never reused).</summary>
+    /// <summary>
+    /// Forgets every open dialog: <see cref="PlatformHost.Shutdown"/> calls it. A callback that still arrives is dropped by <see cref="Dispatch"/> (ids are never reused). The memory of a dialog that is
+    /// <b>still open</b> is deliberately <b>not</b> freed: SDL may not have read its filters yet (a dialog thread that has not started, say), and the rule is that they stay valid until the callback has run.
+    /// What leaks is a few hundred bytes, once, at exit.
+    /// </summary>
     internal static void Reset()
     {
-        foreach (Request request in s_pending.Values)
-        {
-            request.Block.Free();
-        }
-
         s_pending.Clear();
         while (s_completed.TryDequeue(out _))
         {

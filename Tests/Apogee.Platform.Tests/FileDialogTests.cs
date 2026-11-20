@@ -125,6 +125,31 @@ public sealed unsafe class FileDialogTests
     }
 
     [Fact]
+    public void TwoCallbacksForTheSameRequestRunItOnce()
+    {
+        FileDialog.Dispatch();
+        int runs = 0;
+        string[]? paths = null;
+        int id = FileDialog.Begin(r =>
+        {
+            runs++;
+            paths = [.. r.Paths];
+        }, FileDialog.FilterBlock.Create([], null));
+
+        byte** first = MakeList("/first");
+        byte** second = MakeList("/second");
+        FileDialog.CallbackPointer((void*)(nint)id, first, 0);
+        FileDialog.CallbackPointer((void*)(nint)id, second, 0); // a backend that reports twice
+        Free(first);
+        Free(second);
+
+        FileDialog.Dispatch();
+        Assert.Equal(1, runs);
+        Assert.Equal(["/first"], paths!); // the first answer won, the second was dropped
+        Assert.Equal(0, FileDialog.PendingCount);
+    }
+
+    [Fact]
     public void AFailingContinuationDoesNotStopTheOthers()
     {
         FileDialog.Dispatch();
