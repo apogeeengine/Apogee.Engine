@@ -4,8 +4,9 @@ A prefab is a piece of a scene that can be made again and again: one entity with
 lid. A script or a tool instantiates it where it is needed, and every instance starts out the same. Like a [scene](scenes.md) it is XML, so a person can read it, a diff of two versions makes sense, and
 it has a [UID](assets.md#where-a-uid-lives) in its root that survives renaming and moving the file.
 
-This page is the format of a prefab file, the numbers its entities keep, and how to make instances and save a prefab from C# and Luau. An instance is, for now, a set of ordinary entities that came
-from the file: changing them does not change the file, and a scene that holds one saves it as plain entities.
+This page is the format of a prefab file, the numbers its entities keep, how to make instances and save a prefab from C# and Luau, and how a [scene](scenes.md#prefab-instances) or another prefab
+holds an instance: as one element that names the prefab and says only what it changes. An instance is a set of ordinary entities that came from the file: changing them does not change the file, and a
+scene saves the changes as *overrides* of the prefab.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -43,7 +44,7 @@ A prefab file is a scene with one root and stable ids. Everything inside `<Entit
 - A prefab keeps its instances' references inside it: an Entity field of the file means an entity of the same instance, so two lamps each point at their own root.
 - The component names `PrefabInstance` and `PrefabMember` are written by the engine, never to a file; a file that has them is skipped with a warning. `Entity` and `Override` cannot be component names
   (`RegisterComponent` and `DefineComponent` refuse them): `<Entity>` is a child entity, and `<Override>` is how an instance of a prefab will hold its changes.
-- An `<Entity>` with a `prefab` attribute (an instance of one prefab inside another) is not expanded yet: it is skipped, with everything under it, and the engine logs a warning.
+- An `<Entity>` with a `prefab` attribute is an instance of another prefab inside this one; see [Nested prefabs](#nested-prefabs). Its `id` is in this file's numbering like any entity's.
 
 `prefab.xsd` (embedded in `Apogee.Ecs`, and at `Source/Apogee.Ecs/Scene/prefab.xsd`) describes the structure; the writer is tested against it.
 
@@ -52,9 +53,11 @@ A prefab file is a scene with one root and stable ids. Everything inside `<Entit
 A scene numbers its entities `1..n` in order every time it is saved, so an id means nothing from one save to the next. A prefab's ids are the opposite on purpose: scenes that instance the prefab will name
 its entities by id, and renumbering would silently point them somewhere else.
 
-- Loading a prefab tags every entity it makes with **`PrefabMember { Id, Prefab }`**: its id in the file and the file (a handle of the world's [library](#the-library)). The root also gets **`PrefabInstance { Prefab }`**.
+- Loading a prefab tags every entity it makes with **`PrefabMember { Id, Prefab }`**: its id in the file and the file (a handle of the world's [library](#the-library)). The root also gets **`PrefabInstance { Prefab }`**
+  (and is a member of its own file, with the id of the file's root). A prefab nested in another has its own entities tagged with *its* file, and its root is a member of the outer file with the id of the
+  instance element there.
 - **Saving** (`SavePrefabFile`) keeps the id of every entity that is a member of that file. A new entity (one made in code, or in an editor) takes `nextId` and raises it, and is tagged a member right away, so
-  saving again keeps its id. An id that was deleted is never used again: `nextId` is read from the file being overwritten and kept.
+  saving again keeps its id. An id that was deleted is never used again: `nextId` is read from the file being overwritten and kept. What is added to a nested instance is numbered in the file too.
 - A copy of a member has its original's id until it is saved: the first of two with the same id keeps it, and the other takes a new one.
 
 The two components are plain data and need no remapping: `Clone`, `Snapshot`, `Restore` and undo copy them as they are, and a [snapshot](../core/ecs.md) names the prefab by its file, as it does a
@@ -69,15 +72,19 @@ Entity same = world.Instantiate("uid://7h2k4m6p8q0rs");                   // the
 world.PrefabOf(lamp);                  // "res://prefabs/lamp.aprefab|uid://7h2k4m6p8q0rs"; null for an entity that is not an instance root
 world.IsPrefabInstance(lamp);          // true
 world.InstanceOf(world.Children(lamp)[0]);   // lamp: the instance an entity is part of, or none
+world.IsPrefabMember(world.Children(lamp)[0]);   // true: part of an instance without being its root, so it cannot be moved under another parent
 
 world.SavePrefabFile("res://prefabs/crate.aprefab", crate);   // one entity and everything under it
 ```
 
 - **`Instantiate`** takes a path, a `uid://…` or `path|uid://…` (the text form of an [`AssetRef`](assets.md)), or a handle (`world.Instantiate(uint prefab)`). It returns the root, and the entities under it are made
-  in the order of the file. It reads without a game's per-mod confinement. Errors: a `uid://` no file has is a `ContentException`, a missing file a `FileNotFoundException`, a file that is not a prefab (another
-  root, none or two roots, a bad or repeated id, a newer version) a `FormatException`, and a world without `Files` an `InvalidOperationException`. Nothing is made when it fails.
+  in the order of the file, the prefabs inside it expanded. It reads without a game's per-mod confinement. Errors: a `uid://` no file has is a `ContentException`, a missing file a `FileNotFoundException`, a file
+  that is not a prefab (another root, none or two roots, a bad or repeated id, a newer version, a root that is itself an instance of another prefab) or that would make more than `world.MaxLoadEntities` entities a
+  `FormatException`, and a world without `Files` an `InvalidOperationException`. Nothing is made when it fails.
 - **`SavePrefabFile(path, root)`** writes the entity and everything below it. The path must end in `.aprefab`. The file keeps its UID (a new one gets a new UID), the ids are kept as above, and an Entity
-  field that points at something outside what is saved is left out. An instance of another prefab inside the tree is written as plain entities. A path that is not in a writable source is an `UnauthorizedAccessException`.
+  field that points at something outside what is saved is left out. An instance of another prefab inside the tree is written as one element with its [overrides](#how-overrides-are-stored), numbered in this
+  file; the root is written as an ordinary entity even when it is an instance (a prefab saved from an instance of itself holds its entities). A tree that holds an instance of the file being written, directly or
+  through another prefab, is an `InvalidOperationException`, and nothing is written. A path that is not in a writable source is an `UnauthorizedAccessException`.
 
 ### The library
 
@@ -119,9 +126,8 @@ entity's, and its `name` is the name the root of the nested instance gets.
 </Prefab>
 ```
 
-!!! note "Where this stands"
-    The expander that implements this page (`PrefabExpander`) is in `Apogee.Ecs` and tested on its own, but loading a scene and `Instantiate` do not call it yet: until they do, an `<Entity prefab="…">`
-    is still skipped with a warning, as the [format](#the-format) says. The rules below are the ones the expander follows.
+Loading a scene or a prefab, and `Instantiate`, expand every instance element by the rules below (`PrefabExpander`, in `Apogee.Ecs`) and then create all the entities. Prefabs are read from the world's
+[library](#the-library), so an instance names its prefab by a path, a UID or both and finds the same file whichever it uses.
 
 **Addresses.** Ids repeat from one prefab to the next (every lamp has an entity 2), so an entity is named by a path of ids, its **address**: `4` is entity 4 of the document, `4/2` entity 2 of the prefab
 instanced as entity 4, `4/3/2` entity 2 of the prefab instanced as entity 3 of the prefab instanced as entity 4. Each id is a whole number from 1 up with no leading zero, and an address has at most 17
@@ -186,21 +192,51 @@ an entity that the author moved would stop matching, ids repeat across nested pr
 
 A prefab file is read by anyone who installs a mod, so expansion is bounded and never trusts a file:
 
-- **Nesting depth: 16.** A chain of prefabs (one inside the next) may be 16 long; the 17th is missing (an instance of it is one empty entity, with a warning). Entities may be nested at most 128 deep in what
+- **Nesting depth: 16** (`World.MaxPrefabDepth`). A chain of prefabs (one inside the next) may be 16 long; the 17th is missing (an instance of it is one empty entity, with a warning). Entities may be nested at most 128 deep in what
   results (the limit a document already has), or the whole expansion fails.
 - **Cycles.** A prefab that contains itself, directly or through others (`a → b → c → a`), is not followed: the instance that would repeat it is missing, and the warning shows the chain. The rest expands.
-- **Entity budget: 262,144.** The expansion counts each entity as it is about to make it and stops with a `FormatException` when a load (a scene with all its instances) would go over, so a few small files that
-  nest ten instances sixteen levels deep cost at most the budget, not memory without end. The budget is one number for a whole load.
+- **Entity budget: 262,144** (`World.MaxLoadEntities`, settable). The expansion counts each entity as it is about to make it and stops with a `FormatException` when a load (a scene with all its instances,
+  its own entities counted too) would go over, so a few small files that nest ten instances sixteen levels deep cost at most the budget, not memory without end. Nothing is made when a load fails. The budget
+  is one number for a whole load.
 - **Work budget: 64 steps for each entity of the budget (16,777,216).** A file's content is repeated for every instance of it, so entities alone do not bound a load: ten thousand overrides in a prefab
   that a thousand prefabs hold are ten million merges for a handful of entities. Every component or override handled, attribute copied, component merged (by its size) and name tried while making a name
   unique counts, and the expansion stops with a `FormatException` over the limit, with the same effect as the entity budget. An entity may have any number of components within it (the lookup is by name,
-  not a scan). A load, and each `Instantiate`, takes a new budget; one that failed is spent.
+  not a scan). A load, each `Instantiate`, and each save (which expands the instances again to see what they changed) takes a new budget; one that failed is spent.
 - **Missing prefabs.** A reference that names no file, a file that cannot be read, is not a prefab (another root element, none or two root entities, a repeated id, a newer version), or whose root
   entity is itself an instance of another prefab (an entity would be the root of two instances: put it under an entity of its own) leaves the instance missing, as above.
 - **Addresses.** An instance at an address of 17 segments (the longest there is) is missing, since what is in it would need 18. A field that holds text that is not an address means no entity, so a
   loader resolves only text that is a valid address; an entity that nothing can refer to has an address that starts with `~`, which no file can write.
 - **Ids.** Ids of entities an `<Override>` adds count in the prefab's numbering like any other: they may not repeat one, and `nextId` stays above them. An entity with no usable id, or one that repeats an
   address, is made but cannot be referred to.
+
+## How overrides are stored
+
+An instance is saved as the element of [Overrides](#overrides) above, written for you: the world compares each instance with what its prefab expands to on its own, and writes what differs. Nothing is
+recorded while you edit, so a change made by the editor, by a script or by code is saved the same way, and a field set back to the prefab's value is no longer an override.
+
+- **What is compared** is the value the loader would make, not the text. `1.0` and `1` are one number, a field an element leaves out is zero, a `true` may be written `1`; an asset reference with a UID and one
+  without (or after the file moved) is the same asset, and two references with different UIDs are two assets; an entity field is the entity it names, wherever it is written from. A component is compared
+  field by field and only the fields that differ are written, a field that was set to nothing as `""`.
+- **Which entities pair up.** The live instance and the expansion are paired from the root down by the id every member keeps (`PrefabMember`). A member the live instance no longer has is written as a removal
+  (`<Override entity="…" remove="true"/>`, only the topmost of a removed branch). An entity of the instance that is not a member (made in the scene, or a copy of a member) is an *added entity*, written under the
+  override of its parent (or directly in the element for the root's children), and it may itself be an instance. A member moved under another parent by code (the editor does not allow it) is written as both: the
+  member removed from where it was, and a plain copy under its new parent. A member of the wrong prefab for its place, or a second entity with a member's id (a copy of its components), is an added entity.
+- **The text is stable.** The element is written in a fixed order: the root's changes (components in the prefab's order, those added last), an `<Override>` for each changed entity in the prefab's order (name,
+  then components, then entities added below it), the entities added to the root, and the elements kept aside last. A scene that is loaded and saved again is byte for byte the same text.
+- **Kept aside is kept as written.** What an instance element held that could not be applied (see [Overrides](#overrides)) is not in the live entities, so it is stored with the instance root (it travels with
+  [snapshots](../core/ecs.md), which is why Play and Stop keep it, and with a clone of the root) and written back after everything else, exactly as it was read. The numbers inside such an element are
+  the ones it was written with: an entity it adds, and the entity fields it holds, are not renumbered when the scene is, and the scene's own numbers win if both claim one.
+- **A prefab that moved on.** The comparison is with the prefab *as it is now*. New fields, components and entities of the prefab are not overrides, since the instance had nothing to say about them; a
+  deleted entity that the scene had overrides for keeps them aside, and they apply again if the entity returns. What the live entities still have from the old prefab (before anything refreshes them) is, on
+  saving, a difference from the new one and is written as an override.
+- **A prefab that cannot be read** while the world holds its instance (the file was deleted, or replaced by one that contains itself) is compared as the single root it expands to: the live entities that
+  came from it are written as additions and nothing is dropped. A scene loaded without the prefab keeps its element intact and saves it as it was.
+
+**What is never an override:** the order of siblings (they are in creation order, the prefab's entities first), `WorldTransform` and the other components scenes leave out (`IgnoreInScenes`), components the world
+cannot describe, a name that was cleared, `PrefabInstance` and `PrefabMember` (the engine makes them), and what the prefab's own nested instances could not apply (that belongs to the prefab's file).
+
+A scene that holds an instance is [version 2](scenes.md#the-format); one without is written as version 1, as before. The schemas (`scene.xsd`, `prefab.xsd`) describe `prefab` and `<Override>`, but
+leave what is inside an `<Override>` open: the rules above are what check it when a scene is read.
 
 ## Files
 

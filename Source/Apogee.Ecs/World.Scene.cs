@@ -41,7 +41,7 @@ public sealed unsafe partial class World
     private readonly Dictionary<string, (Func<uint, AssetRef?> ToRef, Func<AssetRef, uint> FromRef)> _assetTypes = new(StringComparer.Ordinal);
     private readonly object _origin = new();   // what a snapshot says about the world it came from (see WorldSnapshot)
     private readonly HashSet<string> _assetTypesWarned = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _sceneIgnored = new(StringComparer.Ordinal) { "WorldTransform", nameof(PrefabInstance), nameof(PrefabMember) };
+    private readonly HashSet<string> _sceneIgnored = new(StringComparer.Ordinal) { "WorldTransform" };
 
     /// <summary>
     /// Says how the fields of an asset type (<see cref="FieldDef.AssetType"/>, such as <c>model</c> for <c>ModelRenderer.Model</c>) are saved. Such a field is a number in memory, a handle that only means
@@ -78,29 +78,20 @@ public sealed unsafe partial class World
 
     /// <summary>
     /// The entities in <paramref name="roots"/>, each with everything below it, as a <c>Scene</c> element: what <see cref="SaveScene()"/> writes as text, for code that wants the tree (to add
-    /// a <c>uid</c> to, to patch with <c>DefDatabase.Merge</c>, to cook).
+    /// a <c>uid</c> to, to patch with <c>DefDatabase.Merge</c>, to cook). An instance of a prefab is written as one element with only what differs from its prefab (<see cref="PrefabInstance"/>);
+    /// a scene that holds one is version 2.
     /// </summary>
     public XmlNode SaveSceneDocument(IReadOnlyList<Entity> roots)
     {
         ArgumentNullException.ThrowIfNull(roots);
 
-        // The entity's number in the file is its place in this order, parents before children. A tree is written by one pass over the order: a node is added to its parent's node when the parent is in the
-        // scene, and to the document otherwise, so the nesting follows the order and the order is what a loaded scene is created in: a saved scene saves again to the same text.
-        var order = new List<Entity>();
-        foreach (Entity root in roots)
-        {
-            order.AddRange(Subtree(root));
-        }
-
-        var local = new Dictionary<ulong, int>();
-        for (int i = 0; i < order.Count; i++)
-        {
-            local[order[i].Id] = i + 1;
-        }
-
-        (List<XmlNode> top, XmlNode? schemas) = WriteEntities(order, local);
+        // The entity's number in the file is its place in the order the document is walked, parents before children, instances' own entities left out (they are named by their place in the instance).
+        // A node is nested in the node of its parent, so the nesting follows the order and the order is what a loaded scene is created in: a saved scene saves again to the same text.
+        int number = 0;
+        SavePlan plan = PlanSave(roots, _ => ++number, default);
+        (List<XmlNode> top, XmlNode? schemas) = WritePlanned(plan, roots);
         var scene = new XmlNode(SceneRoot);
-        scene.SetAttribute("version", SceneVersion.ToString(CultureInfo.InvariantCulture));
+        scene.SetAttribute("version", (plan.Instances.Count > 0 ? SceneVersionWithInstances : SceneVersion).ToString(CultureInfo.InvariantCulture));
         if (schemas is not null)
         {
             scene.Children.Add(schemas);
@@ -110,98 +101,401 @@ public sealed unsafe partial class World
         return scene;
     }
 
-    // The entities of `order` (parents before children) as nodes numbered by `local`: the nodes that have no parent in the order, and the <Components> element for the components scripts defined (null
-    // when there are none). What a scene and a prefab file share; the numbering is the caller's.
-    private (List<XmlNode> Top, XmlNode? Schemas) WriteEntities(List<Entity> order, Dictionary<ulong, int> local)
+    // ---- Saving: what is written, and where each entity goes -------------------------------------------------------------------------------
+
+    // An instance found while planning: the prefab as the document names it, what that expands to with no overrides, and which live entity is which entity of the expansion.
+    private sealed class InstanceSave
     {
-        var scriptComponents = new SortedDictionary<string, ComponentInfo>(StringComparer.Ordinal);
-        var nodes = new Dictionary<ulong, XmlNode>();
-        var top = new List<XmlNode>();
-        foreach (Entity entity in order)
+        public InstanceSave(string address, string reference, Expansion expansion, Dictionary<ulong, ExpandedEntity> pairs)
         {
-            var node = new XmlNode(SceneEntity);
-            node.SetAttribute("id", local[entity.Id].ToString(CultureInfo.InvariantCulture));
-            if (GetName(entity) is { } name)
+            Address = address;
+            Reference = reference;
+            Expansion = expansion;
+            Pairs = pairs;
+            LiveOf = new Dictionary<ExpandedEntity, Entity>(pairs.Count, ReferenceEqualityComparer.Instance);
+            foreach ((ulong id, ExpandedEntity expected) in pairs)
             {
-                node.SetAttribute("name", name);
+                LiveOf[expected] = new Entity(id);
             }
+        }
 
-            foreach ((Entity id, ComponentInfo info) in ComponentsOf(entity))
+        public string Address { get; }
+
+        public string Reference { get; }
+
+        public Expansion Expansion { get; }
+
+        /// <summary>The expected entity each live entity of the instance is, by entity id (the instance's root and every member that is still where its prefab puts it).</summary>
+        public Dictionary<ulong, ExpandedEntity> Pairs { get; }
+
+        public Dictionary<ExpandedEntity, Entity> LiveOf { get; }
+    }
+
+    // What walking the entities to write found out, before anything is written (a field may refer to an entity that comes later, so every address is known first).
+    private sealed class SavePlan(Func<Entity, int> number, Entity fileRoot, PrefabExpander expander)
+    {
+        /// <summary>The next number the document gives an entity it holds.</summary>
+        public Func<Entity, int> Number { get; } = number;
+
+        /// <summary>When saving a prefab file, its root: written as a plain entity even when it is itself an instance.</summary>
+        public Entity FileRoot { get; } = fileRoot;
+
+        public PrefabExpander Expander { get; } = expander;
+
+        /// <summary>The address entity fields use for each entity written: its number, or its place in its instance.</summary>
+        public Dictionary<ulong, string> AddressOf { get; } = [];
+
+        /// <summary>The children of each entity written, as they were when planned.</summary>
+        public Dictionary<ulong, List<Entity>> Kids { get; } = [];
+
+        /// <summary>The instances to write as one element, by the entity id of their root.</summary>
+        public Dictionary<ulong, InstanceSave> Instances { get; } = [];
+
+        /// <summary>The entities the document numbers, in order.</summary>
+        public List<Entity> Numbered { get; } = [];
+
+        /// <summary>The handle of each prefab key met while pairing (asking the library looks for the file).</summary>
+        public Dictionary<string, uint> Handles { get; } = new(StringComparer.Ordinal);
+    }
+
+    private uint HandleOfKey(SavePlan plan, string key)
+    {
+        if (!plan.Handles.TryGetValue(key, out uint handle))
+        {
+            plan.Handles[key] = handle = HandleOfKey(key);
+        }
+
+        return handle;
+    }
+
+    // Walks the entities of `roots` and everything below them in the order they are written. `number` gives the number of an entity the document holds itself; `fileRoot` is the one entity that is
+    // never an instance (the root of a prefab file being saved).
+    private SavePlan PlanSave(IReadOnlyList<Entity> roots, Func<Entity, int> number, Entity fileRoot)
+    {
+        var plan = new SavePlan(number, fileRoot, NewExpander(new ExpansionBudget(MaxLoadEntities)));
+        foreach (Entity root in roots)
+        {
+            PlanEntity(plan, root);
+        }
+
+        return plan;
+    }
+
+    // An entity the document holds itself: a plain entity, an instance's root, or an entity added to an instance.
+    private void PlanEntity(SavePlan plan, Entity entity)
+    {
+        string address = plan.Number(entity).ToString(CultureInfo.InvariantCulture);
+        plan.AddressOf[entity.Id] = address;
+        plan.Numbered.Add(entity);
+        List<Entity> kids = Children(entity);
+        plan.Kids[entity.Id] = kids;
+        if (entity != plan.FileRoot && PlanInstance(plan, entity, address) is { } instance)
+        {
+            plan.Instances[entity.Id] = instance;
+            PlanMembers(plan, kids, instance);
+            return;
+        }
+
+        foreach (Entity child in kids)
+        {
+            PlanEntity(plan, child);
+        }
+    }
+
+    // The children of an entity of an instance: one that is where its prefab puts it is named by its place in the instance, any other is an entity added to the instance and the document holds it.
+    private void PlanMembers(SavePlan plan, List<Entity> kids, InstanceSave instance)
+    {
+        foreach (Entity child in kids)
+        {
+            if (instance.Pairs.TryGetValue(child.Id, out ExpandedEntity? expected))
             {
-                if (_sceneIgnored.Contains(info.Name))
-                {
-                    continue;
-                }
-
-                if (info.ClrType is null)
-                {
-                    scriptComponents[info.Name] = info;
-                }
-
-                // A tag, or a component with no fields, is an empty element.
-                var component = new XmlNode(info.Name);
-                if (!info.IsTag)
-                {
-                    byte* data = GetPointer(entity, id);
-                    foreach (FieldDef field in info.Fields)
-                    {
-                        if (FieldTextOf(info, field, data + field.Offset, local) is { } text)
-                        {
-                            component.SetAttribute(field.Name, text);
-                        }
-                    }
-                }
-
-                node.Children.Add(component);
-            }
-
-            nodes[entity.Id] = node;
-            if (nodes.TryGetValue(GetParent(entity).Id, out XmlNode? parentNode))
-            {
-                parentNode.Children.Add(node);
+                plan.AddressOf[child.Id] = expected.Address;
+                List<Entity> below = Children(child);
+                plan.Kids[child.Id] = below;
+                PlanMembers(plan, below, instance);
             }
             else
             {
-                top.Add(node);
+                PlanEntity(plan, child);
             }
         }
-
-        XmlNode? schemas = null;
-        if (scriptComponents.Count > 0)
-        {
-            schemas = new XmlNode("Components");
-            foreach ((string name, ComponentInfo info) in scriptComponents)
-            {
-                var schema = new XmlNode("Component");
-                schema.SetAttribute("name", name);
-                foreach (FieldDef field in info.Fields)
-                {
-                    var entry = new XmlNode("Field");
-                    entry.SetAttribute("name", field.Name);
-                    entry.SetAttribute("kind", field.Kind.ToString());
-                    if (field.Kind == FieldKind.AssetRef && field.AssetType is not null)
-                    {
-                        entry.SetAttribute("assetType", field.AssetType);
-                    }
-
-                    schema.Children.Add(entry);
-                }
-
-                schemas.Children.Add(schema);
-            }
-        }
-
-        return (top, schemas);
     }
 
-    // The text of a field, or null when the attribute is left out: an Entity outside the scene, a handle of 0, an asset the type cannot name.
-    private string? FieldTextOf(ComponentInfo info, FieldDef field, byte* at, Dictionary<ulong, int> local)
+    // The instance an entity is the root of, paired with what its prefab expands to now; null when it is not an instance or its prefab cannot be named (it is then written as a plain entity).
+    private InstanceSave? PlanInstance(SavePlan plan, Entity entity, string address)
+    {
+        if (!TryGet(entity, out PrefabInstance link))
+        {
+            return null;
+        }
+
+        if (ExistingLibrary?.RefOf(link.Prefab) is not { IsEmpty: false } named)
+        {
+            if (_assetTypesWarned.Add($"instance:{link.Prefab}"))
+            {
+                Log.Warn("Scene", $"an entity is the root of an instance of the prefab with handle {link.Prefab}, which this world's library does not know: it is saved as a plain entity");
+            }
+
+            return null;
+        }
+
+        var element = new XmlNode("Entity");
+        element.SetAttribute("prefab", named.ToString());
+        Expansion expansion = plan.Expander.Expand(element, address);
+        var pairs = new Dictionary<ulong, ExpandedEntity>();
+        Pair(plan, entity, expansion.Root, pairs);
+        return new InstanceSave(address, named.ToString(), expansion, pairs);
+    }
+
+    // Pairs the live entity with the expected one, then their children: a live child is the expected child with the same prefab member tag (id and file), when it is the same kind of entity (an instance
+    // of the same prefab, or neither). Each expected child is taken once, so a copy of a member is not paired. Whatever is not paired is an addition (live) or a removal (expected); a member moved under
+    // another parent by code is both, which is how it is written.
+    private void Pair(SavePlan plan, Entity live, ExpandedEntity expected, Dictionary<ulong, ExpandedEntity> pairs)
+    {
+        pairs[live.Id] = expected;
+        if (expected.Children.Count + expected.Added.Count == 0)
+        {
+            return;
+        }
+
+        var byTag = new Dictionary<(uint Prefab, int Id), ExpandedEntity>();
+        foreach (ExpandedEntity member in expected.Children)
+        {
+            AddByTag(plan, byTag, member);
+        }
+
+        foreach (ExpandedEntity member in expected.Added)
+        {
+            AddByTag(plan, byTag, member);
+        }
+
+        foreach (Entity child in Children(live))
+        {
+            if (TryGet(child, out PrefabMember tag)
+                && tag.Id <= int.MaxValue
+                && byTag.Remove((tag.Prefab, (int)tag.Id), out ExpandedEntity? match)
+                && IsSameKind(plan, child, match))
+            {
+                Pair(plan, child, match, pairs);
+            }
+        }
+    }
+
+    private void AddByTag(SavePlan plan, Dictionary<(uint Prefab, int Id), ExpandedEntity> byTag, ExpandedEntity member)
+    {
+        if (member.MemberId is { } id && member.MemberPrefab is { } key)
+        {
+            byTag.TryAdd((HandleOfKey(plan, key), id), member);
+        }
+    }
+
+    // Whether a live entity is the kind of entity the expansion has there: the root of an instance of the same prefab, or not the root of one.
+    private bool IsSameKind(SavePlan plan, Entity live, ExpandedEntity expected)
+    {
+        bool isInstance = TryGet(live, out PrefabInstance link);
+        return isInstance == expected.IsInstanceRoot && (!isInstance || link.Prefab == HandleOfKey(plan, expected.InstancePrefab!));
+    }
+
+    // The nodes of the plan, written. A plain entity is its components and then its children; an instance is WriteInstance.
+    private (List<XmlNode> Top, XmlNode? Schemas) WritePlanned(SavePlan plan, IReadOnlyList<Entity> roots)
+    {
+        var scripts = new SortedDictionary<string, ComponentInfo>(StringComparer.Ordinal);
+        var top = new List<XmlNode>(roots.Count);
+        foreach (Entity root in roots)
+        {
+            top.Add(WriteNumbered(plan, root, scripts));
+        }
+
+        return (top, SchemasOf(scripts));
+    }
+
+    private XmlNode WriteNumbered(SavePlan plan, Entity entity, SortedDictionary<string, ComponentInfo> scripts)
+    {
+        if (plan.Instances.TryGetValue(entity.Id, out InstanceSave? instance))
+        {
+            return WriteInstance(plan, entity, instance, scripts);
+        }
+
+        XmlNode node = StartElement(plan, entity);
+        foreach ((Entity id, ComponentInfo info) in ComponentsOf(entity))
+        {
+            if (IsSceneSkipped(info.Name))
+            {
+                continue;
+            }
+
+            if (info.ClrType is null)
+            {
+                scripts[info.Name] = info;
+            }
+
+            node.Children.Add(WriteComponent(entity, id, info, plan.AddressOf));
+        }
+
+        foreach (Entity child in plan.Kids[entity.Id])
+        {
+            node.Children.Add(WriteNumbered(plan, child, scripts));
+        }
+
+        return node;
+    }
+
+    private XmlNode StartElement(SavePlan plan, Entity entity)
+    {
+        var node = new XmlNode(SceneEntity);
+        node.SetAttribute("id", plan.AddressOf[entity.Id]);
+        if (GetName(entity) is { } name)
+        {
+            node.SetAttribute("name", name);
+        }
+
+        return node;
+    }
+
+    // An instance as one element, in the order that makes saving twice write the same text: the patches of its root, an <Override> for each entity of the prefab that changed (in the prefab's
+    // order, parents first, a removed entity at its place), the entities added directly to the root, and what could not be applied when it was loaded, as it was written.
+    private XmlNode WriteInstance(SavePlan plan, Entity root, InstanceSave instance, SortedDictionary<string, ComponentInfo> scripts)
+    {
+        XmlNode node = StartElement(plan, root);
+        node.SetAttribute("prefab", instance.Reference);
+        var diff = new PrefabDiff(this, plan.AddressOf, instance.Expansion, instance.Address, scripts);
+        node.Children.AddRange(diff.ComponentPatches(root, instance.Expansion.Root));
+        WriteOverrides(plan, instance, diff, instance.Expansion.Root, node, scripts);
+        foreach (Entity added in AddedBelow(plan, instance, root))
+        {
+            node.Children.Add(WriteNumbered(plan, added, scripts));
+        }
+
+        if (_unapplied.TryGetValue(root.Id, out List<XmlNode>? kept))
+        {
+            foreach (XmlNode element in kept)
+            {
+                node.Children.Add(element.Clone());
+            }
+        }
+
+        return node;
+    }
+
+    // The children of a live entity of an instance that the prefab does not put there.
+    private static IEnumerable<Entity> AddedBelow(SavePlan plan, InstanceSave instance, Entity live)
+    {
+        foreach (Entity child in plan.Kids[live.Id])
+        {
+            if (!instance.Pairs.ContainsKey(child.Id))
+            {
+                yield return child;
+            }
+        }
+    }
+
+    // The <Override> elements for the entities below `expected`, depth first. An entity the live instance no longer has is a removal (and what was below it goes with it); one that has no address
+    // an element can name (a prefab entity with no usable id) cannot be changed from outside and is left as it is.
+    private void WriteOverrides(SavePlan plan, InstanceSave instance, PrefabDiff diff, ExpandedEntity expected, XmlNode into, SortedDictionary<string, ComponentInfo> scripts)
+    {
+        foreach (ExpandedEntity member in expected.Children.Concat(expected.Added))
+        {
+            string? relative = diff.RelativeAddress(member);
+            if (!instance.LiveOf.TryGetValue(member, out Entity live))
+            {
+                if (relative is not null)
+                {
+                    var removal = new XmlNode("Override");
+                    removal.SetAttribute("entity", relative);
+                    removal.SetAttribute("remove", "true");
+                    into.Children.Add(removal);
+                }
+
+                continue;
+            }
+
+            if (relative is not null)
+            {
+                var change = new XmlNode("Override");
+                change.SetAttribute("entity", relative);
+                if (diff.NameChange(live, member) is { } name)
+                {
+                    change.SetAttribute("name", name);
+                }
+
+                change.Children.AddRange(diff.ComponentPatches(live, member));
+                foreach (Entity added in AddedBelow(plan, instance, live))
+                {
+                    change.Children.Add(WriteNumbered(plan, added, scripts));
+                }
+
+                if (change.Attributes.Count > 1 || change.Children.Count > 0)
+                {
+                    into.Children.Add(change);
+                }
+            }
+
+            WriteOverrides(plan, instance, diff, member, into, scripts);
+        }
+    }
+
+    // One component of an entity as an element: a tag is empty, otherwise one attribute per field (a field with nothing to say is left out).
+    internal XmlNode WriteComponent(Entity entity, Entity id, ComponentInfo info, Dictionary<ulong, string> addressOf)
+    {
+        var component = new XmlNode(info.Name);
+        if (!info.IsTag)
+        {
+            byte* data = GetPointer(entity, id);
+            foreach (FieldDef field in info.Fields)
+            {
+                if (FieldTextOf(info, field, data + field.Offset, addressOf) is { } text)
+                {
+                    component.SetAttribute(field.Name, text);
+                }
+            }
+        }
+
+        return component;
+    }
+
+    // The <Components> element for the script-defined components that were written, in name order; null when there are none.
+    private static XmlNode? SchemasOf(SortedDictionary<string, ComponentInfo> scripts)
+    {
+        if (scripts.Count == 0)
+        {
+            return null;
+        }
+
+        var schemas = new XmlNode("Components");
+        foreach ((string name, ComponentInfo info) in scripts)
+        {
+            var schema = new XmlNode("Component");
+            schema.SetAttribute("name", name);
+            foreach (FieldDef field in info.Fields)
+            {
+                var entry = new XmlNode("Field");
+                entry.SetAttribute("name", field.Name);
+                entry.SetAttribute("kind", field.Kind.ToString());
+                if (field.Kind == FieldKind.AssetRef && field.AssetType is not null)
+                {
+                    entry.SetAttribute("assetType", field.AssetType);
+                }
+
+                schema.Children.Add(entry);
+            }
+
+            schemas.Children.Add(schema);
+        }
+
+        return schemas;
+    }
+
+    // Whether a document never holds this component: derived or only meaningful in this run (IgnoreInScenes), and the two that link an entity to its prefab, which the engine makes.
+    internal bool IsSceneSkipped(string component) => _sceneIgnored.Contains(component) || component is nameof(PrefabInstance) or nameof(PrefabMember);
+
+    // The text of a field, or null when the attribute is left out: an Entity outside what is written, a handle of 0, an asset the type cannot name.
+    private string? FieldTextOf(ComponentInfo info, FieldDef field, byte* at, Dictionary<ulong, string> addressOf)
     {
         switch (field.Kind)
         {
             case FieldKind.Entity:
-                // A reference to another entity of the scene is its number in the file; to anything else, nothing.
-                return local.TryGetValue(*(ulong*)at, out int target) ? target.ToString(CultureInfo.InvariantCulture) : null;
+                // A reference to another entity of the document is its address; to anything else, nothing.
+                return addressOf.TryGetValue(*(ulong*)at, out string? target) ? target : null;
             case FieldKind.AssetRef:
                 // The handle means nothing in another run: what it names goes instead, as "path|uid".
                 return AssetRefOf(info, field, *(uint*)at)?.ToString();

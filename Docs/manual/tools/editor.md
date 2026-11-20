@@ -89,7 +89,7 @@ the *Edit* menu and the hierarchy's context menu, which also has *Paste as child
 - **References.** An `Entity` field that points to an entity inside the copied set is written as that entity's number in the document, and a paste points it at the new copy, so a copied branch stays wired to itself
   (and several selected entities to each other). A field that points outside the copied set is left empty: the scene format cannot name an entity that is not in the document. Asset fields travel as
   `path|uid` (the model's path, and its UID once it is imported) and are found again by the pasting project; one that cannot be found is left empty and logged. Components that a script defined travel in the
-  document's `<Components>` header. A prefab instance is pasted as plain entities.
+  document's `<Components>` header. A prefab instance is copied as one element that names its prefab and what it changes, and pasted as an instance (a [selected member](../content/prefabs.md#how-overrides-are-stored) of one, without its root, as plain entities).
 - **Duplicate** is not a paste: it clones each top-level entity with `World.Clone` under the same parent ("Cube (copy)") as one step, and a clone keeps the references of its components as they are, so one that
   pointed at another entity still points at the original (including inside the duplicated branch).
 - **Playing.** Copy works while the game plays (it copies the running state); Cut, Paste and Duplicate are off, like every edit.

@@ -7,8 +7,15 @@
     </xs:restriction>
   </xs:simpleType>
 
+  <xs:simpleType name="Address">
+    <xs:annotation><xs:documentation>The address of an entity: ids separated by /. A plain id is an entity of the document, 4/2 is entity 2 of the prefab instanced as entity 4.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[1-9][0-9]*(/[1-9][0-9]*)*"/>
+    </xs:restriction>
+  </xs:simpleType>
+
   <xs:complexType name="EntityType">
-    <xs:annotation><xs:documentation>An entity. Its children are its components (an element named after the component, a field per attribute, empty for a tag) and its child entities (more Entity elements).</xs:documentation></xs:annotation>
+    <xs:annotation><xs:documentation>An entity. Its children are its components (an element named after the component, a field per attribute, empty for a tag) and its child entities (more Entity elements). With a prefab attribute it is an instance of a prefab: its component elements are changes to the prefab's root (only the fields named; append="true" adds a component whole, remove="true" removes one), its Entity children are added below the root, and its Override elements change any other entity of the instance.</xs:documentation></xs:annotation>
     <xs:sequence>
       <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
     </xs:sequence>
@@ -16,7 +23,28 @@
       <xs:annotation><xs:documentation>The entity's number in this file, from 1 up and used once. It stays the same each time the file is saved: what Entity fields of the file refer to, and what scenes that instance the prefab name the entity by.</xs:documentation></xs:annotation>
     </xs:attribute>
     <xs:attribute name="name" type="xs:string"/>
+    <xs:attribute name="prefab" type="xs:string">
+      <xs:annotation><xs:documentation>Makes the entity an instance of a prefab: the prefab file as an asset reference (a path, uid://… or both, path|uid://…). Everything the prefab makes comes from the file; the element holds only what this instance changes.</xs:documentation></xs:annotation>
+    </xs:attribute>
   </xs:complexType>
+
+  <xs:element name="Override">
+    <xs:annotation><xs:documentation>Inside an instance of a prefab: the changes to one other entity of the instance. Its children are component elements (changes to the fields named, append="true" for a component added whole, remove="true" for one removed) and Entity elements (added below that entity).</xs:documentation></xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+      </xs:sequence>
+      <xs:attribute name="entity" type="Address" use="required">
+        <xs:annotation><xs:documentation>Which entity, as an address relative to the instance: 2 is entity 2 of the prefab, 2/3 entity 3 of the prefab instanced as entity 2 of it.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="name" type="xs:string">
+        <xs:annotation><xs:documentation>A new name for the entity.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="remove" type="xs:boolean">
+        <xs:annotation><xs:documentation>true: the entity and everything below it is removed.</xs:documentation></xs:annotation>
+      </xs:attribute>
+    </xs:complexType>
+  </xs:element>
 
   <xs:element name="Prefab">
     <xs:complexType>

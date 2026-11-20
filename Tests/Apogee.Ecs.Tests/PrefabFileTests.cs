@@ -318,18 +318,20 @@ public sealed class PrefabFileTests : IDisposable
     }
 
     [Fact]
-    public void AnInstanceSavedAsASceneIsPlainEntities()
+    public void AnInstanceSavedAsASceneIsOneElementThatLoadsBackAsAnInstance()
     {
-        _ = _world.Instantiate("res://prefabs/lamp.aprefab");
+        Entity lamp = _world.Instantiate("res://prefabs/lamp.aprefab");
 
         string scene = _world.SaveScene();
 
-        Assert.DoesNotContain("PrefabInstance", scene, StringComparison.Ordinal);
+        Assert.DoesNotContain("PrefabInstance", scene, StringComparison.Ordinal);   // the link is the element's prefab attribute, not a component
         Assert.DoesNotContain("PrefabMember", scene, StringComparison.Ordinal);
-        using var other = new World();
+        Assert.Contains($"prefab=\"res://prefabs/lamp.aprefab|{_lampUid}\"", scene, StringComparison.Ordinal);
+        using var other = new World { Files = _files, Assets = _assets };
         List<Entity> loaded = other.LoadScene(scene);
         Assert.Equal(3, loaded.Count);
-        Assert.False(other.IsPrefabInstance(loaded[0]));
+        Assert.True(other.IsPrefabInstance(loaded[0]));
+        Assert.Equal(_world.PrefabOf(lamp), other.PrefabOf(loaded[0]));
 
         // A file that names the two components is not trusted with them: they are the engine's to make.
         Entity forged = WithWarnings(() => Assert.Single(other.LoadScene("<Scene version=\"1\"><Entity id=\"1\" name=\"f\"><PrefabInstance Prefab=\"7\"/><PrefabMember Id=\"1\" Prefab=\"7\"/></Entity></Scene>")), out List<string> warnings);

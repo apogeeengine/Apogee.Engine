@@ -56,14 +56,16 @@ not the entities of registered components and the reflection data under them, no
 - **Hierarchy:** `Roots()`, `Children(entity)` (in creation order) and `Subtree(entity)` (parents first). `ComponentsOf(entity)` lists the components and tags the registry describes (not relationship pairs or
   the name), with their `ComponentInfo`; `Components` is every component the world has registered. `SetParent` and `GetParent` were there before; `Trs.InLocalOf` gives the local transform that keeps an
   entity where it is under a new parent.
-- **Copies:** `Clone(entity, parent?)` copies the components and the whole branch under the same parent, naming the copies `name (copy)`, `name (copy 2)` so they stay unique.
+- **Copies:** `Clone(entity, parent?)` copies the components and the whole branch under the same parent, naming the copies `name (copy)`, `name (copy 2)` so they stay unique. A copy of an
+  [instance of a prefab](../content/prefabs.md) is another instance; a copy of a branch of one, without its root, is plain entities (the entities' links to their prefab are kept only when the instance they belong to is copied too).
 - **Snapshots:** `Snapshot()` takes every user entity (ids with their generation, names, parents, component bytes), `SnapshotTree(entity)` one branch. `Restore(snapshot)` puts the world back: user entities
   that are not in it are destroyed, the ones that are come back *under the same ids* (made alive again with `ecs_make_alive` when they were destroyed) with their components, names and parents as they
   were; `RestoreEntities(snapshot)` only brings back and overwrites, destroying nothing (an undo of a deletion). The same ids are what keep a selection and an undo history valid across a play session.
   Asset fields travel by reference: for each field of an asset type (`ModelRenderer.Model`, anything `[Property(Asset = "…")]`) the snapshot also keeps the `AssetRef` (path and UID) its handle named, through the
   type registered with `RegisterAssetType`. Restored into the world it was taken from, the bytes come back as they are; restored into another world (the new session after a play run), each such field is set to
   *that* world's handle for the same asset, so a model is still the same model although the new session numbered its models afresh. An asset that world cannot find, or that has no path or UID, comes back as 0
-  with a warning. Any other handle of the run (a physics body's id) is still bytes and comes back with the old value, so such components are left to the code that made them.
+  with a warning. Any other handle of the run (a physics body's id) is still bytes and comes back with the old value, so such components are left to the code that made them. What a prefab instance's element held that could not be applied
+  (see [prefabs](../content/prefabs.md#overrides)) travels with the instance's root, so Play and Stop, undo and redo do not lose it.
 - **Scenes** (`.ascene`): `SaveScene()` writes the user entities as XML text, `SaveScene(entity)` one branch, and `LoadScene(text, parent?)` creates the entities (under `parent` when given) and returns them in the
   order of the file. `SaveSceneDocument(roots)` and `LoadScene(node, parent?)` do the same with an `XmlNode` tree, for code that patches or inspects it. Each component is an element and each field an attribute
   (`<Transform Position="0 -0.5 0" Rotation="0 0 0 1" Scale="1 1 1"/>`), a child `<Entity>` is a child entity, and the format needs no reflection, so it works in NativeAOT. Flecs' own JSON was not used: it would

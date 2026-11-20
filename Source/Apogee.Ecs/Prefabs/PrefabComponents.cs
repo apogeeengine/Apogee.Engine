@@ -6,8 +6,8 @@ namespace Apogee.Ecs;
 
 /// <summary>
 /// Marks the root of a prefab instance: the entity <see cref="World.Instantiate(string, Entity)"/> returned. <see cref="Prefab"/> is a handle of the world's <see cref="PrefabLibrary"/>; a snapshot
-/// holds the <see cref="Apogee.Core.Assets.AssetRef"/> it names instead (the <c>prefab</c> asset type), so it means the same prefab in another run. It is never written to a scene file: until scenes
-/// save instances as overrides of their prefab, an instance is saved as plain entities.
+/// holds the <see cref="Apogee.Core.Assets.AssetRef"/> it names instead (the <c>prefab</c> asset type), so it means the same prefab in another run. It is never written as a component: a scene writes the instance as one
+/// <c>&lt;Entity prefab="…"&gt;</c> element with only what differs from its prefab.
 /// </summary>
 [Component]
 public struct PrefabInstance

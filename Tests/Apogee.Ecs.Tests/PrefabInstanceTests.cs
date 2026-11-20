@@ -124,6 +124,36 @@ public sealed class PrefabInstanceTests : PrefabTestBase
     }
 
     [Fact]
+    public void UnappliedOverridesSurviveSnapshotAndRestore()
+    {
+        // The corner lost nothing, but the scene was written for a lamp that had an entity 9 and a component the lamp no longer has.
+        World.LoadScene($"""
+            <Scene version="2">
+              <Entity id="1" name="Corner" prefab="{Corner}">
+                <Override entity="2/9"><Health Current="3"/></Override>
+                <Override entity="2/2"><Flicker lamp="1"/><Frozen/><Health Max="1"/></Override>
+              </Entity>
+            </Scene>
+            """);
+        string before = World.SaveScene();
+        Assert.Contains("entity=\"2/9\"", before, StringComparison.Ordinal);
+        WorldSnapshot snapshot = World.Snapshot();
+
+        // Another world: a new session after a play run. The snapshot carries what was kept aside.
+        using World other = OtherWorld();
+        other.Restore(snapshot);
+
+        Assert.Equal(before, other.SaveScene());
+
+        // And an undo of a delete in the same world brings it back too.
+        Entity corner = World.Lookup("Corner");
+        WorldSnapshot tree = World.SnapshotTree(corner);
+        World.Destroy(corner);
+        World.RestoreEntities(tree);
+        Assert.Equal(before, World.SaveScene());
+    }
+
+    [Fact]
     public void CloningAnInstanceRootMakesAnotherInstance()
     {
         World.LoadScene(Scene());
@@ -161,6 +191,35 @@ public sealed class PrefabInstanceTests : PrefabTestBase
         Assert.False(World.Has<PrefabMember>(nested));
         Assert.True(World.IsPrefabMember(Child(nested, "Bulb (copy)")));              // its own members still belong to it
         Assert.Equal(World.Get<PrefabMember>(bulb), World.Get<PrefabMember>(Child(nested, "Bulb (copy)")));
+    }
+
+    [Fact]
+    public void AWorldWithoutFilesLeavesInstancesEmptyAndSaysSo()
+    {
+        using var bare = new World();
+
+        List<Entity> loaded = WithWarnings(() => bare.LoadScene($"""
+            <Scene version="2">
+              <Entity id="1" name="Lamp" prefab="{Lamp}"><Transform Position="3 0 0"/><Entity id="2" name="Extra"/></Entity>
+            </Scene>
+            """), out List<string> warnings);
+
+        Entity lamp = Assert.Single(loaded);
+        Assert.Contains(warnings, w => w.Contains("this world has no files", StringComparison.Ordinal) || w.Contains("cannot be used", StringComparison.Ordinal));
+        Assert.Empty(bare.Children(lamp));
+        Assert.Equal(Lamp, bare.PrefabOf(lamp));                        // it still says what it is an instance of
+
+        // Saved, it is the same instance with everything it held: nothing was lost by not having the files.
+        string text = bare.SaveScene();
+        XmlNode saved = XmlNode.Parse(text);
+        XmlNode element = saved.Child("Entity")!;
+        Assert.Equal(Lamp, element.Attribute("prefab"));
+        Assert.Equal("Position", element.Child("Transform")!.Attributes.Single().Name);
+        Assert.Equal("Extra", element.Child("Entity")!.Attribute("name"));
+        Assert.Equal("2", saved.Attribute("version"));
+
+        // Instantiating needs files; nothing is made without them.
+        Assert.Throws<InvalidOperationException>(() => bare.Instantiate(LampPath));
     }
 
     [Fact]

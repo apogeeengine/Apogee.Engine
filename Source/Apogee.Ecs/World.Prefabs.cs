@@ -208,12 +208,13 @@ public sealed unsafe partial class World
     /// <summary>
     /// Writes <paramref name="root"/> and everything below it as the prefab file at <paramref name="path"/>. The ids in the file stay the same from one save to the next: an entity that came from this
     /// file (<see cref="PrefabMember"/> of it) keeps its id, and a new one takes the file's <c>nextId</c> and raises it, so an id that was deleted is never used again. The file keeps its UID
-    /// (a new one gets a new UID). Every entity written is marked as a member of the file, with its id there, so that saving again keeps it. Entity fields that point outside what is saved are left out, and
-    /// an instance of another prefab inside is written as plain entities.
+    /// (a new one gets a new UID). Every entity written is marked as a member of the file, with its id there, so that saving again keeps it. Entity fields that point outside what is saved are left out.
+    /// An instance of another prefab inside the tree is written as it is in a scene: one element with only what differs from its prefab, numbered in this file. The root itself is written as a plain
+    /// entity even when it is an instance (a prefab saved from an instance of itself, or of another prefab, holds its entities).
     /// </summary>
     /// <param name="path">A path ending in <c>.aprefab</c>, or <c>uid://…</c> for the file that has that UID.</param>
     /// <param name="root">The one root entity of the file.</param>
-    /// <exception cref="InvalidOperationException">The world has no <see cref="Files"/>.</exception>
+    /// <exception cref="InvalidOperationException">The world has no <see cref="Files"/>, or the tree holds an instance of the prefab being written (the file would contain itself).</exception>
     /// <exception cref="UnauthorizedAccessException">The path is not in a writable source.</exception>
     /// <exception cref="ArgumentException">The path does not end in <c>.aprefab</c>, or the entity is not a user entity.</exception>
     public void SavePrefabFile(string path, Entity root)
@@ -233,7 +234,6 @@ public sealed unsafe partial class World
 
         PrefabLibrary library = Prefabs;
         uint handle = library.Load(resolved);
-        List<Entity> order = Subtree(root);
 
         // What the file already has: the highest number ever given, which a deleted entity still counts for.
         long next = 1;
@@ -253,38 +253,44 @@ public sealed unsafe partial class World
             }
         }
 
-        // The entities that came from this file keep their number (the first of two with the same number does: a copy has its original's); the others get new ones.
-        var ids = new int[order.Count];
+        // The entities that came from this file keep their number (the first of two with the same number does: a copy has its original's); the others get new ones, as they are met.
+        var kept = new Dictionary<ulong, int>();
         var taken = new HashSet<int>();
-        for (int i = 0; i < order.Count; i++)
+        foreach (Entity entity in Subtree(root))
         {
-            if (TryGet(order[i], out PrefabMember member) && member.Prefab == handle && member.Id is >= 1 and <= int.MaxValue && taken.Add((int)member.Id))
+            if (TryGet(entity, out PrefabMember member) && member.Prefab == handle && member.Id is >= 1 and <= int.MaxValue && taken.Add((int)member.Id))
             {
-                ids[i] = (int)member.Id;
+                kept[entity.Id] = (int)member.Id;
                 next = Math.Max(next, (long)member.Id + 1);
             }
         }
 
-        for (int i = 0; i < order.Count; i++)
-        {
-            if (ids[i] == 0)
+        SavePlan plan = PlanSave(
+            [root],
+            entity =>
             {
-                if (next > int.MaxValue)
+                if (kept.TryGetValue(entity.Id, out int id))
                 {
-                    throw new InvalidOperationException("the prefab has used every entity id it can");
+                    return id;
                 }
 
-                ids[i] = (int)next++;
+                return next > int.MaxValue ? throw new InvalidOperationException("the prefab has used every entity id it can") : (int)next++;
+            },
+            root);
+
+        // A prefab that holds an instance of itself, or of one that holds it, could not be read back as anything but missing instances.
+        if (library.PathOf(handle) is { } target)
+        {
+            foreach (InstanceSave instance in plan.Instances.Values)
+            {
+                if (instance.Expansion.Prefabs.Contains(target))
+                {
+                    throw new InvalidOperationException($"{target} cannot hold an instance of itself (directly or through another prefab): saving it would make a prefab that contains itself");
+                }
             }
         }
 
-        var local = new Dictionary<ulong, int>();
-        for (int i = 0; i < order.Count; i++)
-        {
-            local[order[i].Id] = ids[i];
-        }
-
-        (List<XmlNode> top, XmlNode? schemas) = WriteEntities(order, local);
+        (List<XmlNode> top, XmlNode? schemas) = WritePlanned(plan, [root]);
         AssetUid uid = KeptUid(files, resolved, out bool minted);
         var document = new XmlNode(PrefabDocument.RootName);
         document.SetAttribute("version", PrefabDocument.Version.ToString(CultureInfo.InvariantCulture));
@@ -302,13 +308,14 @@ public sealed unsafe partial class World
             Assets?.Refresh(); // the database remembers what it found: this file has a UID now
         }
 
-        // The file is there now (a new one named no file until this point): its handle is the one the entities hold.
+        // The file is there now (a new one named no file until this point): its handle is the one the entities hold. What the file numbers is a member of it now (an instance written inside it too:
+        // it is an entity of this file, whatever file it was the root of); what is in an instance is the instance's prefab's, and stays as it was.
         handle = library.Load(resolved);
-        for (int i = 0; i < order.Count; i++)
+        foreach (Entity entity in plan.Numbered)
         {
-            if (!TryGet(order[i], out PrefabMember member) || member.Prefab == 0 || member.Prefab == handle)
+            if (!TryGet(entity, out PrefabMember member) || member.Prefab == 0 || member.Prefab == handle || entity == root || plan.Instances.ContainsKey(entity.Id))
             {
-                Set(order[i], new PrefabMember { Id = (uint)ids[i], Prefab = handle });
+                Set(entity, new PrefabMember { Id = uint.Parse(plan.AddressOf[entity.Id], CultureInfo.InvariantCulture), Prefab = handle });
             }
         }
 

@@ -30,11 +30,13 @@ them as text. Because a scene is XML like the rest of the game's data, a mod can
 
 ## The format
 
-- **`<Scene version="1">`** is the root. `version` is the format's version; a scene from a newer engine (a larger number) is refused. A scene file may also carry a `uid` attribute, its
-  [identity](assets.md#where-a-uid-lives); text made by `SaveScene` has none, because a copy must not carry one.
+- **`<Scene version="1">`** is the root. `version` is the format's version; a scene from a newer engine (a larger number) is refused. It is 1, and 2 for a scene that holds a
+  [prefab instance](#prefab-instances) (so that an engine that does not know instances refuses the file instead of loading them empty); the engine reads both. A scene file may also carry a `uid`
+  attribute, its [identity](assets.md#where-a-uid-lives); text made by `SaveScene` has none, because a copy must not carry one.
 - **`<Entity id="…" name="…">`** is an entity. `name` is optional. Its children are its components, as elements, and its child entities, as more `<Entity>` elements; a child entity is under its parent,
   so there is no `parent` attribute. `Entity` is therefore not a name a component can have (`RegisterComponent` and `DefineComponent` refuse it, and `Override`, which [prefab](prefabs.md) instances use).
-- **`id`** is the entity's number in the file, not its id in a world. Entity-typed fields refer to it, and a [patch](#patching-a-scene) matches on it.
+- **`id`** is the entity's number in the file, not its id in a world. Entity-typed fields refer to it, and a [patch](#patching-a-scene) matches on it. It is a whole number from 1 up: an entity
+  with another `id` (or none) loads, but nothing can refer to it, and when two entities have the same one, references go to the first and the engine warns.
 - **A component** is an element named after it, and each of its fields an attribute named after the field. A tag (or a component with no fields) is an empty element. A field the element does not
   name is zero when the scene is loaded.
 - **What is written:** every field of every component, so that a scene reads without the code at hand and diffs cleanly; components in the order the entity has them, entities in hierarchy order
@@ -50,8 +52,8 @@ are the special values), and a `Vector3`, a `Double3` position or a `Quaternion`
 
 Two kinds need a world:
 
-- **`Entity`** is the `id` of the entity it points to in the same file. A field that points outside the scene (a branch saved on its own, an entity not in the file) has its attribute left out, and loads
-  as no entity. An `id` the file does not have is the same.
+- **`Entity`** is the `id` of the entity it points to in the same file; for an entity inside a [prefab instance](#prefab-instances) its address, `2/3`. A field that points outside the scene (a branch saved on
+  its own, an entity not in the file) has its attribute left out, and loads as no entity. An `id` the file does not have, and text that is not an id or an address, is the same.
 - **`AssetRef`** is an [asset reference](assets.md): `path|uid://…`, a path alone, or `uid://…` alone. In memory the field is a number, a handle that only means something in this run (a model's number in the
   model library); the scene holds what it names. The host says how each asset type is saved with `RegisterAssetType`, and registers `model` for `ModelRenderer.Model`. When the path leads to no file, the
   UID finds the asset where it was moved; a reference that leads nowhere leaves the field 0 and logs a warning, and the scene loads on. An asset the type cannot name (a model made in code has no path) is
@@ -70,6 +72,40 @@ the scene's is skipped with a warning and the existing one is used.
 Loading is forgiving, so that a scene outlives the code around it. A component or an attribute the world does not have is logged (with the line) and skipped; an attribute whose text is not a
 value of its field is logged and the field stays zero; a name that is taken under the same parent gets a free one (`crate 2`). What is an error (a `FormatException`) is a document that is not a scene:
 XML that is not well-formed, a root other than `<Scene>`, and a `version` newer than the engine's.
+
+## Prefab instances
+
+An `<Entity>` with a `prefab` attribute is an instance of a [prefab](prefabs.md): a whole piece of scene (an entity with everything below it) that lives in a `.aprefab` file and is made again at each
+instance. The element does not repeat what the prefab holds, only what this instance changes:
+
+```xml
+<Scene version="2">
+  <Entity id="1" name="Player">…</Entity>
+  <Entity id="2" name="Corner" prefab="res://prefabs/corner.aprefab|uid://9w1e3r5t7y9ua">
+    <Transform Position="10 0 4"/>                         <!-- a field of the root changed: the other fields stay the prefab's -->
+    <Override entity="4" name="Old bench"><Transform remove="true"/></Override>   <!-- another entity of the prefab, found by its address: renamed, and one component removed -->
+    <Override entity="3" remove="true"/>                   <!-- an entity removed with everything below it -->
+    <Entity id="4" name="Trash can">…</Entity>              <!-- an entity added below the root -->
+  </Entity>
+  <Entity id="5" name="Switch"><Door target="2/2"/></Entity>   <!-- a scene entity pointing into the instance: entity 2 of the prefab instanced as 2 -->
+</Scene>
+```
+
+- **`prefab`** is an [asset reference](assets.md) to the file: a path, a `uid://…`, or both (the engine writes both, so the instance still finds a prefab that moved). The `id` and `name` are the instance
+  root's, as for any entity; the name is the scene's, and always written.
+- **Component elements** directly inside change the root of the instance; **`<Override entity="address">`** changes any other entity of it; **`<Entity>`** children are added below the root.
+  [Prefabs](prefabs.md#overrides) has the rules: how an entity is addressed (`4`, `2/2`), what `append="true"` and `remove="true"` mean on a component, and what is kept aside when the prefab no longer
+  has what an override names.
+- **Addresses in Entity fields.** An entity of the scene is its `id`; an entity that a prefab made is the address of its instance followed by its id in the prefab (`2/3`: entity 3 of the prefab that is
+  instance 2), and `2/2/1` reaches into a prefab nested in it. What an override or an added entity holds is in the scene's numbering, so `lamp="1"` in the scene is the scene's entity 1; inside the
+  prefab file the same text is the prefab's entity 1. Entities the instance made have no `id` of their own in the scene, which is why they are named by address.
+- **Loading** makes the prefab's entities, applies the element on top, and creates the added entities after them. The entities of an instance are ordinary entities: `world:children`, components, scripts
+  and physics see no difference, and `world:prefab_of(entity)` tells the root of an instance. An instance whose prefab file cannot be found or read is one empty entity, with a warning, and what its
+  element holds is kept: [saved again](prefabs.md#how-overrides-are-stored), the scene has the same instance, so a prefab that is missing for a moment (a disabled mod) costs the scene nothing.
+- **Saving** writes the instance back as the same kind of element, working out what differs from the prefab. A scene numbers its own entities again at each save, so the `id` of an instance and of what
+  is added to it may change from one save to the next; what refers to them follows, and a scene saved and loaded again saves to the same text. The entities an instance made keep the place the prefab gives
+  them, and a member of an instance cannot be moved under another parent.
+- A branch of an instance saved or copied *without its root* (the clipboard of a selected member) is written as plain entities; a whole instance is one element.
 
 ## The schema
 
