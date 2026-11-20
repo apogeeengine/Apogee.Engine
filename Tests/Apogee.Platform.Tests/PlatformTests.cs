@@ -8,6 +8,7 @@ using SDL = Apogee.Native.Sdl.SDL;
 namespace Apogee.Platform.Tests;
 
 /// <summary>SDL is process-wide state, so these run one at a time, on SDL's "dummy" video driver (windows without a display).</summary>
+[Collection("sdl")]
 public unsafe class PlatformTests : IDisposable
 {
     public PlatformTests()

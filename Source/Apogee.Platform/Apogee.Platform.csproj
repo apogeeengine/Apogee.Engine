@@ -4,4 +4,7 @@
     <ProjectReference Include="../Apogee.Interop/Apogee.Interop.csproj" />
     <ProjectReference Include="../Apogee.Native.Sdl/Apogee.Native.Sdl.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Apogee.Platform.Tests" />
+  </ItemGroup>
 </Project>

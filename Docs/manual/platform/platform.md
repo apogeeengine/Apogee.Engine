@@ -36,6 +36,21 @@ reverse-DNS identifier (`org.apogee.fixturegame`) that Wayland uses as the windo
 `window.SetIcon(width, height, rgba)` gives a window an icon from RGBA8 pixels (it returns false when the driver cannot show one; a buffer smaller than the image is an `ArgumentException`).
 The runtime uses it on Linux, with the `<Icon>` file of `game.xml`; Windows and macOS take the icon from the executable and the bundle instead.
 
+## File dialogs
+
+`FileDialog` shows SDL's native dialogs: `OpenFile(window, filters, defaultLocation, many, done)`, `SaveFile(window, filters, defaultLocation, done)` and `OpenFolder(window, defaultLocation, many, done)`. A filter is a name and a
+pattern (`("Scenes", "ascene")`, `("Models", "glb;gltf")`, `("All files", "*")`); the platform may let the user ignore it. Each call returns at once with a request id, and `done` receives a `FileDialogResult` later:
+`Paths` (operating system paths) when the user chose, `Cancelled` when the dialog was closed, or an `Error` (SDL's own text) when it could not be shown, which is what a Linux machine with neither `xdg-desktop-portal` nor `zenity` reports.
+
+SDL reports the result on a callback that may run on **another thread** (Windows, the Linux portal and zenity) or before the call has returned, so `done` is never called from it. The callback only copies the paths into managed strings
+(SDL frees its list when the callback returns) and puts the result into a thread-safe queue; `PlatformHost.PumpEvents` then calls `FileDialog.Dispatch()`, which runs the continuations **on the main thread**, once each. That queue is the only
+state the two threads share; the request's id travels as the callback's userdata, not a pointer to anything managed. The filter table, its strings and the default location are one unmanaged block per request that SDL requires to
+stay valid until the result: it is freed when the result is dispatched, or by `PlatformHost.Shutdown` (a callback arriving after that finds no request and is dropped). A continuation that throws is logged and does not stop the others.
+Call the dialogs from the main thread only (macOS requires it).
+
+The dialogs need a display and a person: the tests call the callback themselves, from another thread, with synthesized result lists, and check the copy, the null (error) and empty (cancel) lists, that nothing runs before `Dispatch`, the memory layout
+and the shutdown. They cannot show a dialog.
+
 ## Windows for a graphics API
 
 A window is made for the API it will be drawn with: `WindowOptions.Vulkan` (loads the Vulkan loader) or `WindowOptions.Metal`. Ask the graphics layer which: `GraphicsDevice.RequiredWindowOptions()`

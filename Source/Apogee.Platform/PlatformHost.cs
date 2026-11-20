@@ -90,12 +90,15 @@ public static unsafe class PlatformHost
             Log.Warn(LogCategory, $"{s_windows.Count} window(s) were still open at shutdown.");
         }
 
+        FileDialog.Reset();
         SDL.Quit();
         s_windows.Clear();
         s_initialized = false;
     }
 
-    /// <summary>Processes every pending event: window events update their <see cref="Window"/>, <see cref="RawEvent"/> sees all of them.</summary>
+    /// <summary>
+    /// Processes every pending event: window events update their <see cref="Window"/>, <see cref="RawEvent"/> sees all of them. Then it runs the continuations of the file dialogs that ended (see <see cref="FileDialog"/>).
+    /// </summary>
     public static void PumpEvents()
     {
         EnsureInitialized();
@@ -116,6 +119,8 @@ public static unsafe class PlatformHost
                 window.Handle(type);
             }
         }
+
+        FileDialog.Dispatch();
     }
 
     public static void ClearQuitRequest() => QuitRequested = false;
