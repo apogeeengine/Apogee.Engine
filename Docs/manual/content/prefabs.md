@@ -157,7 +157,8 @@ An instance element changes its prefab in three ways: component elements directl
 </Entity>
 ```
 
-- **`<Override entity="address">`** is an address relative to the instance (`""`, or no `entity`, is the root). Its children are component patches and added `<Entity>` elements; `name` renames the
+- **`<Override entity="address">`** is required and is an address relative to the instance (the root of the instance is its id in the prefab, `1` for a prefab whose root is entity 1; the root's own patches are component elements directly
+  inside the instance element). Its children are component patches and added `<Entity>` elements; `name` renames the
   entity and `remove="true"` removes it with everything under it (not the root of the instance: remove the instance instead).
 - **A component element** changes a component the entity has: its attributes replace the prefab's, and the fields it does not name keep the prefab's value. `remove="true"` removes the component.
   `append="true"` adds the component, written whole; if the prefab has (or later gets) the component, the instance's wins. These three words, with `patch`, are the same ones [`DefDatabase.Merge`](defs.md) uses
@@ -168,12 +169,15 @@ An instance element changes its prefab in three ways: component elements directl
 
 **Strict matching.** An override applies only to what is there. The expander reads each element and, when it cannot apply it, keeps it aside instead of guessing:
 
-- an address that names nothing (the prefab lost that entity, or an earlier override removed it), a malformed address, or an `<Override>` with an attribute this version does not know: the whole element;
+- an address that names nothing (the prefab lost that entity, or an earlier override removed it), a malformed or missing address, or an `<Override>` with an attribute this version does not know: the whole element;
 - a patch of a component the entity does not have (the prefab dropped it: a half component would be made), or a `remove` of one it does not have: that component element, under an `<Override>` with the same
-  address (what could apply did).
+  address (what could apply did);
+- an entity added under a member that another override of the same instance removes: its element, under an `<Override>` with the address of the removed member.
 
-Each is logged with its file and line, and kept as written so that saving the scene does not lose it; if the prefab gets the entity or component back, the override applies again. A prefab that is not there
-is the same: the instance is a single entity with nothing in it, and every element of the instance element is kept.
+Each is logged with its file and line (once per line however many instances there are, and at most 200 lines per load, then one line saying so), and kept as written so that saving the scene does not lose it;
+if the prefab gets the entity or component back, the override applies again. A prefab that is not there is the same: the instance is a single entity with nothing in it, and every element of the instance
+element is kept. What is kept belongs to the document the expansion was asked for: the leftovers of an instance element inside a *prefab file* are that file's, are logged, and are worked out again at every
+expansion, so they do not appear on the scene's instance.
 
 `DefDatabase.Merge` is used for the part it fits: the fields of one component (and the `remove`/`append` words). It is *not* used to find entities, which it would do by name and `id` among direct children only:
 an entity that the author moved would stop matching, ids repeat across nested prefabs, and a patch that matches nothing would add a half-made entity. Overrides address entities by path instead.
@@ -187,8 +191,14 @@ A prefab file is read by anyone who installs a mod, so expansion is bounded and 
 - **Cycles.** A prefab that contains itself, directly or through others (`a → b → c → a`), is not followed: the instance that would repeat it is missing, and the warning shows the chain. The rest expands.
 - **Entity budget: 262,144.** The expansion counts each entity as it is about to make it and stops with a `FormatException` when a load (a scene with all its instances) would go over, so a few small files that
   nest ten instances sixteen levels deep cost at most the budget, not memory without end. The budget is one number for a whole load.
+- **Work budget: 64 steps for each entity of the budget (16,777,216).** A file's content is repeated for every instance of it, so entities alone do not bound a load: ten thousand overrides in a prefab
+  that a thousand prefabs hold are ten million merges for a handful of entities. Every component or override handled, attribute copied, component merged (by its size) and name tried while making a name
+  unique counts, and the expansion stops with a `FormatException` over the limit, with the same effect as the entity budget. An entity may have any number of components within it (the lookup is by name,
+  not a scan). A load, and each `Instantiate`, takes a new budget; one that failed is spent.
 - **Missing prefabs.** A reference that names no file, a file that cannot be read, is not a prefab (another root element, none or two root entities, a repeated id, a newer version), or whose root
   entity is itself an instance of another prefab (an entity would be the root of two instances: put it under an entity of its own) leaves the instance missing, as above.
+- **Addresses.** An instance at an address of 17 segments (the longest there is) is missing, since what is in it would need 18. A field that holds text that is not an address means no entity, so a
+  loader resolves only text that is a valid address; an entity that nothing can refer to has an address that starts with `~`, which no file can write.
 - **Ids.** Ids of entities an `<Override>` adds count in the prefab's numbering like any other: they may not repeat one, and `nextId` stays above them. An entity with no usable id, or one that repeats an
   address, is made but cannot be referred to.
 
