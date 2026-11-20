@@ -25,6 +25,9 @@ public sealed class EditorContext(EditorProject project, EditorCamera camera, Ed
     /// <summary>The key bindings of every shortcut and the labels the menus show.</summary>
     public Keymap Keymap { get; init; } = new();
 
+    /// <summary>What the editor remembers between runs (camera speed, snap steps, recent projects, key bindings); in memory only when the context is made without the editor's folder.</summary>
+    public EditorPreferences Preferences { get; init; } = EditorPreferences.InMemory();
+
     /// <summary>The keyboard the shortcuts read: ImGui's, or a fake in tests.</summary>
     public IKeyState Keys { get; init; } = new ImGuiKeyState(host);
 
@@ -54,7 +57,7 @@ public sealed class EditorContext(EditorProject project, EditorCamera camera, Ed
     public bool ViewportFocused { get; set; }
 
     /// <summary>The selection tool of the gizmo.</summary>
-    public GizmoSettings Gizmo { get; } = new();
+    public GizmoSettings Gizmo { get; init; } = new();
 
     /// <summary>Asks the app to show a message the player must read (a failed Play).</summary>
     public string? Message { get; set; }

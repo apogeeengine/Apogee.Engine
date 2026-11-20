@@ -87,8 +87,9 @@ public sealed unsafe class ViewportPanel
     private static void DrawOptions(EditorContext ctx)
     {
         GizmoSettings g = ctx.Gizmo;
-        void Mode(string label, AgzOperation op)
+        void Mode(string label, string action, AgzOperation op)
         {
+            label = ctx.Shortcut(action) is { } shortcut ? $"{label} ({shortcut})" : label; // follows a rebinding
             bool on = g.Operation == (int)op;
             if (on)
             {
@@ -108,9 +109,9 @@ public sealed unsafe class ViewportPanel
             Gui.SameLine();
         }
 
-        Mode("Move (W)", AgzOperation.Translate);
-        Mode("Rotate (E)", AgzOperation.Rotate);
-        Mode("Scale (R)", AgzOperation.Scale);
+        Mode("Move", "gizmo.move", AgzOperation.Translate);
+        Mode("Rotate", "gizmo.rotate", AgzOperation.Rotate);
+        Mode("Scale", "gizmo.scale", AgzOperation.Scale);
         bool world = g.World;
         if (Gui.Checkbox("World", ref world))
         {
@@ -352,7 +353,7 @@ public sealed unsafe class ViewportPanel
             if (rmb)
             {
                 camera.Orbit(-delta.X * 0.005f, -delta.Y * 0.005f);
-                float speed = (Gui.Shift ? 18f : 6f);
+                float speed = (float)ctx.Preferences.CameraSpeed * (Gui.Shift ? 3f : 1f);
                 Vector3 move = default;
                 if (ctx.IsHeld("view.fly_forward", KeyContext.ViewportFly)) { move.Z += speed; }
                 if (ctx.IsHeld("view.fly_back", KeyContext.ViewportFly)) { move.Z -= speed; }

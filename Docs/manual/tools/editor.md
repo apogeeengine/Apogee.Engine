@@ -137,10 +137,59 @@ shortcut text from the same table, so a label never disagrees with the key. On m
 - **Exact modifiers.** A chord fires only with exactly its modifiers: Ctrl+Shift+V pastes as a child and does not also paste, Shift+Z is not Z.
 - **Typing.** While a text field (or any widget that uses the keyboard) is active, no shortcut fires, so typing a name never deletes entities or switches the tool.
 - **Conflicts.** `Keymap.Conflicts()` reports two actions that share a chord where both could be active: in the same context, or when one of them is *Anywhere*. The defaults have none (a test checks it); a
-  rebinding that collides is reported, not refused. The table can be changed in memory (`Rebind`, `Reset`); saving it and a screen to edit it come later.
+  rebinding that collides is reported, not refused. [Preferences](#preferences) rebinds, saves and resets the table.
 - **ImGui's own keys.** Ctrl+A (select all), Shift-click ranges, Ctrl-click and Escape in the hierarchy are ImGui's multi-select, not keymap rows.
 
 The matching is `Keymap.Pressed` and `Keymap.IsHeld` over `IKeyState` (ImGui's keyboard in the editor, a fake in the tests), so it is tested without a window. The manual's table above is checked against the real one by a test.
+
+## Preferences
+
+The editor remembers its preferences, the recent projects and the key bindings in **`preferences.xml` in the editor's own folder** (the platform's local application data folder: `~/.local/share/Apogee/Editor` on Linux and macOS, `%LOCALAPPDATA%\Apogee\Editor` on Windows; next to `imgui.ini` and the logs). It is never written into a game folder, and it is not the game's `user://settings.xml`: that file belongs to one game and its
+mods, is replaced when Play starts, and every mod can read it. The file is the engine's [settings store](../platform/settings.md) over a file system of the editor's folder alone, so it has the same shape (`<settings version="1">` with
+`<value key="...">` lines), only what differs from the default is written, writes are atomic (a temporary file moved over the old one), and a key this editor does not know is kept. The dock layout stays in `imgui.ini`.
+
+```xml
+<settings version="1">
+  <value key="editor.camera.speed">12</value>
+  <value key="keys.edit.undo">Ctrl+Alt+U</value>
+  <value key="recent.0">/home/me/games/farm</value>
+  <value key="project.5b0c7e1d2a9f4c38.scene">res://scenes/barn.ascene</value>
+</settings>
+```
+
+| Keys | Holds |
+| --- | --- |
+| `editor.camera.speed` | the fly speed of the camera in metres per second (6; Shift is three times as fast) |
+| `editor.gizmo.mode`, `.world`, `.pivot`, `.snap` | the tool (`move`, `rotate`, `scale`), world or local space, the pivot of a group (`center`, `active`, `individual`) and whether it snaps |
+| `editor.gizmo.snap_move`, `.snap_rotate`, `.snap_scale` | the snap steps (0.5 m, 15 degrees, 0.1) |
+| `editor.helpers`, `editor.game_camera` | the viewport's helpers, and the game camera while playing |
+| `editor.ui.scale` | the interface scale (1; 0.5 to 3) |
+| `recent.0` to `recent.9` | the recent projects as full paths, the latest first |
+| `project.<16 hex digits>.scene` | the scene that was open last in a project (the first 16 hex digits of the SHA-256 of the project's full path), reopened the next time the project opens if it is still there |
+| `keys.<action id>` | a key binding that differs from the default |
+
+The gizmo's state is kept as you work (the toolbar and the window edit the same values), the scene is noted when it changes, and the file is written within a second of a change and when the editor quits (a slider that is
+dragged writes once a second, not once a frame).
+
+**Edit > Preferences...** (also on the start screen) opens a window with two tabs. *General* edits the values above (*Reset to defaults* puts them back; it does not touch the recent projects or the keys). *Keys* lists every
+action with its shortcut and where it applies. *Rebind* waits for the next key you press and binds the action to it with the modifiers held (Ctrl+Shift+K); Escape alone gives up (to bind Escape itself, hold a modifier,
+or use *Reset* on an action whose default it is); a modifier alone is not a chord. *Clear* unbinds the action, *Reset* puts its defaults back (it is greyed when it is on them), *Reset all* does it for every action. While a key is
+awaited no shortcut fires, so the key you choose does not also do what it is bound to. A chord that another action already has (where both could be active) is **accepted and shown in red** with the name of the other
+action: both fire, and the window says so. The menus and the toolbar show the new chords at once.
+
+**Key bindings are a difference from the defaults.** An action on its default chords has no key in the file, so a later editor with another default reaches everyone who never changed it. `keys.edit.redo` holds the chords
+joined with ` | ` (`Ctrl+Y | Ctrl+Shift+Z`), `none` for an unbound action. The primary modifier is always written `Ctrl` and shown as `Cmd` on macOS, so a file reads the same on every platform. Bindings for actions this editor does not have
+stay in the file untouched. When the file is read, a chord that does not parse is reported and the action keeps its default, and collisions the saved bindings cause are reported (nothing is refused).
+
+**Recent projects.** *File > Open recent* and the start screen list the last ten game folders, the latest first, without duplicates (the same folder spelled differently counts once). A folder that is gone from the disk is dropped
+when the file is read, and when you choose one that turned out to be gone (or is no game folder any more) the editor says so and removes it; *Clear recent* empties the list. Opening a project adds it, the same way as the dialog.
+
+**A file that does not read never crashes the editor and is never lost.** A file that is not XML (or has another root element) is kept as `preferences.bad.xml` next to it; one written by a newer editor (a `version` above 1) is
+kept as `preferences.v<N>.xml`; in both cases the defaults are used, a message at the start says so, and the next change writes a new `preferences.xml`. A file that cannot be read at all (locked, no permission) is left
+exactly as it is and nothing is saved in that run. A value of the wrong type or outside its range falls back to its default (numbers are clamped). The window shows where the file is and whether it is being saved.
+
+The code is `Source/Apogee.Editor/EditorPreferences.cs` (the typed keys, the recent list, the keymap diff), `Source/Apogee.Editor/Input/KeyBindingEditor.cs` (the rows and the capture of a chord over `IKeyState`, with no ImGui) and
+`Source/Apogee.Editor/Panels/PreferencesWindow.cs` (only draws them). The folder is a parameter of `EditorPreferences.Open`, so tests use a temporary one.
 
 ## Scenes and undo
 
@@ -173,8 +222,8 @@ scene*, a path field for *Save as* and for *Open project*), so everything stays 
 
 ## The start screen and opening a project
 
-Started without a game folder, the editor opens its window on a start screen with an *Open project...* button (and *File > Open project...*): choose a game folder in the system's folder
-dialog. Only a folder that has a `game.xml` or a `packages` folder is taken for a game (a mistaken pick, such as the home folder, is refused with a message and nothing closes); choosing the folder that is already open does nothing. The same entry in the *File* menu of an open project **switches projects inside the same process**: if the scene has unsaved changes the editor asks first (*Save and open*, *Open without saving*, *Cancel*); then the
+Started without a game folder, the editor opens its window on a start screen with an *Open project...* button (and *File > Open project...*) and the list of [recent projects](#preferences): choose a game folder in the system's folder
+dialog, or click a recent one. Only a folder that has a `game.xml` or a `packages` folder is taken for a game (a mistaken pick, such as the home folder, is refused with a message and nothing closes); choosing the folder that is already open does nothing. The same entry in the *File* menu of an open project **switches projects inside the same process**: if the scene has unsaved changes the editor asks first (*Save and open*, *Open without saving*, *Cancel*); then the
 old project is closed (the GPU is waited for, the viewport and the session are disposed, since one session exists at a time) and the new folder is opened at the start of the next frame, with a fresh camera, panels and undo history. The window title
 and the crash reports' *Edited game* line follow the project. `--user <folder>` belongs to the game folder given on the command line: a project opened later from the dialog gets its own user folder (what its `game.xml` says), so two games never share `user://`. If the folder cannot be opened (a `game.xml` that is wrong, say) the editor says why and opens the previous project again. A folder that does not exist is refused
 without closing anything.
@@ -197,7 +246,7 @@ Sound plays in play mode through OpenAL Soft ([Audio](../audio/index.md)), which
 ## Tests
 
 `Tests/Apogee.Editor.Tests`: the field codec for every `FieldKind` (a rotation as angles, integers clamped), the editor camera, picking (rays, boxes, spheres, the ground, and the selection box with what is behind the
-camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), copy, cut, paste and duplicate through a memory clipboard (the same tree under new ids as one step, next to the active entity or under it, unique names, references inside the copy followed and outside ones dropped, models by path, undo of a cut, text that is not a scene, duplicating several, playing), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the keymap (chords parsed and printed for each platform, the defaults and their menu text, conflicts in a context or against an *Anywhere* shortcut, exact modifiers, contexts, no shortcut while typing, held keys, and this page's table equal to the real one), the file dialogs through a scripted fake (an OS path becoming a game path only inside the game folder; Save as writing the chosen file, adding the extension, refusing a path outside the game; Open scene opening it, refusing other paths, files that are not scenes and missing ones; a cancel doing nothing and an error asking for the built-in entry; a second dialog refused; a result that arrives after the project changed dropped; a scene that fails to load leaving the editor exactly as it was and the next Save writing the old scene; a failing save reported with the scene still modified; a name the game cannot use; a result while playing; a second dialog using the built-in entry; only game folders opened; the dialog gate with a fake clock: refusing a second dialog, free again after an exception or a lost dialog, a late answer dropped; paths of a symlinked and a root-level game folder), switching projects (the old project disposed first, the events in order, a missing folder keeping the open project, a game that fails to start reported and the previous project reopened), the project (creating, naming, reparenting,
+camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), copy, cut, paste and duplicate through a memory clipboard (the same tree under new ids as one step, next to the active entity or under it, unique names, references inside the copy followed and outside ones dropped, models by path, undo of a cut, text that is not a scene, duplicating several, playing), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the keymap (chords parsed and printed for each platform, the defaults and their menu text, conflicts in a context or against an *Anywhere* shortcut, exact modifiers, contexts, no shortcut while typing, held keys, and this page's table equal to the real one), the preferences in a temporary editor folder (values surviving a reopen and only differences written, the debounce with a fake clock, recent projects most recent first without duplicates and with missing ones dropped and a bound of ten, the last scene per project, key bindings saved as a difference and read back with unknown actions kept, collisions and bad chords reported on load, a corrupt file or a newer one set aside with a copy and never overwritten, in-memory preferences that never write), the rebinding logic with a fake keyboard (capturing the next chord with its modifiers, a modifier alone, Escape giving up, shortcuts off while a key is awaited, a colliding chord accepted and warned about, clear and reset), the file dialogs through a scripted fake (an OS path becoming a game path only inside the game folder; Save as writing the chosen file, adding the extension, refusing a path outside the game; Open scene opening it, refusing other paths, files that are not scenes and missing ones; a cancel doing nothing and an error asking for the built-in entry; a second dialog refused; a result that arrives after the project changed dropped; a scene that fails to load leaving the editor exactly as it was and the next Save writing the old scene; a failing save reported with the scene still modified; a name the game cannot use; a result while playing; a second dialog using the built-in entry; only game folders opened; the dialog gate with a fake clock: refusing a second dialog, free again after an exception or a lost dialog, a late answer dropped; paths of a symlinked and a root-level game folder), switching projects (the old project disposed first, the events in order, a missing folder keeping the open project, a game that fails to start reported and the previous project reopened), the project (creating, naming, reparenting,
 duplicating and deleting, one or several, through the history; the modified mark clearing when undo returns to the saved scene; a scene saved to a file and opened again with the model's path; Play running the game's
 scripts over the scene and Stop restoring the world under the same ids with the selection and history intact; a failing game), and, on a GPU (skipped without one), a frame of the viewport with no validation errors whose render graph lays out as nodes. `Tests/Apogee.Host.Tests` covers the history and
 its commands (a drag over several entities is one step).

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Diagnostics;
 using System.IO;
 using System.Numerics;
@@ -9,6 +10,7 @@ using Apogee.Core.Diagnostics;
 using Apogee.Core.Logging;
 using Apogee.DevTools;
 using Apogee.Editor.Editing;
+using Apogee.Editor.Input;
 using Apogee.Editor.Panels;
 using Apogee.Graphics;
 using Apogee.Host;
@@ -90,6 +92,7 @@ public static unsafe class EditorApp
         CrashHandler.Install(Path.Combine(EditorFolder, "crashes"), recent);
         using FileLogSink logFile = RunDiagnostics.Start(EditorFolder, "Apogee Editor");
         PlatformHost.Initialize();
+        var preferences = EditorPreferences.Open(EditorFolder); // its own file in the editor's folder: never the game's user://settings.xml
         nint ini = Marshal.StringToCoTaskMemUTF8(Path.Combine(EditorFolder, "imgui.ini"));
         try
         {
@@ -107,12 +110,14 @@ public static unsafe class EditorApp
             bool hasLayout = File.Exists(Path.Combine(EditorFolder, "imgui.ini"));
             using var imgui = new ImGuiRenderer(device, shaders);
             using var projects = new ProjectHost();
-            var app = new Frames(log, window, device, loop, pool, imgui, host, shaders, projects, new SdlFileDialogs(window), hasLayout);
+            var app = new Frames(log, window, device, loop, pool, imgui, host, shaders, projects, new SdlFileDialogs(window), preferences, hasLayout);
             if (gameFolder is not null && !projects.TryOpen(gameFolder, user, out string? error))
             {
                 Console.Error.WriteLine(error);
                 return 2;
             }
+
+            app.ShowStartupProblems();
 
             app.Loop();
             loop.WaitIdle();
@@ -143,6 +148,13 @@ public static unsafe class EditorApp
         private readonly ShaderLibrary _shaders;
         private readonly ProjectHost _projects;
         private readonly DialogFlow _dialogFlow;
+        private readonly EditorPreferences _prefs;
+        private readonly Keymap _keymap = new();
+        private readonly GizmoSettings _gizmo = new();
+        private readonly ImGuiKeyState _keys;
+        private readonly PreferencesWindow _prefsWindow;
+        private readonly List<string> _startupProblems = [];
+        private (string Folder, string? Scene) _recordedScene;
         private readonly ConsolePanel _console = new();
         private readonly RenderGraphPanel _graph = new();
         private readonly ViewportPanel _viewport = new();
@@ -170,7 +182,7 @@ public static unsafe class EditorApp
         private string? _confirmSwitch;
         private bool _openConfirmSwitch;
 
-        public Frames(EditorLog log, Window window, GraphicsDevice device, FrameLoop loop, TransientPool pool, ImGuiRenderer imgui, ImGuiHost host, ShaderLibrary shaders, ProjectHost projects, IFileDialogs dialogs, bool hasLayout)
+        public Frames(EditorLog log, Window window, GraphicsDevice device, FrameLoop loop, TransientPool pool, ImGuiRenderer imgui, ImGuiHost host, ShaderLibrary shaders, ProjectHost projects, IFileDialogs dialogs, EditorPreferences prefs, bool hasLayout)
         {
             _log = log;
             _window = window;
@@ -182,6 +194,12 @@ public static unsafe class EditorApp
             _shaders = shaders;
             _projects = projects;
             _layoutBuilt = hasLayout;
+            _prefs = prefs;
+            _keys = new ImGuiKeyState(host);
+            _startupProblems.AddRange(prefs.Problems);
+            _startupProblems.AddRange(prefs.AttachKeymap(_keymap));
+            prefs.ApplyTo(_gizmo);
+            _prefsWindow = new PreferencesWindow(prefs, _keymap, _gizmo, _keys);
             _dialogFlow = new DialogFlow(dialogs, () => _projects.Current, Say, RequestProject, UseBuiltIn);
             projects.Closing += OnClosing;
             projects.Opened += OnOpened;
@@ -205,6 +223,16 @@ public static unsafe class EditorApp
         }
 
         private void Say(string text) => Message = text;
+
+        /// <summary>Tells the user once what was wrong with the saved preferences or key bindings (a file that did not read, a binding that collides); called after the first project opened, which clears messages.</summary>
+        public void ShowStartupProblems()
+        {
+            if (_startupProblems.Count > 0)
+            {
+                Say("Editor preferences:\n" + string.Join("\n", _startupProblems));
+                _startupProblems.Clear();
+            }
+        }
 
         /// <summary>The system has no file dialog (no backend): the editor's own entry for the same job opens.</summary>
         private void UseBuiltIn(DialogKind kind)
@@ -250,7 +278,7 @@ public static unsafe class EditorApp
         {
             if (_context is null)
             {
-                _context = new EditorContext(project, new EditorCamera(), _log, _host);
+                _context = new EditorContext(project, new EditorCamera(), _log, _host) { Preferences = _prefs, Keymap = _keymap, Gizmo = _gizmo, Keys = _keys };
             }
             else
             {
@@ -275,9 +303,65 @@ public static unsafe class EditorApp
             _shortcuts = null; // the shortcuts act on the project that was open when they were built
             MakeViewport();
             string folder = Path.GetFullPath(project.GameFolder);
+            _prefs.AddRecent(folder);
+            ReopenLastScene(project, folder);
             _window.Title = WindowTitle(folder);
             CrashHandler.SetContext("Edited game", folder);
             Log.Info("Editor", $"Opened the project {folder}");
+        }
+
+        /// <summary>Opens the scene that was open when this project was last closed, when it is still there; a scene that is gone or does not open leaves the game's own start scene (the console says why).</summary>
+        private void ReopenLastScene(EditorProject project, string folder)
+        {
+            _recordedScene = (folder, null);
+            if (_prefs.LastScene(folder) is not { } scene)
+            {
+                return;
+            }
+
+            if (project.Session.Files is { } files && files.FileExists(project.World.Assets?.ResolvePath(scene) ?? scene))
+            {
+                if (project.TryOpenScene(scene, out string? error))
+                {
+                    _recordedScene = (folder, scene);
+                }
+                else
+                {
+                    Log.Warn("Editor", $"The last scene of this project did not open: {error}");
+                }
+            }
+            else
+            {
+                Log.Info("Editor", $"The last scene of this project ({scene}) is gone.");
+                _prefs.SetLastScene(folder, null);
+            }
+        }
+
+        /// <summary>Keeps the preferences up to date (the gizmo's state, the open scene) and writes them now and then.</summary>
+        private void KeepPreferences(EditorProject? project)
+        {
+            _prefs.CaptureFrom(_gizmo);
+            if (project is not null)
+            {
+                string folder = Path.GetFullPath(project.GameFolder);
+                if (_recordedScene != (folder, project.ScenePath))
+                {
+                    _recordedScene = (folder, project.ScenePath);
+                    _prefs.SetLastScene(folder, project.ScenePath);
+                }
+            }
+
+            _prefs.SaveIfDirty();
+        }
+
+        private void ApplyUiScale()
+        {
+            ImGuiStyle* style = ImGui.GetStyle();
+            float scale = (float)_prefs.UiScale;
+            if (style->FontScaleMain != scale)
+            {
+                style->FontScaleMain = scale;
+            }
         }
 
         private void MakeViewport()
@@ -287,7 +371,11 @@ public static unsafe class EditorApp
         }
 
         /// <summary>Lets go of the open project's GPU objects; the loop has ended.</summary>
-        public void Release() => _projects.Close();
+        public void Release()
+        {
+            _projects.Close();
+            _prefs.Flush();
+        }
 
         private void SwitchProject(string folder)
         {
@@ -339,6 +427,8 @@ public static unsafe class EditorApp
 
                 Frame? frame = _loop.BeginFrame();
                 _host.BeginFrame(Math.Max(delta, 1e-4f));
+                ApplyUiScale();
+                KeepPreferences(project);
                 Gizmo.BeginFrame();
                 DrawUi(project, frame, _window.PixelDensity, delta, now);
                 if (project is not null)
@@ -389,6 +479,7 @@ public static unsafe class EditorApp
             if (project is null)
             {
                 DrawStart();
+                _prefsWindow.Draw();
                 DrawModals(null);
                 return;
             }
@@ -412,6 +503,7 @@ public static unsafe class EditorApp
             ProfilerPanel.Draw(ctx);
             _graph.Draw(ctx);
 
+            _prefsWindow.Draw();
             DrawModals(project);
         }
 
@@ -462,10 +554,21 @@ public static unsafe class EditorApp
                         _dialogFlow.OpenProject();
                     }
 
+                    DrawRecentMenu();
                     Ui.Separator();
                     if (Gui.MenuItem("Quit"))
                     {
                         _quit = true;
+                    }
+
+                    Gui.EndMenu();
+                }
+
+                if (Gui.BeginMenu("Edit"))
+                {
+                    if (Gui.MenuItem("Preferences..."))
+                    {
+                        _prefsWindow.Show();
                     }
 
                     Gui.EndMenu();
@@ -487,9 +590,59 @@ public static unsafe class EditorApp
                         _dialogFlow.OpenProject();
                     }
                 });
+
+                if (_prefs.Recent.Count > 0)
+                {
+                    Ui.Spacing();
+                    Gui.SeparatorText("Recent projects");
+                    foreach (string folder in _prefs.Recent.ToArray())
+                    {
+                        if (Gui.Selectable(folder, false))
+                        {
+                            OpenRecent(folder);
+                        }
+                    }
+                }
             }
 
             Ui.End();
+        }
+
+        /// <summary>File &gt; Open recent: the projects that were opened lately, the latest first.</summary>
+        private void DrawRecentMenu()
+        {
+            if (Gui.BeginMenu("Open recent", _prefs.Recent.Count > 0 && !_dialogFlow.Busy))
+            {
+                foreach (string folder in _prefs.Recent.ToArray())
+                {
+                    if (Gui.MenuItem(folder))
+                    {
+                        OpenRecent(folder);
+                    }
+                }
+
+                Ui.Separator();
+                if (Gui.MenuItem("Clear recent"))
+                {
+                    foreach (string folder in _prefs.Recent.ToArray())
+                    {
+                        _prefs.RemoveRecent(folder);
+                    }
+                }
+
+                Gui.EndMenu();
+            }
+        }
+
+        /// <summary>A recent project was chosen. One that is gone from the disk (or is no game any more) is said so and dropped from the list; opening it would close the open project for nothing.</summary>
+        private void OpenRecent(string folder)
+        {
+            if (ProjectHost.CheckGameFolder(folder) is not null)
+            {
+                _prefs.RemoveRecent(folder);
+            }
+
+            _dialogFlow.ChooseProject(folder);
         }
 
         private List<(string Id, Func<bool> Enabled, Action Run)> BuildShortcuts()
@@ -598,6 +751,7 @@ public static unsafe class EditorApp
                     _dialogFlow.OpenProject();
                 }
 
+                DrawRecentMenu();
                 Ui.Separator();
                 if (Gui.MenuItem("Quit"))
                 {
@@ -658,6 +812,12 @@ public static unsafe class EditorApp
                 if (Gui.MenuItem("Delete", ctx.Shortcut("edit.delete"), false, editing && project.Selection is not null))
                 {
                     project.Delete(project.Selected.TopLevel());
+                }
+
+                Ui.Separator();
+                if (Gui.MenuItem("Preferences..."))
+                {
+                    _prefsWindow.Show();
                 }
 
                 Gui.EndMenu();
