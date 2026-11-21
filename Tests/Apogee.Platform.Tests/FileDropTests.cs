@@ -120,6 +120,20 @@ public sealed unsafe class FileDropTests
     }
 
     [Fact]
+    public void TheStaleTimerCountsFromTheFirstFileNotFromTheDragEntering()
+    {
+        var clock = new ManualClock();
+        var collector = new DropCollector(clock);
+        _ = Feed(collector, EventType.DropBegin);                                                   // SDL3 begins when the drag enters the window
+        clock.Advance(TimeSpan.FromSeconds(30));                                                    // the user hovers for a while
+        _ = File(collector, "/late.png", 1, 4, 4);
+
+        Assert.Null(collector.CloseStale());                                                        // the batch has waited no time yet
+        clock.Advance(DropCollector.StaleAfter + TimeSpan.FromSeconds(1));
+        Assert.Equal(["/late.png"], collector.CloseStale()!.Paths);
+    }
+
+    [Fact]
     public void ThePlatformRaisesFilesDroppedAndSurvivesAHandlerThatThrows()
     {
         var seen = new List<FileDrop>();

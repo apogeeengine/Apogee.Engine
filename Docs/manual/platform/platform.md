@@ -58,7 +58,7 @@ position (the hover position, or the file's, or none), a lost complete closed by
 
 `PlatformHost.FilesDropped` is raised, from `PumpEvents` on the main thread, when the user drops files or folders from the system onto a window, with a `FileDrop`: the `WindowId`, the `Paths` (operating system paths, copied: SDL frees its strings after
 each event), and the position of the drop in window points (`X`, `Y`; `HasPosition` is false when the system gave none, and the position is then not to be guessed). SDL reports a drop as several events (`DropBegin`, `DropPosition` while dragging over
-the window, one `DropFile` per file, `DropComplete`); the platform groups them into **one** `FileDrop` per drag-and-drop, delivered at `DropComplete`. A `DropComplete` that never comes is closed by the next `DropBegin`, or after five seconds; a drag that leaves the window or drops
+the window, one `DropFile` per file, `DropComplete`); the platform groups them into **one** `FileDrop` per drag-and-drop, delivered at `DropComplete`. A `DropComplete` that never comes is closed by the next `DropBegin`, or five seconds after the batch's first file (SDL3 begins a drop when the drag enters the window, so the time spent hovering does not count); a drag that leaves the window or drops
 text delivers nothing (`DropText` is ignored). `PlatformHost.DragHover` is the pointer's position while something is dragged over a window, or null. A handler that throws is logged, and the other handlers still get the drop.
 
 ## Windows for a graphics API

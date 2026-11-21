@@ -59,6 +59,11 @@ internal sealed unsafe class DropCollector(TimeProvider? clock = null)
 
                 if (Utf8.FromPointer(sdlEvent.Drop.Data) is { Length: > 0 } path)
                 {
+                    if (_paths.Count == 0)
+                    {
+                        _started = _clock.GetTimestamp(); // SDL3 begins a drop when the drag enters the window: how long the hover lasted is not how long a batch has been waiting
+                    }
+
                     _paths.Add(path);
                     if (sdlEvent.Drop.X != 0 || sdlEvent.Drop.Y != 0)
                     {
