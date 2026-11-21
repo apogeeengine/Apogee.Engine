@@ -98,7 +98,7 @@ public sealed class FileDialogsTests
 
         Assert.Single(messages);
         Assert.Contains("outside the game folder", messages[0]);
-        Assert.Contains(Game(rig), messages[0]);
+        Assert.Contains(Game(rig).Replace('\\', '/'), messages[0]); // the message names the folder with forward slashes on every OS
         Assert.Null(rig.Project.ScenePath);
         Assert.False(File.Exists(outside));
     }
@@ -445,6 +445,8 @@ public sealed class FileDialogsTests
     [Fact]
     public void ANameTheGameCannotUseIsNotCalledReadOnly()
     {
+        // A colon is a drive or a stream on Windows: the path is then outside the game folder for another reason, so the name has to be one that only the virtual file system refuses.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "a colon in a name means a drive or a stream on Windows");
         using var rig = new ProjectRig();
         (DialogFlow flow, ScriptedFileDialogs dialogs, List<string> messages, _, _) = Start(() => rig.Project);
 
