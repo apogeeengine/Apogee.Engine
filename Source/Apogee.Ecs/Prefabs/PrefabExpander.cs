@@ -277,7 +277,7 @@ internal sealed class PrefabExpander
             string? problem = source.Problem ?? StackProblem(key) ?? AddressProblem(address);
             if (problem is not null)
             {
-                return MissingInstance(element, address, id, scope, key, reference, problem, depth);
+                return MissingInstance(element, address, id, scope, key, reference, problem, depth, cut: source.Problem is null);
             }
 
             UseSchemas(key, source.Schemas);
@@ -330,11 +330,12 @@ internal sealed class PrefabExpander
         }
 
         // The root alone. When the expansion is of the element's own document, every child element of the instance element is kept as written.
-        private ExpandedEntity MissingInstance(XmlNode element, string address, int? id, Scope scope, string key, string reference, string problem, int depth)
+        private ExpandedEntity MissingInstance(XmlNode element, string address, int? id, Scope scope, string key, string reference, string problem, int depth, bool cut)
         {
             Warn(element, $"<Entity '{element.Attribute("name")}'> is an instance of the prefab {reference}, which cannot be used: {problem}. It is left empty, and what its element holds is kept");
             ExpandedEntity entity = Make(element, address, scope.Key is null ? null : id, scope.Key, depth, problem);
             entity.InstancePrefab = key;
+            entity.IsCut = cut;
             if (Outermost)
             {
                 Work(1 + element.Children.Count);

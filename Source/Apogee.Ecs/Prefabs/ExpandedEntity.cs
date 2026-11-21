@@ -79,6 +79,12 @@ internal sealed class ExpandedEntity
     /// <summary>True for an instance whose prefab could not be used (it is missing, unreadable, contains itself or nests too deep): the root alone, with everything its element held in <see cref="Unapplied"/>.</summary>
     public bool IsMissing { get; init; }
 
+    /// <summary>
+    /// True for a missing instance whose prefab file is fine but cannot be expanded here: it contains itself (directly or through others) or is nested more than <see cref="PrefabExpander.MaxDepth"/> deep.
+    /// What tells a prefab that was edited into a loop from one that is only absent.
+    /// </summary>
+    public bool IsCut { get; set; }
+
     /// <summary>Why <see cref="IsMissing"/>, for a message.</summary>
     public string? MissingReason { get; init; }
 
