@@ -162,12 +162,22 @@ internal static class TypeMapper
 
     private static TypeModel MapEnum(INamedTypeSymbol type, Described described, TypeModel model)
     {
+        EnumModel info = Describe(type, described);
+        model.EnumKey = info.Key;
+        model.RegistryName = info.Name;
+        return model;
+    }
+
+    /// <summary>
+    /// Records the enum for the registration of the assembly, once per type (a member of a class and a field of a component may name the same one), and returns it. The registry name is the simple name
+    /// of the type, as for the enums of class members: an enum nested in a generic class gives one name to every construction of it.
+    /// </summary>
+    internal static EnumModel Describe(INamedTypeSymbol type, Described described)
+    {
         string key = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        model.EnumKey = key;
-        model.RegistryName = type.Name;
-        if (!described.Enums.ContainsKey(key))
+        if (!described.Enums.TryGetValue(key, out EnumModel? info))
         {
-            var info = new EnumModel
+            info = new EnumModel
             {
                 Key = key,
                 Name = type.Name,
@@ -176,6 +186,7 @@ internal static class TypeMapper
             };
             foreach (IFieldSymbol member in type.GetMembers().OfType<IFieldSymbol>().Where(f => f.IsConst && f.ConstantValue is not null))
             {
+                // A ulong member above long.MaxValue keeps its bits as a negative long, as Value.Enum holds them.
                 info.Members.Add(new System.Collections.Generic.KeyValuePair<string, long>(
                     Analyzer.SnakeCase(member.Name),
                     member.ConstantValue is ulong unsignedValue ? unchecked((long)unsignedValue) : Convert.ToInt64(member.ConstantValue, System.Globalization.CultureInfo.InvariantCulture)));
@@ -184,6 +195,6 @@ internal static class TypeMapper
             described.Enums[key] = info;
         }
 
-        return model;
+        return info;
     }
 }

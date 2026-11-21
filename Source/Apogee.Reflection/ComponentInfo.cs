@@ -59,7 +59,14 @@ public static class FieldKinds
 }
 
 /// <summary>What an inspector needs to know about a property or a component field besides its type: a range for a slider, a step for a drag field, a heading, hidden, read-only. All optional.</summary>
-public sealed record InspectorMeta(double Min = double.NaN, double Max = double.NaN, double Step = double.NaN, string? Category = null, bool Hidden = false, bool ReadOnly = false)
+/// <param name="Min">The smallest value of a slider or drag field (NaN: no limit).</param>
+/// <param name="Max">The largest value of a slider (NaN: no limit).</param>
+/// <param name="Step">How much one step of a drag field changes the value (NaN: the inspector's choice).</param>
+/// <param name="Category">The heading the field is grouped under, or null.</param>
+/// <param name="Hidden">An inspector does not show it.</param>
+/// <param name="ReadOnly">An inspector shows it but does not let it be edited.</param>
+/// <param name="Color">The <c>Vector3</c> is a linear RGB colour: an inspector draws a colour picker (above 1 is allowed: a light can be brighter than white). Added last so that existing positional calls keep their meaning.</param>
+public sealed record InspectorMeta(double Min = double.NaN, double Max = double.NaN, double Step = double.NaN, string? Category = null, bool Hidden = false, bool ReadOnly = false, bool Color = false)
 {
     /// <summary>Whether both ends of the range are given (a slider can be drawn).</summary>
     public bool HasRange => !double.IsNaN(Min) && !double.IsNaN(Max);
@@ -77,7 +84,9 @@ public sealed record InspectorMeta(double Min = double.NaN, double Max = double.
 /// <param name="Doc">The <c>///</c> summary of the field, or null.</param>
 /// <param name="Meta">Hints for an inspector, or null.</param>
 /// <param name="AssetType">For <see cref="FieldKind.AssetRef"/>: the kind of asset the handle names (<c>model</c>), as the host registered it; null for every other kind.</param>
-public sealed record FieldDef(string Name, FieldKind Kind, int Offset, string? Doc = null, InspectorMeta? Meta = null, string? AssetType = null);
+/// <param name="Enum">For an integer field that holds an enum's values: the name of its <see cref="EnumInfo"/> (<see cref="TypeRegistry.FindEnum"/>), so that an inspector can list the members. The field is
+/// still an integer of its <see cref="Kind"/> in memory, in scripts and in scenes; null for every other field. Added last so that existing positional calls keep their meaning.</param>
+public sealed record FieldDef(string Name, FieldKind Kind, int Offset, string? Doc = null, InspectorMeta? Meta = null, string? AssetType = null, string? Enum = null);
 
 /// <summary>An ECS component: its memory layout, so that the ECS can register it and scripts can read and write it.</summary>
 public sealed class ComponentInfo

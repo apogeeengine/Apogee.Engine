@@ -53,4 +53,20 @@ internal static class Diagnostics
         Category,
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor BadEnum = new(
+        "APG007",
+        "The enum cannot be used here",
+        "{0}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor BadColor = new(
+        "APG008",
+        "The colour hint cannot be used here",
+        "{0}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

@@ -54,6 +54,21 @@ internal static class Emitter
         }
 
         string[] enumKeys = [.. enums.Keys.OrderBy(k => k, StringComparer.Ordinal)];
+
+        // The registry knows an enum by its simple name (FieldDef.Enum, TypeRef.Enum), and keeps the first one registered. Two different enums with one name would show each other's members, so they are an
+        // error. The constructions of one generic type, which share a name and members, are not different.
+        foreach (IGrouping<string, EnumModel> group in enumKeys.Select(k => enums[k]).GroupBy(e => e.Name, StringComparer.Ordinal))
+        {
+            EnumModel first = group.First();
+            foreach (EnumModel other in group.Skip(1))
+            {
+                if (other.IsFlags != first.IsFlags || !other.Members.SequenceEqual(first.Members))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(Diagnostics.DuplicateName, Location.None, $"The enums {first.Key} and {other.Key} have the same name, {first.Name}, and different members: the registry knows an enum by its name."));
+                    return;
+                }
+            }
+        }
         var enumNames = new Dictionary<string, string>(StringComparer.Ordinal);
         for (int i = 0; i < enumKeys.Length; i++)
         {
@@ -264,7 +279,7 @@ internal static class Emitter
         text.AppendLine("            {");
         foreach (FieldModel field in component.Fields)
         {
-            text.AppendLine($"                new({Literal(field.Name)}, {R}FieldKind.{field.Kind}, (int){unsafeType}.ByteOffset(ref start, ref {unsafeType}.As<{field.CsType}, byte>(ref instance.{field.Name})), {Literal(field.Doc)}{(field.Meta is null ? "" : $", {field.Meta}")}{(field.AssetType is null ? "" : $", AssetType: {Literal(field.AssetType)}")}),");
+            text.AppendLine($"                new({Literal(field.Name)}, {R}FieldKind.{field.Kind}, (int){unsafeType}.ByteOffset(ref start, ref {unsafeType}.As<{field.CsType}, byte>(ref instance.{field.Name})), {Literal(field.Doc)}{(field.Meta is null ? "" : $", {field.Meta}")}{(field.AssetType is null ? "" : $", AssetType: {Literal(field.AssetType)}")}{(field.Enum is null ? "" : $", Enum: {Literal(field.Enum)}")}),");
         }
 
         text.AppendLine($"            }}, {Literal(component.Doc)});");

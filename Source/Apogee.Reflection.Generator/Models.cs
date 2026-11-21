@@ -151,6 +151,9 @@ internal sealed class FieldModel
 
     /// <summary>For the <c>AssetRef</c> kind: the asset type from <c>[Property(Asset = "…")]</c>; null for every other kind.</summary>
     public string? AssetType { get; set; }
+
+    /// <summary>For an integer field that holds an enum's values: the registry name of the enum (<c>FieldDef.Enum</c>); null for every other field.</summary>
+    public string? Enum { get; set; }
 }
 
 internal enum DescribedKind

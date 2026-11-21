@@ -52,6 +52,19 @@ public sealed class PropertyAttribute : Attribute
     /// that scenes save as an asset path and UID) and not a plain number. Only a <c>uint</c> field of a <see cref="ComponentAttribute"/> struct may have it.
     /// </summary>
     public string? Asset { get; set; }
+
+    /// <summary>
+    /// True says this <c>Vector3</c> is a linear RGB colour (0 to 1 a channel, more for a bright light): an inspector draws a colour picker and not three numbers
+    /// (<see cref="InspectorMeta.Color"/>). Only for a <c>Vector3</c> component field or class property; on anything else it is error <c>APG008</c>.
+    /// </summary>
+    public bool Color { get; set; }
+
+    /// <summary>
+    /// The enum whose values this integer component field holds, for a field that is not declared with the enum type (a <c>byte</c> that is read as a <c>LightKind</c>). The enum's underlying type
+    /// must have the size of the field and its members must fit the field. An inspector then shows the member names (<see cref="FieldDef.Enum"/>); the field stays a plain number in memory, in
+    /// scripts and in scenes. A field declared with an enum type needs nothing: it is an integer of the enum's underlying type that names that enum. Only for integer component fields; elsewhere it is error <c>APG007</c>.
+    /// </summary>
+    public Type? Enum { get; set; }
 }
 
 /// <summary>A method that scripts can call. A <c>ValueTuple</c> return gives a script several results.</summary>
@@ -70,7 +83,7 @@ public sealed class SignalAttribute : Attribute
 
 /// <summary>
 /// An unmanaged struct that is an ECS component. Every public instance field is a field of the component (bool, integers,
-/// <c>float</c>, <c>double</c>, <c>Vector3</c>, <see cref="Entity"/>); a struct with no fields is a tag. A field may carry <see cref="PropertyAttribute"/> for what an inspector shows
+/// <c>float</c>, <c>double</c>, <c>Vector3</c>, <see cref="Entity"/>, or an enum, which is stored as its integer type); a struct with no fields is a tag. A field may carry <see cref="PropertyAttribute"/> for what an inspector shows
 /// (a range, a category, hidden, read-only).
 /// </summary>
 [AttributeUsage(AttributeTargets.Struct, Inherited = false)]

@@ -304,4 +304,24 @@ public class RegistryTests
         TypeRegistry.RegisterIfMissing(new EnumInfo("RegistryShared", false, [new("b", 1)]));
         Assert.Same(first, TypeRegistry.GetEnum("RegistryShared"));
     }
+
+    [Fact]
+    public void RegisterIfMissingIsIdempotent()
+    {
+        // Every assembly with an enum field registers the enum again at start-up; the registry keeps one, whatever the order and the number of calls.
+        var info = new EnumInfo("RegistryIdempotent", false, [new("a", 0), new("b", 1)]);
+        for (int i = 0; i < 3; i++)
+        {
+            TypeRegistry.RegisterIfMissing(info);
+            TypeRegistry.RegisterIfMissing(new EnumInfo("RegistryIdempotent", false, [new("a", 0), new("b", 1)]));
+        }
+
+        Assert.Same(info, TypeRegistry.GetEnum("RegistryIdempotent"));
+        Assert.Single(TypeRegistry.Enums, e => e.Name == "RegistryIdempotent");
+
+        // A field names its enum, and the name finds it.
+        var field = new FieldDef("kind", FieldKind.UInt8, 0, Enum: "RegistryIdempotent");
+        Assert.Same(info, TypeRegistry.GetEnum(field.Enum!));
+        Assert.Equal("b", info.GetName(1));
+    }
 }

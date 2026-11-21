@@ -174,9 +174,22 @@ internal static class Analyzer
             return;
         }
 
+        // Enum names the enum behind an integer field of a component. A class property of an enum type already is one, and any other property has nothing to name.
+        if (HintOf(member, "Enum", out _))
+        {
+            Error(described, Diagnostics.BadEnum, member, $"{described.TypeName}.{member.Name}: Enum is only for integer fields of a [Component] struct. A property of a class that has an enum type is described by that type.");
+            return;
+        }
+
         TypeModel? model = TypeMapper.Map(type, described, member, member.Name);
         if (model is null)
         {
+            return;
+        }
+
+        if (HintOf(member, "Color", out object? color) && color is true && model is not { Shape: Shape.Vector3, IsDouble3: false })
+        {
+            Error(described, Diagnostics.BadColor, member, $"{described.TypeName}.{member.Name} is a {type.ToDisplayString()}: Color is only for Vector3 (a linear RGB colour).");
             return;
         }
 
@@ -331,6 +344,13 @@ internal static class Analyzer
 
             (string Kind, int Alignment)? kind = FieldKindOf(field.Type);
 
+            // A field declared with an enum type is stored as the enum's integer type and names that enum for inspectors.
+            string? enumName = null;
+            if (kind is not null && field.Type is INamedTypeSymbol { TypeKind: TypeKind.Enum } declared)
+            {
+                enumName = TypeMapper.Describe(declared, described).Name;
+            }
+
             // [Property(Asset = "model")] on a uint turns the number into an asset handle. It is the only way to get the AssetRef kind, so a plain uint stays a number.
             string? assetType = null;
             if (AssetOf(field, out string? asset))
@@ -353,7 +373,26 @@ internal static class Analyzer
 
             if (kind is null)
             {
-                Error(described, Diagnostics.BadComponent, field, $"{symbol.Name}.{field.Name} is a {field.Type.ToDisplayString()}: component fields are bool, integers, float, double, Vector3, Double3, Quaternion or Entity.");
+                Error(described, Diagnostics.BadComponent, field, $"{symbol.Name}.{field.Name} is a {field.Type.ToDisplayString()}: component fields are bool, integers, enums, float, double, Vector3, Double3, Quaternion or Entity.");
+                continue;
+            }
+
+            // [Property(Enum = typeof(X))] on an integer field says that its numbers are the values of X. The field keeps its own kind: only the size and the range are checked.
+            if (HintOf(field, "Enum", out object? hint))
+            {
+                string? problem = EnumHintProblem(field.Type, kind.Value.Kind, hint, out INamedTypeSymbol? hinted);
+                if (problem is not null)
+                {
+                    Error(described, Diagnostics.BadEnum, field, $"{symbol.Name}.{field.Name}: {problem}");
+                    continue;
+                }
+
+                enumName = TypeMapper.Describe(hinted!, described).Name;
+            }
+
+            if (HintOf(field, "Color", out object? color) && color is true && kind.Value.Kind != "Vector3")
+            {
+                Error(described, Diagnostics.BadColor, field, $"{symbol.Name}.{field.Name} is a {field.Type.ToDisplayString()}: Color is only for Vector3 (a linear RGB colour).");
                 continue;
             }
 
@@ -367,12 +406,86 @@ internal static class Analyzer
                 Doc = Summary(field),
                 Meta = MetaOf(field),
                 AssetType = assetType,
+                Enum = enumName,
             });
         }
     }
 
+    /// <summary>Why <c>[Property(Enum = …)]</c> cannot go on this field, or null when it can; <paramref name="hinted"/> is the enum then.</summary>
+    private static string? EnumHintProblem(ITypeSymbol fieldType, string fieldKind, object? hint, out INamedTypeSymbol? hinted)
+    {
+        hinted = null;
+        if (fieldType.TypeKind == TypeKind.Enum)
+        {
+            return $"the field has the enum type {fieldType.ToDisplayString()}, which names its enum already: Enum is for the integer fields that are not declared with one.";
+        }
+
+        if (fieldKind == "AssetRef")
+        {
+            return "a field that names an asset (Asset) is a handle and not an enum value.";
+        }
+
+        if (IntegerSize(fieldKind) == 0)
+        {
+            return $"Enum is only for integer fields, and this is a {fieldType.ToDisplayString()}.";
+        }
+
+        if (hint is not INamedTypeSymbol { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlying } named)
+        {
+            return "Enum must be typeof(an enum).";
+        }
+
+        // The size must match, so that the enum is what the bytes of the field can hold. Signedness is not compared (an enum of byte on an sbyte field is fine while its members fit).
+        string? underlyingKind = FieldKindOf(underlying)?.Kind;
+        if (underlyingKind is null || IntegerSize(underlyingKind) != IntegerSize(fieldKind))
+        {
+            return $"{named.ToDisplayString()} is stored as {underlying.ToDisplayString()} ({IntegerSize(underlyingKind ?? "")} bytes) and the field is a {fieldType.ToDisplayString()} ({IntegerSize(fieldKind)} bytes): declare the enum with the field's type (enum {named.Name} : {fieldType.ToDisplayString()}).";
+        }
+
+        (decimal least, decimal most) = RangeOf(fieldKind);
+        foreach (IFieldSymbol member in named.GetMembers().OfType<IFieldSymbol>().Where(f => f.IsConst && f.ConstantValue is not null))
+        {
+            decimal value = Convert.ToDecimal(member.ConstantValue, CultureInfo.InvariantCulture);
+            if (value < least || value > most)
+            {
+                return $"{named.Name}.{member.Name} = {value.ToString(CultureInfo.InvariantCulture)} does not fit a {fieldType.ToDisplayString()}.";
+            }
+        }
+
+        hinted = named;
+        return null;
+    }
+
+    /// <summary>The size in bytes of the integer kinds (not <c>Bool</c>, which is no enum's type); 0 for every other kind.</summary>
+    private static int IntegerSize(string kind) => kind switch
+    {
+        "Int8" or "UInt8" => 1,
+        "Int16" or "UInt16" => 2,
+        "Int32" or "UInt32" => 4,
+        "Int64" or "UInt64" => 8,
+        _ => 0,
+    };
+
+    private static (decimal Least, decimal Most) RangeOf(string integerKind) => integerKind switch
+    {
+        "Int8" => (sbyte.MinValue, sbyte.MaxValue),
+        "UInt8" => (byte.MinValue, byte.MaxValue),
+        "Int16" => (short.MinValue, short.MaxValue),
+        "UInt16" => (ushort.MinValue, ushort.MaxValue),
+        "Int32" => (int.MinValue, int.MaxValue),
+        "UInt32" => (uint.MinValue, uint.MaxValue),
+        "Int64" => (long.MinValue, long.MaxValue),
+        _ => (ulong.MinValue, ulong.MaxValue),
+    };
+
     private static (string Kind, int Alignment)? FieldKindOf(ITypeSymbol type)
     {
+        // An enum is stored as its underlying integer type (C# allows no other kind).
+        if (type is INamedTypeSymbol { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlying })
+        {
+            return FieldKindOf(underlying);
+        }
+
         switch (type.SpecialType)
         {
             case SpecialType.System_Boolean: return ("Bool", 1);
@@ -444,7 +557,7 @@ internal static class Analyzer
             parts.Add($"Category: \"{category.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"");
         }
 
-        foreach (string name in new[] { "Hidden", "ReadOnly" })
+        foreach (string name in new[] { "Hidden", "ReadOnly", "Color" })
         {
             if (Named(attribute, name) is true)
             {
@@ -458,14 +571,22 @@ internal static class Analyzer
     /// <summary>Whether <c>[Property]</c> on the member sets <c>Asset</c> (even to null or empty, which is an error to report), and its value.</summary>
     private static bool AssetOf(ISymbol member, out string? asset)
     {
-        asset = null;
+        bool set = HintOf(member, "Asset", out object? value);
+        asset = value as string;
+        return set;
+    }
+
+    /// <summary>Whether <c>[Property]</c> on the member sets the named argument (even to null), and its value: a bool, a string, or the <c>ITypeSymbol</c> of a <c>typeof</c>.</summary>
+    private static bool HintOf(ISymbol member, string name, out object? value)
+    {
+        value = null;
         AttributeData? attribute = member.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "PropertyAttribute" && a.AttributeClass.ContainingNamespace.ToDisplayString() == "Apogee.Reflection");
-        if (attribute is null || !attribute.NamedArguments.Any(a => a.Key == "Asset"))
+        if (attribute is null || !attribute.NamedArguments.Any(a => a.Key == name))
         {
             return false;
         }
 
-        asset = Named(attribute, "Asset") as string;
+        value = Named(attribute, name);
         return true;
     }
 

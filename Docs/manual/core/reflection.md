@@ -37,14 +37,14 @@ public partial class Actor : EngineObject
   names in scripts), `Entity`, `AssetRef` (a string in scripts, see [asset fields](#asset-fields)), `Value` (any), `ScriptFunction`, `EngineObject` classes, and `T[]`, `List<T>` and `IReadOnlyList<T>` of
   those. `T?` is nullable. Anything else is error `APG002` that names the member, as are non-partial classes (`APG001`), two members
   with one script name (`APG003`), a component that is not an unmanaged struct or has an unsupported field (`APG004`) and a member
-  that cannot be described, such as a `ref` parameter or a signal of the wrong type (`APG005`), and `Asset` where it does not belong (`APG006`). A type with an error writes nothing,
+  that cannot be described, such as a `ref` parameter or a signal of the wrong type (`APG005`), `Asset` where it does not belong (`APG006`), `Enum` where it does not belong or does not fit (`APG007`) and `Color` on anything but a `Vector3` (`APG008`). A type with an error writes nothing,
   so the first error is the only one.
 
 ## Components and libraries
 
 ```csharp
 [Component]
-public struct Position { public Vector3 Value; }               // fields: bool, integers, float, double, Vector3, Double3, Quaternion, Entity
+public struct Position { public Vector3 Value; }               // fields: bool, integers, enums, float, double, Vector3, Double3, Quaternion, Entity
 
 [Component] public struct Frozen { }                           // no fields: a tag
 
@@ -72,6 +72,32 @@ public struct Engine
     [Property(ReadOnly = true)] public double Hours;                                        // shown, not editable
 }
 ```
+
+Two hints say what a number or a vector *is*:
+
+```csharp
+public enum Gear : byte { Reverse, Neutral, Drive }
+
+[Component]
+public struct Gearbox
+{
+    public Gear Current;                                                    // an enum-typed field: stored as a byte, FieldDef.Enum = "Gear"
+    [Property(Enum = typeof(Gear))] public byte Previous;                   // a byte that holds Gear values: the same, without changing the field's type
+    [Property(Color = true)] public Vector3 Glow;                           // a linear RGB colour: InspectorMeta.Color, drawn as a colour picker
+}
+```
+
+- **Enums.** A component field declared with an enum type is stored as the enum's underlying integer type (`FieldDef.Kind` is `UInt8` for an enum of `byte`) and `FieldDef.Enum` is the name of the
+  registered `EnumInfo`, so an inspector can show a list of the members (a `[Flags]` enum, `EnumInfo.IsFlags`, a set of check boxes). Everything else sees the integer, as before: scripts read and write a number
+  (the generated `.d.luau` has no component fields, but it declares the registered enum with its member names, as it does for the enums of classes), and scenes and snapshots hold the number, so a renamed member never breaks a file. A value with no member
+  stays what it is. `Enum = typeof(X)` does the same for an integer field that is not declared with the enum (`Light.Kind` is a `byte`, and `LightKind` is an enum of `byte`). `X` must be an enum whose underlying type
+  has the field's size and whose members all fit the field (an enum of `byte` with a member 200 does not fit an `sbyte`); the signedness is not compared. It is for integer fields only: on a `bool`, a float, a vector, an
+  `Entity`, an `Asset` handle, a field that has an enum type already, anything but `typeof(an enum)`, or a class property, it is error `APG007`. The registry knows an enum by its simple name, so two different enums with one name in an
+  assembly are error `APG003` (the closed constructions of one generic type share a name and members, and are fine). The enum may come from another assembly; it needs to be accessible to the assembly that uses it.
+- **Colour.** `Color = true` on a `Vector3` component field or class property sets `InspectorMeta.Color`: the three numbers are a linear red, green and blue, and an inspector draws a colour picker that keeps values above 1 (a light is
+  brighter than white). On anything else (including `Double3`, which is a position) it is error `APG008`. The field stays a `Vector3` in memory, in scripts and in scenes.
+
+`InspectorMeta.Color` and `FieldDef.Enum` were added after the other members, as the last constructor parameters, so existing code that builds them positionally means what it did.
 
 `Min`, `Max` and `Step` are hints for widgets: they do not stop a script or a file from setting another value. `InspectorMeta.HasRange` says both ends are given (a slider can be drawn),
 `RangeText` is `0 to 100` for the generated Luau definitions, which add `(Range: 0 to 1.)` to the doc of a property. A field without `[Property]` has no hints. A component a script defines gives
