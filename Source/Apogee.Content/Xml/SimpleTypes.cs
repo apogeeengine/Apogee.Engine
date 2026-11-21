@@ -54,7 +54,9 @@ internal sealed class SimpleTypeDef
 /// <summary>A simple type with all it inherits: converts the text of an attribute or an element to a <see cref="DefValue"/>, or says why it cannot.</summary>
 internal sealed class ResolvedSimple
 {
-    private static readonly TimeSpan s_patternTimeout = TimeSpan.FromMilliseconds(200);
+    // A pattern comes from a schema that a mod may bring, so a match is bounded against catastrophic backtracking; the bound is also a wall-clock one, so a process that stalls (a first-use JIT,
+    // a garbage collection, a loaded CI runner) must not read as a match that took too long: 2 s is a hundred times what an honest pattern needs and still ends a hostile one.
+    private static readonly TimeSpan s_patternTimeout = TimeSpan.FromSeconds(2);
 
     public BaseKind Base { get; init; }
 
