@@ -36,7 +36,9 @@ them as text. Because a scene is XML like the rest of the game's data, a mod can
 - **`<Entity id="…" name="…">`** is an entity. `name` is optional. Its children are its components, as elements, and its child entities, as more `<Entity>` elements; a child entity is under its parent,
   so there is no `parent` attribute. `Entity` is therefore not a name a component can have (`RegisterComponent` and `DefineComponent` refuse it, and `Override`, which [prefab](prefabs.md) instances use).
 - **`id`** is the entity's number in the file, not its id in a world. Entity-typed fields refer to it, and a [patch](#patching-a-scene) matches on it. It is a whole number from 1 up: an entity
-  with another `id` (or none) loads, but nothing can refer to it, and when two entities have the same one, references go to the first and the engine warns.
+  with another `id` (or none) loads, but nothing can refer to it, and when two entities have the same one, references go to the first and the engine warns. This is stricter than version 1 scenes were read
+  before prefabs: two entities with one `id` used to send references to the later one, and `0`, a negative number, `+5` or `05` were accepted as ids and are not now (a field that holds such a number warns).
+  Scenes the engine writes are not affected.
 - **A component** is an element named after it, and each of its fields an attribute named after the field. A tag (or a component with no fields) is an empty element. A field the element does not
   name is zero when the scene is loaded.
 - **What is written:** every field of every component, so that a scene reads without the code at hand and diffs cleanly; components in the order the entity has them, entities in hierarchy order

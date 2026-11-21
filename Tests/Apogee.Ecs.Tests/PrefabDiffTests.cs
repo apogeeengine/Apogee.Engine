@@ -410,14 +410,14 @@ public sealed class PrefabDiffTests : PrefabTestBase
         Assert.Equal(["Bulb"], NamesBelow(World, lamp));
         Assert.True(warnings.Count >= 5);
 
-        string text = SavesTheSameAfterALoad(World);
+        string text = World.SaveScene();
 
         XmlNode element = Element(text, "Lamp");
-        Assert.Equal(["Override 2", "Override 3"], Kinds(element)[..2]);                               // what applies is written as what it is: a change and a removal
-        Assert.Equal([("Max", "30")], element.Children[0].Child("Health")!.Attributes.Select(a => (a.Name, a.Value)));
-        Assert.Equal("true", element.Children[1].Attribute("remove"));
+        Assert.Equal(["Override 2", "Override 3"], Kinds(element)[6..]);                               // what applies is written as what it is, after what was kept: a change and a removal
+        Assert.Equal([("Max", "30")], element.Children[6].Child("Health")!.Attributes.Select(a => (a.Name, a.Value)));
+        Assert.Equal("true", element.Children[7].Attribute("remove"));
 
-        // The rest is what the document held, after, in its own order and spelling: the part of an override that did not apply stays under an override of the same entity.
+        // What was kept is what the document held, first and in its own order and spelling: the part of an override that did not apply stays under an override of the same entity.
         string[] expected =
         [
             "<Override entity=\"9\"><Health Current=\"3\"/></Override>",
@@ -427,7 +427,16 @@ public sealed class PrefabDiffTests : PrefabTestBase
             "<Override><Health Max=\"1\"/></Override>",
             "<Override entity=\"2\" colour=\"red\"><Health Max=\"1\"/></Override>",
         ];
-        Assert.Equal(expected.Select(x => XmlNode.Parse(x).ToXml()), element.Children.Skip(2).Select(c => c.ToXml()));
+        Assert.Equal(expected.Select(x => XmlNode.Parse(x).ToXml()), element.Children.Take(6).Select(c => c.ToXml()));
+
+        // An element that applies now, to an entity a later one removes, is kept again where the removal puts it: the second text has the same elements in another order, and the third is the second.
+        using World second = OtherWorld();
+        second.LoadScene(text);
+        string settled = second.SaveScene();
+        Assert.Equal(expected.Select(x => XmlNode.Parse(x).ToXml()).Order(), Element(settled, "Lamp").Children.Take(6).Select(c => c.ToXml()).Order());
+        using World third = OtherWorld();
+        third.LoadScene(settled);
+        Assert.Equal(settled, third.SaveScene());
 
         // The prefab gets the entity and the component back: they apply again, and nothing was lost to make it so.
         Write("prefabs/lamp.aprefab", Read("prefabs/lamp.aprefab").Replace("<Entity id=\"3\" name=\"Base\">", "<Entity id=\"9\" name=\"Ninth\"><Health Current=\"1\"/></Entity><Entity id=\"3\" name=\"Base\"><Frozen/>", StringComparison.Ordinal));
@@ -459,7 +468,10 @@ public sealed class PrefabDiffTests : PrefabTestBase
         Assert.Empty(without.Children(without.Lookup("Lamp")));
 
         string during = without.SaveScene();
-        Assert.Equal(Element(before, "Lamp").ToXml(), Element(during, "Lamp").ToXml());   // the same element, with everything it held (the numbers of the other entities may differ)
+        Assert.Equal(Kinds(Element(before, "Lamp")), Kinds(Element(during, "Lamp")));    // the same element, with everything it held
+        using World same = OtherWorld();
+        same.LoadScene(during);
+        Assert.Equal(during, same.SaveScene());
 
         // The lamp is back: the instance is what it was.
         Write("prefabs/lamp.aprefab", lampText);
@@ -604,10 +616,10 @@ public sealed class PrefabDiffTests : PrefabTestBase
         // Saved again, what the scene said about the entity that is gone is still there; what is new in the prefab is not an override.
         string text = SavesTheSameAfterALoad(newer);
         XmlNode element = Element(text, "Lamp");
-        Assert.Equal(["Transform", "Override 2", "Override 3"], Kinds(element));
-        Assert.Equal(XmlNode.Parse("<Override entity=\"3\" name=\"Foot\"><Frozen append=\"true\"/></Override>").ToXml(), element.Children[2].ToXml());
-        Assert.Equal(["Health"], element.Children[1].Children.Select(c => c.Name));
-        Assert.Equal([("Current", "3")], element.Children[1].Child("Health")!.Attributes.Select(a => (a.Name, a.Value)));
+        Assert.Equal(["Override 3", "Transform", "Override 2"], Kinds(element));                  // what is kept first, then what the world says
+        Assert.Equal(XmlNode.Parse("<Override entity=\"3\" name=\"Foot\"><Frozen append=\"true\"/></Override>").ToXml(), element.Children[0].ToXml());
+        Assert.Equal(["Health"], element.Children[2].Children.Select(c => c.Name));
+        Assert.Equal([("Current", "3")], element.Children[2].Child("Health")!.Attributes.Select(a => (a.Name, a.Value)));
 
         // The old lamp comes back (the mod is enabled again): the kept override applies.
         Write("prefabs/lamp.aprefab", lamp);

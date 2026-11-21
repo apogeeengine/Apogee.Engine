@@ -26,7 +26,7 @@ internal readonly record struct CapturedComponent(ComponentInfo Info, byte[]? Da
 /// One entity as it was: its id (the generation too), name, parent and its components, and, for the root of a prefab instance, what its element held that could not be applied (kept as written, never
 /// changed: the nodes may be shared with the world and other snapshots).
 /// </summary>
-internal sealed record EntityState(ulong Id, string? Name, ulong Parent, CapturedComponent[] Components, IReadOnlyList<XmlNode>? Unapplied = null);
+internal sealed record EntityState(ulong Id, string? Name, ulong Parent, CapturedComponent[] Components, KeptData? Kept = null);
 
 /// <summary>
 /// The user entities of a world as they were (<see cref="Snapshot"/>), or a part of them (<see cref="SnapshotTree"/>): ids, names, parents and component bytes. Restoring it brings the entities back
@@ -289,9 +289,9 @@ public sealed unsafe partial class World
             }
         }
 
-        if (_unapplied.TryGetValue(source.Id, out List<XmlNode>? kept))
+        if (_kept.TryGetValue(source.Id, out KeptData? kept))
         {
-            _unapplied[copy.Id] = [.. kept]; // the nodes are never changed: shared
+            _kept[copy.Id] = kept; // never changed: shared
         }
 
         return copy;
@@ -343,7 +343,7 @@ public sealed unsafe partial class World
             captured[i] = new CapturedComponent(info, data, data is null ? null : CaptureAssets(info, data));
         }
 
-        return new EntityState(entity.Id, GetName(entity), GetParent(entity).Id, captured, _unapplied.TryGetValue(entity.Id, out List<XmlNode>? kept) ? [.. kept] : null);
+        return new EntityState(entity.Id, GetName(entity), GetParent(entity).Id, captured, _kept.GetValueOrDefault(entity.Id));
     }
 
     // The references the asset fields of one component's bytes name (null when it has none of those fields), for restoring into another world.
@@ -392,7 +392,7 @@ public sealed unsafe partial class World
                 Destroy(extra);
             }
 
-            _unapplied.Remove(extra.Id);
+            _kept.Remove(extra.Id);
         }
 
         RestoreEntities(snapshot);
@@ -488,13 +488,13 @@ public sealed unsafe partial class World
                 }
             }
 
-            if (state.Unapplied is { Count: > 0 } kept)
+            if (state.Kept is { } kept)
             {
-                _unapplied[state.Id] = [.. kept];
+                _kept[state.Id] = kept;
             }
             else
             {
-                _unapplied.Remove(state.Id);
+                _kept.Remove(state.Id);
             }
         }
 

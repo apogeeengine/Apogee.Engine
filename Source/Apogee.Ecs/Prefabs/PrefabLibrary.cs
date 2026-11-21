@@ -23,6 +23,9 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
     {
         public AssetRef Named { get; } = named;
 
+        /// <summary>The file's UID as far as is known: the reference's, or the database's when the handle was made (the file was found then).</summary>
+        public AssetUid Uid { get; set; } = named.Uid;
+
         public string? Path { get; set; }
 
         public XmlNode? Document { get; set; }
@@ -68,10 +71,33 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
                     return known;
                 }
 
+                // A file that was moved by hand (and the database looked again) is found at a path no handle has, by a UID that a handle has: it is that handle's file, which is how an instance that was made
+                // before the move is still an instance of the same prefab after it.
+                AssetUid uid = reference.Uid.IsNone && assets is not null ? assets.UidOf(path) : reference.Uid;
+                if (!uid.IsNone)
+                {
+                    for (int i = 0; i < _entries.Count; i++)
+                    {
+                        Entry entry = _entries[i];
+                        if (entry.Path is { } old && entry.Uid == uid && old != path && Find(AssetRef.FromPath(old)) is null)
+                        {
+                            _byPath.Remove(old);
+                            entry.Path = path;
+                            _byPath[path] = (uint)(i + 1);
+                            return (uint)(i + 1);
+                        }
+                    }
+                }
+
                 // The file is there now: the handle made for the text that did not name one becomes this file's.
                 if (_byText.Remove(text, out uint waiting))
                 {
                     _entries[(int)waiting - 1].Path = path;
+                    if (_entries[(int)waiting - 1].Uid.IsNone && assets is not null)
+                    {
+                        _entries[(int)waiting - 1].Uid = assets.UidOf(path);
+                    }
+
                     _byPath[path] = waiting;
                     return waiting;
                 }
@@ -94,7 +120,33 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
             }
 
             string? path = Resolved(entry, handle);
-            return path is null ? entry.Named : assets?.RefOf(path) ?? AssetRef.FromPath(path);
+            if (path is null)
+            {
+                return entry.Named;
+            }
+
+            AssetRef known = assets?.RefOf(path) ?? AssetRef.FromPath(path);
+
+            // The UID is the file's identity: when the database cannot say it (the file was moved by hand and the database looked again, so it has nothing at the path this handle remembers), what the
+            // reference this handle was made from said, or the file's own root, still does. Without it an instance would be saved as a path that leads nowhere.
+            AssetUid uid = known.Uid;
+            if (uid.IsNone)
+            {
+                uid = entry.Uid;
+            }
+
+            if (uid.IsNone && entry.Document is { } document && AssetUid.TryParse(document.Attribute("uid") ?? "", out AssetUid inFile))
+            {
+                uid = inFile;
+            }
+
+            string where = known.Path;
+            if (assets?.PathOf(uid) is { } moved && !uid.IsNone)
+            {
+                where = moved; // the file is where its UID says it is now
+            }
+
+            return new AssetRef(where, uid);
         }
     }
 
@@ -218,7 +270,7 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
 
     private uint Add(AssetRef reference, string path)
     {
-        _entries.Add(new Entry(reference) { Path = path });
+        _entries.Add(new Entry(reference) { Path = path, Uid = reference.Uid.IsNone && assets is not null ? assets.UidOf(path) : reference.Uid });
         uint handle = (uint)_entries.Count;
         _byPath[path] = handle;
         return handle;

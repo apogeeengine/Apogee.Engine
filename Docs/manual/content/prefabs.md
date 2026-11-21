@@ -196,8 +196,9 @@ A prefab file is read by anyone who installs a mod, so expansion is bounded and 
   results (the limit a document already has), or the whole expansion fails.
 - **Cycles.** A prefab that contains itself, directly or through others (`a → b → c → a`), is not followed: the instance that would repeat it is missing, and the warning shows the chain. The rest expands.
 - **Entity budget: 262,144** (`World.MaxLoadEntities`, settable). The expansion counts each entity as it is about to make it and stops with a `FormatException` when a load (a scene with all its instances,
-  its own entities counted too) would go over, so a few small files that nest ten instances sixteen levels deep cost at most the budget, not memory without end. Nothing is made when a load fails. The budget
-  is one number for a whole load.
+  its own entities are not counted: they are the size of the file and cannot multiply, and a scene with more than the limit entities loaded before there were prefabs) would go over, so a few small files that nest
+  ten instances sixteen levels deep cost at most the budget, not memory without end. Nothing is made when a load fails. The budget is one number for a whole load, and a save gives each instance a budget of its
+  own (the one an `Instantiate` of it had), so a world that was made of many instances can always be saved.
 - **Work budget: 64 steps for each entity of the budget (16,777,216).** A file's content is repeated for every instance of it, so entities alone do not bound a load: ten thousand overrides in a prefab
   that a thousand prefabs hold are ten million merges for a handful of entities. Every component or override handled, attribute copied, component merged (by its size) and name tried while making a name
   unique counts, and the expansion stops with a `FormatException` over the limit, with the same effect as the entity budget. An entity may have any number of components within it (the lookup is by name,
@@ -223,14 +224,23 @@ recorded while you edit, so a change made by the editor, by a script or by code 
   member removed from where it was, and a plain copy under its new parent. A member of the wrong prefab for its place, or a second entity with a member's id (a copy of its components), is an added entity.
 - **The text is stable.** The element is written in a fixed order: the root's changes (components in the prefab's order, those added last), an `<Override>` for each changed entity in the prefab's order (name,
   then components, then entities added below it), the entities added to the root, and the elements kept aside last. A scene that is loaded and saved again is byte for byte the same text.
-- **Kept aside is kept as written.** What an instance element held that could not be applied (see [Overrides](#overrides)) is not in the live entities, so it is stored with the instance root (it travels with
-  [snapshots](../core/ecs.md), which is why Play and Stop keep it, and with a clone of the root) and written back after everything else, exactly as it was read. The numbers inside such an element are
-  the ones it was written with: an entity it adds, and the entity fields it holds, are not renumbered when the scene is, and the scene's own numbers win if both claim one.
-- **A prefab that moved on.** The comparison is with the prefab *as it is now*. New fields, components and entities of the prefab are not overrides, since the instance had nothing to say about them; a
-  deleted entity that the scene had overrides for keeps them aside, and they apply again if the entity returns. What the live entities still have from the old prefab (before anything refreshes them) is, on
-  saving, a difference from the new one and is written as an override.
+- **Kept aside is kept.** What an instance element held that could not be applied (see [Overrides](#overrides)) is not in the live entities, so it is stored with the instance root (it travels with
+  [snapshots](../core/ecs.md), which is why Play and Stop keep it, and with a clone of the root) and written back **first**, before what the live entities say: an instance element is applied in the order it
+  is written, so an old element that has become applicable (a patch of a component the entity did not have, and has now) cannot win over what was done since. It is written as it was read, except that XML
+  comments and layout are not kept, and that the numbers in it follow the scene: an entity it adds gets a number of this save, and an entity field in it that named an entity of the scene (or the instance
+  root, and what follows, of an instance whose prefab is missing) is written with that entity's address now, empty if the entity is gone. Fields of components the world does not know (the prefab that defines
+  them is missing) cannot be told from numbers and keep the number they had.
+- **References to what was not made.** A field of the scene that names an entity inside an instance whose prefab is missing (`2/2`), or one that a kept element would add, loads as no entity; the world
+  remembers what it named and writes it back as the address that entity will have, so it names it again when the prefab is back. The same is kept for an asset field that did not load: it is 0, it is not an
+  override of the prefab's model, and a plain entity writes the reference it had.
+- **A reference that is not one.** A `prefab` attribute that is not an asset reference (a damaged UID, text) makes an empty instance with the text kept as it was written, and everything the element holds kept.
+- **A prefab that moved on.** The comparison is with the prefab *as it is now*. New fields, components and entities of the prefab are not overrides when a scene is *loaded* with the new prefab, since the
+  instance had nothing to say about them; a deleted entity that the scene had overrides for keeps them aside, and they apply again if the entity returns. But the live entities of a world that was running when
+  the file changed (it is saved from this world, which then reads the file again) still have the old prefab's entities and values, and the next save of an instance of it writes every difference as an override: the
+  new entity as a removal, the old value of a changed field pinned. Instances do not follow their prefab yet: until something refreshes them (loading the scene again does), that is what saving writes.
 - **A prefab that cannot be read** while the world holds its instance (the file was deleted, or replaced by one that contains itself) is compared as the single root it expands to: the live entities that
-  came from it are written as additions and nothing is dropped. A scene loaded without the prefab keeps its element intact and saves it as it was.
+  came from it are written as additions and nothing is dropped. A scene loaded without the prefab keeps its element intact and saves it as it was. An instance whose prefab is missing is only its root: what is
+  edited in it (a component added to the root, an entity added below it) is saved, and goes aside again when the scene is loaded again before the prefab is back, so a tool should treat it as read-only.
 
 **What is never an override:** the order of siblings (they are in creation order, the prefab's entities first), `WorldTransform` and the other components scenes leave out (`IgnoreInScenes`), components the world
 cannot describe, a name that was cleared, `PrefabInstance` and `PrefabMember` (the engine makes them), and what the prefab's own nested instances could not apply (that belongs to the prefab's file).

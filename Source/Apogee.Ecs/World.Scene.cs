@@ -104,7 +104,7 @@ public sealed unsafe partial class World
     // ---- Saving: what is written, and where each entity goes -------------------------------------------------------------------------------
 
     // An instance found while planning: the prefab as the document names it, what that expands to with no overrides, and which live entity is which entity of the expansion.
-    private sealed class InstanceSave
+    internal sealed class InstanceSave
     {
         public InstanceSave(string address, string reference, Expansion expansion, Dictionary<ulong, ExpandedEntity> pairs)
         {
@@ -132,7 +132,7 @@ public sealed unsafe partial class World
     }
 
     // What walking the entities to write found out, before anything is written (a field may refer to an entity that comes later, so every address is known first).
-    private sealed class SavePlan(Func<Entity, int> number, Entity fileRoot, PrefabExpander expander)
+    internal sealed class SavePlan(Func<Entity, int> number, Entity fileRoot, PrefabExpander expander)
     {
         /// <summary>The next number the document gives an entity it holds.</summary>
         public Func<Entity, int> Number { get; } = number;
@@ -156,6 +156,12 @@ public sealed unsafe partial class World
 
         /// <summary>The handle of each prefab key met while pairing (asking the library looks for the file).</summary>
         public Dictionary<string, uint> Handles { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>For each instance root, the elements its instance element could not apply, copied and renumbered for this document (see <see cref="PrepareKept"/>).</summary>
+        public Dictionary<ulong, List<XmlNode>> KeptNodes { get; } = [];
+
+        /// <summary>The new number of each entity id the kept elements add (by the id they had), for the fields that name them.</summary>
+        public Dictionary<string, string> KeptIds { get; } = new(StringComparer.Ordinal);
     }
 
     private uint HandleOfKey(SavePlan plan, string key)
@@ -173,11 +179,13 @@ public sealed unsafe partial class World
     private SavePlan PlanSave(IReadOnlyList<Entity> roots, Func<Entity, int> number, Entity fileRoot)
     {
         var plan = new SavePlan(number, fileRoot, NewExpander(new ExpansionBudget(MaxLoadEntities)));
+        PruneKept();
         foreach (Entity root in roots)
         {
             PlanEntity(plan, root);
         }
 
+        PrepareKept(plan);
         return plan;
     }
 
@@ -187,36 +195,51 @@ public sealed unsafe partial class World
         string address = plan.Number(entity).ToString(CultureInfo.InvariantCulture);
         plan.AddressOf[entity.Id] = address;
         plan.Numbered.Add(entity);
-        List<Entity> kids = Children(entity);
-        plan.Kids[entity.Id] = kids;
         if (entity != plan.FileRoot && PlanInstance(plan, entity, address) is { } instance)
         {
             plan.Instances[entity.Id] = instance;
-            PlanMembers(plan, kids, instance);
+            PlanMembers(plan, instance, instance.Expansion.Root, isRoot: true);
             return;
         }
 
+        List<Entity> kids = Children(entity);
+        plan.Kids[entity.Id] = kids;
         foreach (Entity child in kids)
         {
             PlanEntity(plan, child);
         }
     }
 
-    // The children of an entity of an instance: one that is where its prefab puts it is named by its place in the instance, any other is an entity added to the instance and the document holds it.
-    private void PlanMembers(SavePlan plan, List<Entity> kids, InstanceSave instance)
+    // The entities of an instance, in the order the instance element is written (see WriteInstance): each member of the prefab that is still there has its place in the instance for an address, and the
+    // entities added below it, which the document holds, are numbered when its <Override> is reached; the ones added to the root come last. That order is the one a loaded scene will have its
+    // entities made in, so the first save of a world whose entity ids were reused (they are not in creation order) writes the numbers a second save does.
+    private void PlanMembers(SavePlan plan, InstanceSave instance, ExpandedEntity expected, bool isRoot)
     {
-        foreach (Entity child in kids)
+        Entity live = instance.LiveOf[expected];
+        foreach (ExpandedEntity member in expected.Children.Concat(expected.Added))
         {
-            if (instance.Pairs.TryGetValue(child.Id, out ExpandedEntity? expected))
+            if (!instance.LiveOf.TryGetValue(member, out Entity liveMember))
             {
-                plan.AddressOf[child.Id] = expected.Address;
-                List<Entity> below = Children(child);
-                plan.Kids[child.Id] = below;
-                PlanMembers(plan, below, instance);
+                continue;
             }
-            else
+
+            plan.AddressOf[liveMember.Id] = member.Address;
+            if (PrefabDiff.RelativeAddress(instance.Address, member) is not null)
             {
-                PlanEntity(plan, child);
+                foreach (Entity added in AddedBelow(plan, instance, liveMember))
+                {
+                    PlanEntity(plan, added);
+                }
+            }
+
+            PlanMembers(plan, instance, member, isRoot: false);
+        }
+
+        if (isRoot)
+        {
+            foreach (Entity added in AddedBelow(plan, instance, live))
+            {
+                PlanEntity(plan, added);
             }
         }
     }
@@ -229,7 +252,16 @@ public sealed unsafe partial class World
             return null;
         }
 
-        if (ExistingLibrary?.RefOf(link.Prefab) is not { IsEmpty: false } named)
+        string reference;
+        if (link.Prefab == 0 && _kept.TryGetValue(entity.Id, out KeptData? kept) && kept.RawPrefab is { } raw)
+        {
+            reference = raw; // an instance whose prefab attribute was not a reference at all: written back as it was
+        }
+        else if (ExistingLibrary?.RefOf(link.Prefab) is { IsEmpty: false } named)
+        {
+            reference = named.ToString();
+        }
+        else
         {
             if (_assetTypesWarned.Add($"instance:{link.Prefab}"))
             {
@@ -240,11 +272,14 @@ public sealed unsafe partial class World
         }
 
         var element = new XmlNode("Entity");
-        element.SetAttribute("prefab", named.ToString());
+        element.SetAttribute("prefab", reference);
+
+        // Each instance has the budget an Instantiate or a load had for it: a world made of many large instances can be saved, and a prefab that grew since cannot make one expansion unbounded.
+        plan.Expander.UseBudget(new ExpansionBudget(MaxLoadEntities));
         Expansion expansion = plan.Expander.Expand(element, address);
         var pairs = new Dictionary<ulong, ExpandedEntity>();
         Pair(plan, entity, expansion.Root, pairs);
-        return new InstanceSave(address, named.ToString(), expansion, pairs);
+        return new InstanceSave(address, reference, expansion, pairs);
     }
 
     // Pairs the live entity with the expected one, then their children: a live child is the expected child with the same prefab member tag (id and file), when it is the same kind of entity (an instance
@@ -253,6 +288,8 @@ public sealed unsafe partial class World
     private void Pair(SavePlan plan, Entity live, ExpandedEntity expected, Dictionary<ulong, ExpandedEntity> pairs)
     {
         pairs[live.Id] = expected;
+        List<Entity> kids = Children(live);
+        plan.Kids[live.Id] = kids;
         if (expected.Children.Count + expected.Added.Count == 0)
         {
             return;
@@ -269,7 +306,7 @@ public sealed unsafe partial class World
             AddByTag(plan, byTag, member);
         }
 
-        foreach (Entity child in Children(live))
+        foreach (Entity child in kids)
         {
             if (TryGet(child, out PrefabMember tag)
                 && tag.Id <= int.MaxValue
@@ -329,7 +366,7 @@ public sealed unsafe partial class World
                 scripts[info.Name] = info;
             }
 
-            node.Children.Add(WriteComponent(entity, id, info, plan.AddressOf));
+            node.Children.Add(WriteComponent(entity, id, info, plan));
         }
 
         foreach (Entity child in plan.Kids[entity.Id])
@@ -352,26 +389,26 @@ public sealed unsafe partial class World
         return node;
     }
 
-    // An instance as one element, in the order that makes saving twice write the same text: the patches of its root, an <Override> for each entity of the prefab that changed (in the prefab's
-    // order, parents first, a removed entity at its place), the entities added directly to the root, and what could not be applied when it was loaded, as it was written.
+    // An instance as one element, in the order that makes saving twice write the same text and loading it give the world that was saved: what could not be applied when it was loaded, the patches of the
+    // root, an <Override> for each entity of the prefab that changed (in the prefab's order, parents first, a removed entity at its place), and the entities added directly to the root.
     private XmlNode WriteInstance(SavePlan plan, Entity root, InstanceSave instance, SortedDictionary<string, ComponentInfo> scripts)
     {
         XmlNode node = StartElement(plan, root);
         node.SetAttribute("prefab", instance.Reference);
-        var diff = new PrefabDiff(this, plan.AddressOf, instance.Expansion, instance.Address, scripts);
+
+        // What could not be applied comes first: an instance element is applied in the order it is written, so what the live entities say (everything after) is applied last and wins over an old element that
+        // has become applicable since (a patch of a component the entity lacked when the scene was loaded, and has now).
+        if (plan.KeptNodes.TryGetValue(root.Id, out List<XmlNode>? kept))
+        {
+            node.Children.AddRange(kept);
+        }
+
+        var diff = new PrefabDiff(this, plan, instance.Expansion, instance.Address, scripts);
         node.Children.AddRange(diff.ComponentPatches(root, instance.Expansion.Root));
         WriteOverrides(plan, instance, diff, instance.Expansion.Root, node, scripts);
         foreach (Entity added in AddedBelow(plan, instance, root))
         {
             node.Children.Add(WriteNumbered(plan, added, scripts));
-        }
-
-        if (_unapplied.TryGetValue(root.Id, out List<XmlNode>? kept))
-        {
-            foreach (XmlNode element in kept)
-            {
-                node.Children.Add(element.Clone());
-            }
         }
 
         return node;
@@ -435,7 +472,7 @@ public sealed unsafe partial class World
     }
 
     // One component of an entity as an element: a tag is empty, otherwise one attribute per field (a field with nothing to say is left out).
-    internal XmlNode WriteComponent(Entity entity, Entity id, ComponentInfo info, Dictionary<ulong, string> addressOf)
+    internal XmlNode WriteComponent(Entity entity, Entity id, ComponentInfo info, SavePlan plan)
     {
         var component = new XmlNode(info.Name);
         if (!info.IsTag)
@@ -443,7 +480,7 @@ public sealed unsafe partial class World
             byte* data = GetPointer(entity, id);
             foreach (FieldDef field in info.Fields)
             {
-                if (FieldTextOf(info, field, data + field.Offset, addressOf) is { } text)
+                if (FieldTextOf(entity, info, field, data + field.Offset, plan) is { } text)
                 {
                     component.SetAttribute(field.Name, text);
                 }
@@ -488,20 +525,159 @@ public sealed unsafe partial class World
     // Whether a document never holds this component: derived or only meaningful in this run (IgnoreInScenes), and the two that link an entity to its prefab, which the engine makes.
     internal bool IsSceneSkipped(string component) => _sceneIgnored.Contains(component) || component is nameof(PrefabInstance) or nameof(PrefabMember);
 
-    // The text of a field, or null when the attribute is left out: an Entity outside what is written, a handle of 0, an asset the type cannot name.
-    private string? FieldTextOf(ComponentInfo info, FieldDef field, byte* at, Dictionary<ulong, string> addressOf)
+    // The text of a field, or null when the attribute is left out: an Entity outside what is written, a handle of 0, an asset the type cannot name. A field that is 0 because what it named could not be made
+    // (an entity of an instance whose prefab is missing, an asset that did not load) is written as what it named, so that it names it again when it can.
+    private string? FieldTextOf(Entity entity, ComponentInfo info, FieldDef field, byte* at, SavePlan plan)
     {
         switch (field.Kind)
         {
             case FieldKind.Entity:
+            {
                 // A reference to another entity of the document is its address; to anything else, nothing.
-                return addressOf.TryGetValue(*(ulong*)at, out string? target) ? target : null;
+                ulong target = *(ulong*)at;
+                return plan.AddressOf.TryGetValue(target, out string? address) ? address : target == 0 ? DanglingText(entity, info.Name, field.Name, plan) : null;
+            }
+
             case FieldKind.AssetRef:
+            {
                 // The handle means nothing in another run: what it names goes instead, as "path|uid".
-                return AssetRefOf(info, field, *(uint*)at)?.ToString();
+                uint handle = *(uint*)at;
+                return AssetRefOf(info, field, handle)?.ToString() ?? (handle == 0 ? UnresolvedAsset(entity, info.Name, field.Name) : null);
+            }
+
             default:
                 return FieldText.Format(field, at);
         }
+    }
+
+    // The reference text of an asset field that is 0 because the asset did not load; null when the field is just empty.
+    internal string? UnresolvedAsset(Entity entity, string component, string field) =>
+        _kept.TryGetValue(entity.Id, out KeptData? kept) && kept.Assets is { } assets && assets.TryGetValue((component, field), out string? text) ? text : null;
+
+    // The address an entity field that names no entity was written as, through the numbers of the document being written; null when what it named is not in it (anymore).
+    internal string? DanglingText(Entity entity, string component, string field, SavePlan plan)
+    {
+        if (!_kept.TryGetValue(entity.Id, out KeptData? kept) || kept.Refs is not { } refs || !refs.TryGetValue((component, field), out DanglingRef? named))
+        {
+            return null;
+        }
+
+        if (named.Root != 0)
+        {
+            return plan.AddressOf.TryGetValue(named.Root, out string? root) ? root + "/" + named.Text : null;
+        }
+
+        return plan.KeptIds.GetValueOrDefault(named.Text);
+    }
+
+    // ---- Saving: what an instance element could not apply
+
+    // Forgets what is kept for entities that are gone (a destroyed branch, a scene closed): the ids carry their generation, so nothing else would ever look at it.
+    private void PruneKept()
+    {
+        if (_kept.Count == 0)
+        {
+            return;
+        }
+
+        foreach (ulong id in new List<ulong>(_kept.Keys))
+        {
+            if (!IsAlive(new Entity(id)))
+            {
+                _kept.Remove(id);
+            }
+        }
+    }
+
+    // The elements each instance of the plan could not apply, copied for this document: the entities they add are numbered after everything the document has (they are not made, so they only need
+    // numbers nothing else has), and the entity fields in them are written as what they named, through the numbers of this save. Without this a kept element would keep the numbering of the save that
+    // kept it, while the scene numbers its entities again at every save, and could name another entity when it applies.
+    private void PrepareKept(SavePlan plan)
+    {
+        foreach (ulong rootId in plan.Instances.Keys)
+        {
+            if (_kept.TryGetValue(rootId, out KeptData? kept) && kept.Unapplied.Count > 0)
+            {
+                plan.KeptNodes[rootId] = [.. kept.Unapplied.Select(static node => node.Clone())];
+            }
+        }
+
+        foreach (List<XmlNode> nodes in plan.KeptNodes.Values)
+        {
+            foreach (XmlNode node in nodes)
+            {
+                RenumberKept(plan, node);
+            }
+        }
+
+        foreach (List<XmlNode> nodes in plan.KeptNodes.Values)
+        {
+            foreach (XmlNode node in nodes)
+            {
+                RewriteKept(plan, node);
+            }
+        }
+    }
+
+    private static void RenumberKept(SavePlan plan, XmlNode node)
+    {
+        if (node.Name is not ("Entity" or "Override"))
+        {
+            return;
+        }
+
+        if (node.Name == "Entity" && node.Attribute("id") is { } old)
+        {
+            string fresh = plan.Number(default).ToString(CultureInfo.InvariantCulture);
+            plan.KeptIds.TryAdd(old, fresh);
+            node.SetAttribute("id", fresh);
+        }
+
+        foreach (XmlNode child in node.Children)
+        {
+            RenumberKept(plan, child);
+        }
+    }
+
+    private void RewriteKept(SavePlan plan, XmlNode node)
+    {
+        if (node.Name is "Entity" or "Override")
+        {
+            foreach (XmlNode child in node.Children)
+            {
+                RewriteKept(plan, child);
+            }
+
+            return;
+        }
+
+        for (int i = 0; i < node.Attributes.Count; i++)
+        {
+            XmlProperty attribute = node.Attributes[i];
+            if (attribute.Value.Length > 0 && IsEntityFieldOf(node.Name, attribute.Name))
+            {
+                node.Attributes[i] = attribute with { Value = KeptText(plan, attribute.Value) };
+            }
+        }
+    }
+
+    // An entity field of a kept element for this document: the entity it named when it was loaded (by its new address, and what followed it), or the new number of an entity the kept elements add;
+    // empty when it names nothing that is in the document.
+    private static string KeptText(SavePlan plan, string text)
+    {
+        if (text[0] != KeptData.Token)
+        {
+            return plan.KeptIds.GetValueOrDefault(text, "");
+        }
+
+        int slash = text.IndexOf('/', StringComparison.Ordinal);
+        ReadOnlySpan<char> id = slash < 0 ? text.AsSpan(1) : text.AsSpan(1, slash - 1);
+        if (!ulong.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out ulong entity) || !plan.AddressOf.TryGetValue(entity, out string? address))
+        {
+            return "";
+        }
+
+        return slash < 0 ? address : address + text[slash..];
     }
 
     // What the handle of an AssetRef field names; null for 0, for a type nobody registered (said once) and for what the type cannot name.
@@ -646,7 +822,7 @@ public sealed unsafe partial class World
     private List<Entity> Load(XmlNode document, Entity parent)
     {
         var budget = new ExpansionBudget(MaxLoadEntities);
-        return Create(ScenePlan.Build(document, NewExpander(budget), budget), parent);
+        return Create(ScenePlan.Build(document, NewExpander(budget)), parent);
     }
 
     // Makes the entities of a plan in its order and returns them. Every entity is made first so that entity fields can refer to the ones that come later; the parents next (they decide whether a name is
@@ -680,7 +856,9 @@ public sealed unsafe partial class World
             byAddress[address] = created[at];
         }
 
+        PruneKept();
         var handles = new Dictionary<string, uint>(StringComparer.Ordinal);
+        var notes = new LoadNotes();
         for (int i = 0; i < created.Count; i++)
         {
             Entity entity = created[i];
@@ -690,12 +868,13 @@ public sealed unsafe partial class World
                 TrySetName(entity, entityName);
             }
 
+            notes.Clear();
             foreach (XmlNode component in item.Components)
             {
-                ReadComponent(entity, component, byAddress);
+                ReadComponent(entity, component, byAddress, notes);
             }
 
-            LinkToPrefabs(entity, item, handles);
+            LinkToPrefabs(entity, item, handles, byAddress, notes);
         }
 
         return created;
@@ -703,7 +882,7 @@ public sealed unsafe partial class World
 
     // What ties an entity to the prefabs it came from: its id in the prefab file that holds it, the instance it is the root of, and what its instance element could not apply (kept as written, as copies:
     // the nodes belong to documents the library shares).
-    private void LinkToPrefabs(Entity entity, PlannedEntity item, Dictionary<string, uint> handles)
+    private void LinkToPrefabs(Entity entity, PlannedEntity item, Dictionary<string, uint> handles, Dictionary<string, Entity> byAddress, LoadNotes notes)
     {
         uint HandleOf(string key)
         {
@@ -732,10 +911,82 @@ public sealed unsafe partial class World
             }
         }
 
-        if (item.Unapplied is { Count: > 0 } kept)
+        // What the document said that the entity cannot show (see KeptData). The elements are copies, with the entity fields in them tied to the entities they named, so that they follow them.
+        List<XmlNode>? unapplied = null;
+        if (item.Unapplied is { Count: > 0 } held)
         {
-            _unapplied[entity.Id] = [.. kept.Select(static node => node.Clone())];
+            unapplied = [.. held.Select(static node => node.Clone())];
+            foreach (XmlNode node in unapplied)
+            {
+                TieToEntities(node, byAddress);
+            }
         }
+
+        if (unapplied is not null || item.RawPrefab is not null || notes.Assets is not null || notes.Refs is not null)
+        {
+            _kept[entity.Id] = new KeptData { Unapplied = unapplied ?? [], RawPrefab = item.RawPrefab, Assets = notes.Assets, Refs = notes.Refs };
+        }
+    }
+
+    /// <summary>What reading the components of one entity found that its fields cannot hold (see <see cref="KeptData"/>).</summary>
+    private sealed class LoadNotes
+    {
+        public Dictionary<(string, string), string>? Assets { get; private set; }
+
+        public Dictionary<(string, string), DanglingRef>? Refs { get; private set; }
+
+        public void Clear()
+        {
+            Assets = null;
+            Refs = null;
+        }
+
+        public void Asset(string component, string field, string text) => (Assets ??= [])[(component, field)] = text;
+
+        public void Ref(string component, string field, DanglingRef named) => (Refs ??= [])[(component, field)] = named;
+    }
+
+    // Rewrites the entity fields of a kept element as the entities they name (KeptData.Token), so that they are written as those entities' addresses whatever the scene is numbered later.
+    private void TieToEntities(XmlNode node, Dictionary<string, Entity> byAddress)
+    {
+        if (node.Name is "Entity" or "Override")
+        {
+            foreach (XmlNode child in node.Children)
+            {
+                TieToEntities(child, byAddress);
+            }
+
+            return;
+        }
+
+        for (int i = 0; i < node.Attributes.Count; i++)
+        {
+            XmlProperty attribute = node.Attributes[i];
+            if (EntityAddress.IsValid(attribute.Value) && IsEntityFieldOf(node.Name, attribute.Name) && NameOf(attribute.Value, byAddress) is { } named)
+            {
+                node.Attributes[i] = attribute with { Value = KeptData.Token + named.Root.ToString(CultureInfo.InvariantCulture) + (named.Text.Length > 0 ? "/" + named.Text : "") };
+            }
+        }
+    }
+
+    // The entity an address names in the document being loaded, or the instance root it is below (an instance that is missing, or a part of one that is not there): the entity (text empty) or the entity and
+    // what follows its address. Null when nothing it starts with is an entity.
+    private static DanglingRef? NameOf(string address, Dictionary<string, Entity> byAddress)
+    {
+        if (byAddress.TryGetValue(address, out Entity found))
+        {
+            return new DanglingRef(found.Id, "");
+        }
+
+        for (int slash = address.LastIndexOf('/'); slash > 0; slash = address.LastIndexOf('/', slash - 1))
+        {
+            if (byAddress.TryGetValue(address[..slash], out Entity parent))
+            {
+                return new DanglingRef(parent.Id, address[(slash + 1)..]);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -866,7 +1117,7 @@ public sealed unsafe partial class World
         }
     }
 
-    private void ReadComponent(Entity entity, XmlNode node, Dictionary<string, Entity> byAddress)
+    private void ReadComponent(Entity entity, XmlNode node, Dictionary<string, Entity> byAddress, LoadNotes notes)
     {
         string name = node.Name;
         if (name is nameof(PrefabInstance) or nameof(PrefabMember))
@@ -908,7 +1159,7 @@ public sealed unsafe partial class World
 
                 try
                 {
-                    ReadField(info, def, attribute.Value, bytes + def.Offset, byAddress);
+                    ReadField(info, def, attribute.Value, bytes + def.Offset, byAddress, notes);
                 }
                 catch (Exception e) when (e is FormatException or InvalidOperationException)
                 {
@@ -920,18 +1171,56 @@ public sealed unsafe partial class World
         }
     }
 
-    private void ReadField(ComponentInfo info, FieldDef field, string text, byte* at, Dictionary<string, Entity> byAddress)
+    private void ReadField(ComponentInfo info, FieldDef field, string text, byte* at, Dictionary<string, Entity> byAddress, LoadNotes notes)
     {
         switch (field.Kind)
         {
             case FieldKind.Entity:
+            {
                 // The address of an entity of the document (its number, or its place in an instance); text that is no address, and one that names nothing, is no reference (the same as the attribute left out).
-                *(ulong*)at = EntityAddress.IsValid(text) && byAddress.TryGetValue(text, out Entity target) ? target.Id : 0;
+                ulong target = 0;
+                if (EntityAddress.IsValid(text))
+                {
+                    if (byAddress.TryGetValue(text, out Entity found))
+                    {
+                        target = found.Id;
+                    }
+                    else
+                    {
+                        // Nothing there: an instance that is missing, or a part of one that is not, or an entity a kept element would add. What it named is kept, so that it names it when it can.
+                        notes.Ref(info.Name, field.Name, NameOf(text, byAddress) ?? new DanglingRef(0, text));
+                    }
+                }
+                else if (text.Length > 0 && long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                {
+                    // Older engines read any whole number as an id: 0, a sign or a leading zero is not an address now.
+                    Log.Warn("Scene", $"{info.Name}.{field.Name} holds '{text}', a number that is not an entity id (ids are whole numbers from 1 up, without a sign or leading zeros): it names no entity");
+                }
+
+                *(ulong*)at = target;
                 break;
+            }
+
             case FieldKind.AssetRef:
-                // A path alone is a reference too, which is how a scene written before UIDs holds a model.
-                *(uint*)at = HandleOf(info, field, text);
+            {
+                // A path alone is a reference too, which is how a scene written before UIDs holds a model. One that cannot be loaded leaves the field 0, and is kept as it was written.
+                uint handle = 0;
+                try
+                {
+                    handle = HandleOf(info, field, text);
+                }
+                finally
+                {
+                    *(uint*)at = handle;
+                    if (handle == 0 && text.Length > 0)
+                    {
+                        notes.Asset(info.Name, field.Name, text);
+                    }
+                }
+
                 break;
+            }
+
             default:
                 FieldText.Parse(field, text, at);
                 break;

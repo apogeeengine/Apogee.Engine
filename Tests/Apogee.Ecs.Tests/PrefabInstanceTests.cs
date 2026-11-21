@@ -268,18 +268,36 @@ public sealed class PrefabInstanceTests : PrefabTestBase
     }
 
     [Fact]
-    public void AReferenceThatIsNotAnAssetReferenceMakesAnEmptyEntity()
+    public void AReferenceThatIsNotAnAssetReferenceKeepsItsElement()
     {
-        List<Entity> loaded = WithWarnings(() => World.LoadScene("""
+        string scene = $"""
             <Scene version="2">
-              <Entity id="1" name="Broken" prefab="a|b|c"><Transform Position="1 0 0"/><Entity id="2" name="Under"/></Entity>
+              <Entity id="1" name="Broken" prefab="a|b|c"><Transform Position="1 0 0"/><Override entity="2"><Health Current="3"/></Override><Entity id="2" name="Under"/></Entity>
               <Entity id="3" name="Hollow" prefab=""/>
+              <Entity id="4" name="Damaged" prefab="{LampPath}|uid://abc-def"><Override entity="3" remove="true"/></Entity>
             </Scene>
-            """), out List<string> warnings);
+            """;
+        List<Entity> loaded = WithWarnings(() => World.LoadScene(scene), out List<string> warnings);
 
-        Assert.Equal(["Broken", "Hollow"], loaded.Select(e => World.GetName(e)));
-        Assert.All(loaded, e => Assert.False(World.IsPrefabInstance(e)));
-        Assert.Equal(2, warnings.Count(w => w.Contains("not an asset reference", StringComparison.Ordinal)));
+        // The instance is there, empty, as an instance of a prefab that is missing: it is the reference that cannot be read.
+        Assert.Equal(["Broken", "Hollow", "Damaged"], loaded.Select(e => World.GetName(e)));
+        Assert.All(loaded, e => Assert.True(World.IsPrefabInstance(e)));
+        Assert.All(loaded, e => Assert.Empty(World.Children(e)));
+        Assert.Equal(3, warnings.Count(w => w.Contains("not an asset reference", StringComparison.Ordinal)));
+
+        // Saved, it is the same element: the text of the reference as it was written, and everything the element held.
+        string text = World.SaveScene();
+        XmlNode saved = XmlNode.Parse(text);
+        XmlNode broken = saved.Children.Single(c => c.Attribute("name") == "Broken");
+        Assert.Equal("a|b|c", broken.Attribute("prefab"));
+        Assert.Equal(["Transform", "Override", "Entity"], broken.Children.Select(c => c.Name));
+        Assert.Equal("", saved.Children.Single(c => c.Attribute("name") == "Hollow").Attribute("prefab"));
+        XmlNode damaged = saved.Children.Single(c => c.Attribute("name") == "Damaged");
+        Assert.Equal($"{LampPath}|uid://abc-def", damaged.Attribute("prefab"));
+        Assert.Equal("true", damaged.Child("Override")!.Attribute("remove"));
+        using World again = OtherWorld();
+        again.LoadScene(text);
+        Assert.Equal(text, again.SaveScene());
     }
 
     [Fact]
@@ -316,10 +334,16 @@ public sealed class PrefabInstanceTests : PrefabTestBase
 
         World.MaxLoadEntities = 8;
         string threeLamps = $"<Scene version=\"2\"><Entity id=\"1\" prefab=\"{Lamp}\"/><Entity id=\"2\" prefab=\"{Lamp}\"/><Entity id=\"3\" prefab=\"{Lamp}\"/></Scene>";   // 9 entities
-        Assert.Throws<FormatException>(() => World.LoadScene(threeLamps));
+        FormatException tooBig = Assert.Throws<FormatException>(() => World.LoadScene(threeLamps));
+        Assert.Contains("entities", tooBig.Message, StringComparison.Ordinal);
         Assert.Empty(World.UserEntities());                                                                                                  // nothing was made
-        Assert.Throws<FormatException>(() => World.LoadScene("<Scene version=\"1\">" + string.Concat(Enumerable.Repeat("<Entity id=\"1\"/>", 9)) + "</Scene>"));   // a scene's own entities count too
-        Assert.Empty(World.UserEntities());
+
+        // The limit is on what instances make, which a few small files can multiply; a scene's own entities are the size of the file and are not counted, as before there were instances.
+        Assert.Equal(9, World.LoadScene("<Scene version=\"1\">" + string.Concat(Enumerable.Repeat("<Entity id=\"1\"/>", 9)) + "</Scene>").Count);
+        foreach (Entity entity in World.UserEntities())
+        {
+            World.Destroy(entity);
+        }
 
         // Each call takes a new budget: two lamps in two calls is fine where two in one load (6 + the scene's own) would not be.
         World.MaxLoadEntities = 3;
@@ -329,6 +353,23 @@ public sealed class PrefabInstanceTests : PrefabTestBase
         World.MaxLoadEntities = 2;
         Assert.Throws<FormatException>(() => World.Instantiate(LampPath));
         Assert.Equal(6, World.UserEntities().Count);
+    }
+
+    [Fact]
+    public void AWorldMadeOfManyInstancesCanBeSavedWhateverTheLimitIs()
+    {
+        // Each Instantiate had a budget of its own; the save gives each instance one too, instead of one for all of them.
+        World.MaxLoadEntities = 3;
+        for (int i = 0; i < 5; i++)
+        {
+            _ = World.Instantiate(LampPath);
+        }
+
+        string text = World.SaveScene();
+
+        Assert.Equal(5, XmlNode.Parse(text).Children.Count(c => c.Attribute("prefab") is not null));
+        using World again = OtherWorld();
+        Assert.Equal(15, again.LoadScene(text).Count);    // (a load has one budget for all it expands, so it takes the default limit; a save is one budget for each instance)
     }
 
     [Fact]

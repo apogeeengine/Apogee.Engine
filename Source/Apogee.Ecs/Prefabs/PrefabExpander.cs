@@ -46,7 +46,7 @@ internal sealed class PrefabExpander
 
     private readonly PrefabResolver _resolver;
     private readonly Func<string, string, bool> _isEntityField;
-    private readonly ExpansionBudget _budget;
+    private ExpansionBudget _budget;
     private readonly Dictionary<string, Source> _sources = new(StringComparer.Ordinal);
     private readonly HashSet<XmlNode> _warned = new(ReferenceEqualityComparer.Instance);
     private int _synthetic;
@@ -190,6 +190,16 @@ internal sealed class PrefabExpander
 
         int rootId = PrefabDocument.TryParseId(root.Attribute("id"), out int id) ? id : 0; // Check made sure of it
         return new Source(resolved.Key, document, root, rootId, document.Child("Components"), null);
+    }
+
+    // The reserved words are on when they say true (an xs:boolean may also be written 1).
+    private static bool IsSet(string? value) => value is "true" or "1";
+
+    /// <summary>Takes a new budget for the expansions that follow (a save gives each instance its own, as each load and <c>Instantiate</c> had); what was warned about stays warned about.</summary>
+    public void UseBudget(ExpansionBudget budget)
+    {
+        ArgumentNullException.ThrowIfNull(budget);
+        _budget = budget;
     }
 
     private static string Where(XmlNode node) => $"{node.Origin ?? "prefab"}:{node.Line}";
@@ -584,7 +594,7 @@ internal sealed class PrefabExpander
                 return;
             }
 
-            if (over.Attribute("remove") == "true")
+            if (IsSet(over.Attribute("remove")))
             {
                 RemoveTarget(root, target, over);
                 return;
@@ -716,12 +726,12 @@ internal sealed class PrefabExpander
         private string? ApplyComponent(ExpandedEntity target, XmlNode patch, Scope scope)
         {
             XmlNode prepared = Prepare(patch, scope);
-            if (patch.Attribute("remove") == "true")
+            if (IsSet(patch.Attribute("remove")))
             {
                 return target.RemoveComponent(patch.Name) ? null : $"the entity has no {patch.Name} to remove";
             }
 
-            if (patch.Attribute("append") == "true")
+            if (IsSet(patch.Attribute("append")))
             {
                 target.SetComponent(prepared); // whole: if the prefab has the component too, the instance's is the one that counts
                 return null;

@@ -37,6 +37,9 @@ internal sealed class PlannedEntity
     /// <summary>The id of the root entity in <see cref="InstancePrefab"/>'s own file (0 when it could not be used).</summary>
     public int InstanceRootId { get; init; }
 
+    /// <summary>For an instance whose <c>prefab</c> attribute is not an asset reference: the text as it was written, which is written back as it was.</summary>
+    public string? RawPrefab { get; init; }
+
     /// <summary>Why the instance could not be made from its prefab (it is the root alone), or null.</summary>
     public string? MissingReason { get; init; }
 
@@ -46,7 +49,8 @@ internal sealed class PlannedEntity
 
 /// <summary>
 /// What loading a scene (or instantiating a prefab) will make, in the order the entities are created: the plain entity elements of the document and the instances, expanded (see
-/// <see cref="PrefabExpander"/>) into the entities their prefabs, overrides and added entities make. It is pure XML work, with the load's one <see cref="ExpansionBudget"/>, so a document that is too big
+/// <see cref="PrefabExpander"/>) into the entities their prefabs, overrides and added entities make. It is pure XML work, and the expander's <see cref="ExpansionBudget"/> bounds what the instances make
+/// (the document's own entities are the size of the document and are not counted: they cannot multiply), so a document that is too big
 /// fails here and leaves the world untouched.
 /// </summary>
 /// <remarks>
@@ -60,17 +64,15 @@ internal sealed class ScenePlan
     private const int MaxClaimWarnings = 50;   // a hostile document could repeat one address for every entity
 
     private readonly PrefabExpander _expander;
-    private readonly ExpansionBudget _budget;
     private readonly XmlNode? _schemas;
     private readonly HashSet<XmlNode> _schemasSeen = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, XmlNode> _reserved = new(StringComparer.Ordinal);   // the plain entity element that owns each of the document's own ids
     private int _fresh = int.MaxValue;
     private int _claimWarnings;
 
-    private ScenePlan(PrefabExpander expander, ExpansionBudget budget, XmlNode? schemas)
+    private ScenePlan(PrefabExpander expander, XmlNode? schemas)
     {
         _expander = expander;
-        _budget = budget;
         _schemas = schemas;
     }
 
@@ -85,9 +87,9 @@ internal sealed class ScenePlan
 
     /// <summary>Plans the loading of the <c>Entity</c> elements directly under <paramref name="document"/>.</summary>
     /// <exception cref="FormatException">The document would make more entities than the budget allows, or ask for more work, or nest entities too deep.</exception>
-    public static ScenePlan Build(XmlNode document, PrefabExpander expander, ExpansionBudget budget)
+    public static ScenePlan Build(XmlNode document, PrefabExpander expander)
     {
-        var plan = new ScenePlan(expander, budget, document.Child("Components"));
+        var plan = new ScenePlan(expander, document.Child("Components"));
         if (plan._schemas is not null)
         {
             plan.UseSchemas(plan._schemas);
@@ -151,7 +153,6 @@ internal sealed class ScenePlan
 
     private void AddPlain(XmlNode element, int parent, int depth)
     {
-        _budget.Take();
         var components = new List<XmlNode>();
         foreach (XmlNode child in element.Children)
         {
@@ -201,10 +202,22 @@ internal sealed class ScenePlan
         string reference = element.Attribute("prefab")!;
         if (!AssetRef.TryParse(reference, out AssetRef parsed) || parsed.IsEmpty)
         {
-            // A prefab that cannot even be named is nothing to keep: the entity is made empty, and what the element holds is not read.
-            _budget.Take();
-            Warn(element, $"<Entity '{element.Attribute("name")}'> names the prefab '{reference}', which is not an asset reference (a path, uid://… or both): it is made as an empty entity");
-            Items.Add(new PlannedEntity { Name = element.Attribute("name"), Parent = parent });
+            // A prefab that cannot even be named (a damaged UID, text that is no reference) is a prefab that is missing: the instance is its root alone, the reference as it was written is kept with it
+            // and what the element holds is kept aside, so that fixing the reference (or the file) brings everything back, and saving in between costs nothing.
+            Warn(element, $"<Entity '{element.Attribute("name")}'> names the prefab '{reference}', which is not an asset reference (a path, uid://… or both): it is left empty, and what its element holds is kept");
+            string unnamed = AddressOfInstance(element);
+            int root = Items.Count;
+            Items.Add(new PlannedEntity
+            {
+                Address = unnamed,
+                Name = element.Attribute("name"),
+                Parent = parent,
+                InstancePrefab = reference,
+                RawPrefab = reference,
+                MissingReason = "its reference is not an asset reference",
+                Unapplied = element.Children.Count > 0 ? [.. element.Children] : null,
+            });
+            Claim(element, unnamed, root);
             return;
         }
 

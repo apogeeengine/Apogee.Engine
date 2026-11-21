@@ -8,6 +8,7 @@ using Apogee.Content.Assets;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Xml;
 using Apogee.Core.Assets;
+using Apogee.Core.Logging;
 using Apogee.Reflection;
 
 namespace Apogee.Ecs;
@@ -26,9 +27,9 @@ public sealed unsafe partial class World
     private PrefabLibrary? _prefabs;
     private PrefabLibrary? _bare;   // what a world with no files makes handles in, so that an instance it cannot expand still names its prefab
 
-    // What the instance elements of loaded documents held that could not be applied (an override of an entity the prefab no longer has…), by the entity id of the instance root: written back as they
-    // were when the scene is saved. The nodes are copies, never changed.
-    private readonly Dictionary<ulong, List<XmlNode>> _unapplied = [];
+    // What loaded documents said that the entities cannot show (see KeptData), by entity id: the elements an instance could not apply (an override of an entity the prefab no longer has…), which are
+    // written back when the scene is saved, and the references of fields that did not load.
+    private readonly Dictionary<ulong, KeptData> _kept = [];
 
     private void RegisterPrefabAssetType() =>
         RegisterAssetType("prefab", handle => ExistingLibrary?.RefOf(handle), reference => LoadingLibrary.Load(reference));
@@ -153,7 +154,7 @@ public sealed unsafe partial class World
 
         // A new budget for each call. What the prefab makes is planned before anything is made: when it cannot be had (its root is an instance of another prefab) or is too big, nothing is.
         var budget = new ExpansionBudget(MaxLoadEntities);
-        ScenePlan plan = ScenePlan.Build(document, NewExpander(budget), budget);
+        ScenePlan plan = ScenePlan.Build(document, NewExpander(budget));
         if (plan.Items[0].MissingReason is { } reason)
         {
             throw new FormatException($"the prefab cannot be instantiated: {reason}");
@@ -214,7 +215,7 @@ public sealed unsafe partial class World
     /// </summary>
     /// <param name="path">A path ending in <c>.aprefab</c>, or <c>uid://…</c> for the file that has that UID.</param>
     /// <param name="root">The one root entity of the file.</param>
-    /// <exception cref="InvalidOperationException">The world has no <see cref="Files"/>, or the tree holds an instance of the prefab being written (the file would contain itself).</exception>
+    /// <exception cref="InvalidOperationException">The world has no <see cref="Files"/>, or the tree holds an instance of the prefab being written (the file would contain itself), or what would be written is not a prefab that loads (nothing is written).</exception>
     /// <exception cref="UnauthorizedAccessException">The path is not in a writable source.</exception>
     /// <exception cref="ArgumentException">The path does not end in <c>.aprefab</c>, or the entity is not a user entity.</exception>
     public void SavePrefabFile(string path, Entity root)
@@ -290,6 +291,12 @@ public sealed unsafe partial class World
             }
         }
 
+        // The root is written as a plain entity, which has no place for what an instance element could not apply: that would be lost, and it is said.
+        if (_kept.TryGetValue(root.Id, out KeptData? rootKept) && rootKept.Unapplied.Count > 0)
+        {
+            Log.Warn("Prefab", $"{resolved}: the root is an instance whose element held {rootKept.Unapplied.Count} change(s) that could not be applied: a prefab's root is an ordinary entity, so they are not saved");
+        }
+
         (List<XmlNode> top, XmlNode? schemas) = WritePlanned(plan, [root]);
         AssetUid uid = KeptUid(files, resolved, out bool minted);
         var document = new XmlNode(PrefabDocument.RootName);
@@ -302,6 +309,17 @@ public sealed unsafe partial class World
         }
 
         document.Children.AddRange(top);
+
+        // A file that cannot be read back would make every instance of it empty: it is not written.
+        try
+        {
+            PrefabDocument.Check(document, resolved, warnNextId: false);
+        }
+        catch (FormatException e)
+        {
+            throw new InvalidOperationException($"{resolved} would not load as a prefab, so it was not written: {e.Message}", e);
+        }
+
         files.WriteAllText(resolved, SceneText(document));
         if (minted)
         {

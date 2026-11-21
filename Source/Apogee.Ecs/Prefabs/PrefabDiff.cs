@@ -18,29 +18,32 @@ namespace Apogee.Ecs;
 internal sealed unsafe class PrefabDiff
 {
     private readonly World _world;
-    private readonly Dictionary<ulong, string> _addressOf;
+    private readonly World.SavePlan _plan;
     private readonly Expansion _expansion;
     private readonly string _instance;
     private readonly SortedDictionary<string, ComponentInfo> _scripts;
 
     /// <param name="world">The world the live entities are in.</param>
-    /// <param name="addressOf">The address the document being written gives each entity it writes (entity fields are written as these).</param>
+    /// <param name="plan">What is being written: the address the document gives each entity it writes (entity fields are written as these).</param>
     /// <param name="expansion">What the instance's prefab expands to with no overrides, at <paramref name="instance"/>.</param>
     /// <param name="instance">The address of the instance's root.</param>
     /// <param name="scripts">Collects the script-defined components that are written whole (added to an entity the prefab did not have them on), for the document's <c>Components</c> element.</param>
-    public PrefabDiff(World world, Dictionary<ulong, string> addressOf, Expansion expansion, string instance, SortedDictionary<string, ComponentInfo> scripts)
+    public PrefabDiff(World world, World.SavePlan plan, Expansion expansion, string instance, SortedDictionary<string, ComponentInfo> scripts)
     {
         _world = world;
-        _addressOf = addressOf;
+        _plan = plan;
         _expansion = expansion;
         _instance = instance;
         _scripts = scripts;
     }
 
     /// <summary>The address of an entity of the expansion relative to the instance, as an <c>&lt;Override entity="…"&gt;</c> writes it; null when it has none that can be written (an entity with no usable id).</summary>
-    public string? RelativeAddress(ExpandedEntity member)
+    public string? RelativeAddress(ExpandedEntity member) => RelativeAddress(_instance, member);
+
+    /// <summary>See <see cref="RelativeAddress(ExpandedEntity)"/>, for the instance at <paramref name="instance"/>.</summary>
+    public static string? RelativeAddress(string instance, ExpandedEntity member)
     {
-        string prefix = _instance + "/";
+        string prefix = instance + "/";
         return EntityAddress.IsValid(member.Address) && member.Address.StartsWith(prefix, StringComparison.Ordinal) ? member.Address[prefix.Length..] : null;
     }
 
@@ -93,7 +96,7 @@ internal sealed unsafe class PrefabDiff
                 _scripts[name] = info;
             }
 
-            XmlNode whole = _world.WriteComponent(live, id, info, _addressOf);
+            XmlNode whole = _world.WriteComponent(live, id, info, _plan);
             whole.SetAttribute("append", "true");
             patches.Add(whole);
         }
@@ -113,7 +116,7 @@ internal sealed unsafe class PrefabDiff
         XmlNode? patch = null;
         foreach (FieldDef field in info.Fields)
         {
-            if (Differs(field, data + field.Offset, expected.Attribute(field.Name), out string text))
+            if (Differs(live, info, field, data + field.Offset, expected.Attribute(field.Name), out string text))
             {
                 patch ??= new XmlNode(info.Name);
                 patch.SetAttribute(field.Name, text);
@@ -124,16 +127,18 @@ internal sealed unsafe class PrefabDiff
         return patch;
     }
 
-    // Whether the field's value at `at` is not what the element (`expected`, null: not written, so zero) would make; `text` is the live value as the document would write it.
-    private bool Differs(FieldDef field, byte* at, string? expected, out string text)
+    // Whether the field's value at `at` is not what the element (`expected`, null: not written, so zero) would make; `text` is the live value as the document would write it. A field that is 0 because
+    // what it named could not be made (an asset that did not load, an entity of a prefab that is missing) is what it named, as far as the document is concerned: not a difference from the prefab.
+    private bool Differs(Entity live, ComponentInfo info, FieldDef field, byte* at, string? expected, out string text)
     {
         switch (field.Kind)
         {
             case FieldKind.Entity:
             {
                 ulong target = *(ulong*)at;
-                text = _addressOf.GetValueOrDefault(target, "");
-                return ExpectedEntity(expected) != (_addressOf.TryGetValue(target, out string? address) ? Relative(address) : "");
+                string? written = _plan.AddressOf.TryGetValue(target, out string? address) ? address : target == 0 ? _world.DanglingText(live, info.Name, field.Name, _plan) : null;
+                text = written ?? "";
+                return ExpectedEntity(expected) != (written is null ? "" : Relative(written));
             }
 
             case FieldKind.AssetRef:
@@ -146,10 +151,17 @@ internal sealed unsafe class PrefabDiff
                 }
 
                 uint handle = *(uint*)at;
-                AssetRef? live = handle == 0 ? null : _world.QuietAssetRefOf(field, handle);
                 AssetRef? wanted = expected is { Length: > 0 } && AssetRef.TryParse(expected, out AssetRef parsed) && !parsed.IsEmpty ? parsed : null;
-                text = live?.ToString() ?? "";
-                return !SameAsset(wanted, live, _world.Assets);
+                if (handle == 0 && _world.UnresolvedAsset(live, info.Name, field.Name) is { } unresolved)
+                {
+                    // It did not load, which is not a decision to have no asset: it is what it was written as, the same as the prefab's or not.
+                    text = unresolved;
+                    return !(AssetRef.TryParse(unresolved, out AssetRef named) && SameAsset(wanted, named, _world.Assets));
+                }
+
+                AssetRef? liveRef = handle == 0 ? null : _world.QuietAssetRefOf(field, handle);
+                text = liveRef?.ToString() ?? "";
+                return !SameAsset(wanted, liveRef, _world.Assets);
             }
 
             default:
