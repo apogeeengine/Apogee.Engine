@@ -121,5 +121,12 @@ public sealed class SceneEnumTests : IDisposable
         Entity copy = _world.Clone(e);
         Assert.Equal(Gait.Walk, _world.Get<Strider>(copy).Gait);
         Assert.Equal(Layers.Water, _world.Get<Strider>(copy).Mask);
+
+        // A snapshot taken, the component overwritten, and the snapshot restored: the numbers come back.
+        WorldSnapshot snapshot = _world.Snapshot();
+        _world.Set(e, new Strider { Gait = Gait.Run, Mask = Layers.None });
+        _world.RestoreEntities(snapshot);
+        Assert.Equal(Gait.Walk, _world.Get<Strider>(e).Gait);
+        Assert.Equal(Layers.Water, _world.Get<Strider>(e).Mask);
     }
 }

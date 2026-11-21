@@ -54,8 +54,8 @@ loading the asset when needed. The host registers `model` (`ModelRenderer.Model`
 leads to no asset leaves the field 0 with a warning, and the scene loads on. A field of a type nobody registered (and a script-defined field with no `assetType`) is left out of the scene, with one warning per field.
 
 The same converters are public for a tool that edits a handle (the editor's asset picker): `world.AssetRefOf("model", handle)` gives the `AssetRef?` a handle names and `world.AssetHandleOf("model", reference)` gives
-the handle of this run for a reference, loading the asset as a scene does. `AssetRefOf` is null for handle 0, for a type nobody registered and for a handle that names nothing that can be saved; `AssetHandleOf` is 0
-for an empty reference, for an unregistered type, and for an asset that cannot be found or loaded (that one logs a warning). Neither warns about an unregistered type: asking is not saving.
+the handle of this run for a reference, loading the asset when the type needs to. `AssetRefOf` is null for handle 0, for a type nobody registered and for a handle that names nothing that can be saved; `AssetHandleOf` is 0
+for an empty reference, for an unregistered type, and for an asset the converter does not find, all without a warning (asking is not saving, and an editor asks often); only a converter that throws because the asset cannot be loaded is logged.
 
 `Entity` is not a component name: `RegisterComponent` and `DefineComponent` refuse it (`InvalidOperationException`), because a scene file writes a child entity as `<Entity>`.
 

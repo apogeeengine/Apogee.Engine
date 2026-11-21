@@ -69,7 +69,7 @@ public sealed unsafe partial class World
 
     /// <summary>
     /// The handle of this run for a reference, through the converters of <see cref="RegisterAssetType"/>: loading what it names when the type needs to, as a scene does. 0 for an empty reference, for a type
-    /// nobody registered, and for an asset that cannot be found or loaded (the last is logged as a warning, as in a scene).
+    /// nobody registered, and for an asset the converter does not find; none of these warns, because an editor asks often. Only a converter that fails (it throws while loading) is logged as a warning.
     /// </summary>
     /// <param name="assetType">The asset type, as <c>[Property(Asset = "…")]</c> spells it (<see cref="FieldDef.AssetType"/>).</param>
     /// <param name="reference">What the handle should name.</param>
@@ -84,7 +84,7 @@ public sealed unsafe partial class World
         {
             return registered.FromRef(reference);
         }
-        catch (Exception e) when (e is IOException or ContentException or FormatException or InvalidOperationException or ArgumentException)
+        catch (Exception e) when (IsLoadFailure(e))
         {
             Log.Warn("Scene", $"{reference} could not be loaded as a {assetType}: {e.Message}");
             return 0;
@@ -748,7 +748,10 @@ public sealed unsafe partial class World
 
     // The same without the warning, for what is not saved (a snapshot): null for a type nobody registered and for what the type cannot name.
     internal AssetRef? QuietAssetRefOf(FieldDef field, uint handle) =>
-        field.AssetType is { } type && _assetTypes.TryGetValue(type, out var registered) && registered.ToRef(handle) is { IsEmpty: false } named ? named : null;
+        field.AssetType is { } type ? AssetRefOf(type, handle) : null;
+
+    // What a converter throws when an asset cannot be loaded: logged, and the handle is 0.
+    private static bool IsLoadFailure(Exception e) => e is IOException or ContentException or FormatException or InvalidOperationException or ArgumentException;
 
     // The handle of this run for the text of a reference; 0 for no text, for a type nobody registered (said once), and for an asset that cannot be loaded (logged).
     private uint HandleOf(ComponentInfo info, FieldDef field, string text)
@@ -796,7 +799,7 @@ public sealed unsafe partial class World
 
             return handle;
         }
-        catch (Exception e) when (e is IOException or ContentException or FormatException or InvalidOperationException or ArgumentException)
+        catch (Exception e) when (IsLoadFailure(e))
         {
             Log.Warn("Scene", $"{info.Name}.{field.Name}: {named} could not be loaded: {e.Message}");
             return 0;
