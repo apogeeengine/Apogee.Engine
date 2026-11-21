@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Apogee.Content;
+using Apogee.Content.Assets;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Import;
 using Apogee.Content.Packages;
@@ -17,15 +18,17 @@ namespace Apogee.Scripting;
 /// <param name="Shaders">Shader sources that changed.</param>
 /// <param name="NeedsRestart">Changes that only take effect when the game starts again: a package's manifest, a script that runs once.</param>
 /// <param name="Failures">What could not be reloaded and why; the old version stays.</param>
+/// <param name="Documents">Authored documents (<see cref="AuthoredAssets.Extensions"/>: scenes, prefabs) that changed under <c>res://</c> or <c>mod://</c>, for the host to read again.</param>
 public sealed record ReloadReport(
     IReadOnlyList<string> Modules,
     bool DefsReloaded,
     IReadOnlyList<string> Assets,
     IReadOnlyList<string> Shaders,
     IReadOnlyList<string> NeedsRestart,
-    IReadOnlyList<(string Path, string Message)> Failures)
+    IReadOnlyList<(string Path, string Message)> Failures,
+    IReadOnlyList<string>? Documents = null)
 {
-    public bool Any => Modules.Count > 0 || DefsReloaded || Assets.Count > 0 || Shaders.Count > 0 || NeedsRestart.Count > 0 || Failures.Count > 0;
+    public bool Any => Modules.Count > 0 || DefsReloaded || Assets.Count > 0 || Shaders.Count > 0 || NeedsRestart.Count > 0 || Failures.Count > 0 || Documents is { Count: > 0 };
 }
 
 /// <summary>
@@ -62,6 +65,12 @@ public sealed class HotReloader : IDisposable
     /// <summary>Raised with the paths of shader sources that changed.</summary>
     public event Action<IReadOnlyList<string>>? ShadersChanged;
 
+    /// <summary>
+    /// Raised with the paths of authored documents that changed (<see cref="AuthoredAssets.IsAuthored"/>: scene and prefab files under <c>res://</c> or <c>mod://</c>; a file in a package is reported under
+    /// both of its names), for the host to read again: a prefab file makes the instances of it follow it (<c>World.Prefabs.Reload</c>). Called on the thread that calls <see cref="Poll"/>.
+    /// </summary>
+    public event Action<IReadOnlyList<string>>? DocumentsChanged;
+
     /// <summary>Reloads what changed since the last call (and has been quiet for the debounce time).</summary>
     public ReloadReport Poll()
     {
@@ -69,6 +78,7 @@ public sealed class HotReloader : IDisposable
         var modules = new List<string>();
         var assets = new List<string>();
         var shaders = new List<string>();
+        var documents = new List<string>();
         var restart = new List<string>();
         var failures = new List<(string, string)>();
         bool defs = false;
@@ -113,6 +123,10 @@ public sealed class HotReloader : IDisposable
             {
                 shaders.Add(path);
             }
+            else if (AuthoredAssets.IsAuthored(path) && (path.StartsWith("res://", StringComparison.Ordinal) || path.StartsWith("mod://", StringComparison.Ordinal)))
+            {
+                documents.Add(path);
+            }
             else if ((extension is ".xml" or ".xsd") && _packages is not null && IsDefinitionFile(path))
             {
                 defs = true;
@@ -151,12 +165,17 @@ public sealed class HotReloader : IDisposable
             ShadersChanged?.Invoke(shaders);
         }
 
+        if (documents.Count > 0)
+        {
+            DocumentsChanged?.Invoke(documents);
+        }
+
         foreach (string path in restart)
         {
             Log.Warn("HotReload", $"{path} changed: restart the game to use it.");
         }
 
-        return new ReloadReport(modules, defs, assets, shaders, restart, failures);
+        return new ReloadReport(modules, defs, assets, shaders, restart, failures, documents);
     }
 
     private bool IsDefinitionFile(string path) =>

@@ -234,6 +234,43 @@ public sealed class ScriptSession : IDisposable
         return library;
     }
 
+    /// <summary>
+    /// Reads the prefab files among <paramref name="paths"/> again and makes the instances in the world follow the ones that changed (<see cref="World.ApplyPrefabUpdates"/>), unless the host
+    /// holds updates (<see cref="World.HoldPrefabUpdates"/>: it applies them itself). A file that is not usable keeps the version the world has, and says why in the log.
+    /// </summary>
+    private static void ReloadPrefabs(World world, IReadOnlyList<string> paths)
+    {
+        foreach (string path in paths)
+        {
+            if (!path.EndsWith(".aprefab", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                PrefabReload result = world.Prefabs.Reload(path);
+                if (result.Status == PrefabReloadStatus.Failed)
+                {
+                    Log.Error("HotReload", $"prefab {path} not reloaded, the old version stays: {result.Error}");
+                }
+                else if (result.Status == PrefabReloadStatus.Reloaded)
+                {
+                    Log.Info("HotReload", $"prefab {path} reloaded");
+                }
+            }
+            catch (Exception e) when (e is FormatException or InvalidOperationException)
+            {
+                Log.Error("HotReload", $"prefab {path} not reloaded: {e.Message}");
+            }
+        }
+
+        if (!world.HoldPrefabUpdates)
+        {
+            world.ApplyPrefabUpdates();
+        }
+    }
+
     /// <summary>Reloads what changed on disk (a game started with watching), or null.</summary>
     public HotReloader? Reloader { get; private init; }
 
@@ -506,6 +543,13 @@ public sealed class ScriptSession : IDisposable
                             Log.Error("HotReload", $"model {changed} not reloaded, the old one stays: {e.Message}");
                         }
                     }
+                };
+                // A prefab file that changed is read again, and its instances in the world follow it (in place, with what they changed kept): this runs where the reload is polled, a frame boundary.
+                World followed = world;
+                reloader.DocumentsChanged += paths =>
+                {
+                    content.Refresh();
+                    ReloadPrefabs(followed, paths);
                 };
                 Log.Info("Runtime", "Watching for changes: scripts that were required, definitions and assets are reloaded when their files change.");
             }
