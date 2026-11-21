@@ -536,4 +536,46 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         loaded.LoadScene(saved);
         Assert.Equal(loaded.SaveScene(), World.SaveScene());
     }
+
+    [Fact]
+    public void ARootThatTakesAnOldMembersIdIsStillTheRoot()
+    {
+        World.LoadScene(TwoLamps());
+        Entity lamp = World.Lookup("Lamp");
+        Entity bulb = Child(lamp, "Bulb");
+        Entity oldBase = Child(lamp, "Base");
+
+        // The author renumbers the lamp: the root is 3 now (what the Base was), and the Base is 9.
+        PrefabUpdate update = ChangeLamp(text => Replace(Replace(Replace(Replace(Replace(text, "<Entity id=\"3\" name=\"Base\">", "<Entity id=\"9\" name=\"Base\">"),
+            "<Entity id=\"1\" name=\"Lamp\">", "<Entity id=\"3\" name=\"Lamp\">"), "<Flicker speed=\"2\" lamp=\"1\"/>", "<Flicker speed=\"2\" lamp=\"3\"/>"), "Target=\"1\"", "Target=\"3\""), "nextId=\"4\"", "nextId=\"10\""));
+
+        Assert.True(World.IsAlive(lamp));
+        Assert.Empty(update.Failed);
+        Assert.Equal([lamp, World.Lookup("Lamp 2")], update.Updated);
+        Assert.Equal(bulb, Child(lamp, "Bulb"));                                                // what kept its place keeps its entity
+        Assert.False(World.IsAlive(oldBase));                                                   // the Base is another entity of the prefab now
+        Assert.Equal(["Bulb", "Base"], NamesBelow(World, lamp));
+        Assert.Equal(lamp, World.Get<Marks>(bulb).Target);
+        Assert.Equal(2, update.Destroyed.Count);                                                // the old Base of each lamp, and nothing else
+        Assert.Equal(3u, World.Get<PrefabMember>(lamp).Id);
+    }
+
+    [Fact]
+    public void ANestedInstanceWhosePrefabIsSwappedKeepsItsRoot()
+    {
+        Write("prefabs/lantern.aprefab", "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"2\" name=\"Lantern\"><Entity id=\"1\" name=\"Glass\"/><Entity id=\"3\" name=\"Frame\"/></Entity></Prefab>");
+        World.LoadScene($"<Scene version=\"2\"><Entity id=\"1\" name=\"Corner\" prefab=\"{Corner}\"/></Scene>");
+        Entity corner = World.Lookup("Corner");
+        Entity inner = Child(corner, "Lamp");
+
+        // The corner's first lamp becomes a lantern, whose root has the id of the lamp's Bulb.
+        PrefabUpdate update = Change(World, "prefabs/corner.aprefab", text => Replace(text, $"<Entity id=\"2\" name=\"Lamp\" prefab=\"{LampPath}|{LampUid}\">", "<Entity id=\"2\" name=\"Lamp\" prefab=\"res://prefabs/lantern.aprefab\">"));
+
+        Assert.True(World.IsAlive(corner));
+        Assert.Empty(update.Failed);
+        Assert.Equal(inner, Child(corner, "Lamp"));                                              // the entity at that place is the same one, now an instance of the lantern
+        Assert.Equal(["Frame", "Glass"], NamesBelow(World, inner).Order(StringComparer.Ordinal));
+        Assert.Equal(["Lamp", "Lamp 2", "Bench"], NamesBelow(World, corner));
+        Assert.DoesNotContain("remove=\"true\"", World.SaveScene(), StringComparison.Ordinal); // the lamp was not taken away from the corner
+    }
 }

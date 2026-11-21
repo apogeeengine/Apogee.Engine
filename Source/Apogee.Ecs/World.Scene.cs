@@ -941,11 +941,14 @@ public sealed unsafe partial class World
         var taken = new HashSet<ulong>();
         if (living is not null)
         {
-            foreach ((string address, int at) in plan.Addresses)
+            // By the item's own address, and only when the item is the one that has it: the other names of an instance root (`address/rootId`) are in plan.Addresses too, and an old entity that has
+            // such a name as its own address is not the root.
+            for (int i = 0; i < plan.Items.Count; i++)
             {
-                if (living.TryGetValue(address, out Entity found) && taken.Add(found.Id))
+                string address = plan.Items[i].Address;
+                if (address.Length > 0 && plan.Addresses.TryGetValue(address, out int claimed) && claimed == i && living.TryGetValue(address, out Entity found) && taken.Add(found.Id))
                 {
-                    existing[at] = found;
+                    existing[i] = found;
                 }
             }
         }
