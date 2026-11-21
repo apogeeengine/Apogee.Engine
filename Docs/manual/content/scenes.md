@@ -41,7 +41,7 @@ them as text. Because a scene is XML like the rest of the game's data, a mod can
   Scenes the engine writes are not affected.
 - **A component** is an element named after it, and each of its fields an attribute named after the field. A tag (or a component with no fields) is an empty element. A field the element does not
   name is zero when the scene is loaded.
-- **What is written:** every field of every component, so that a scene reads without the code at hand and diffs cleanly; components in the order the entity has them, entities in hierarchy order
+- **What is written:** every field of every component, so that a scene reads without the code at hand and diffs cleanly; components in the order of their names (an entity keeps them in the order of their ids in a world, which another world numbers differently, and a scene must be the same text whichever world saves it), entities in hierarchy order
   (parents first, children in creation order). Saving a loaded scene again gives the same text.
 - **What is left out:** `WorldTransform` (derived), components given to `IgnoreInScenes` (the host leaves out physics `Body`, which only means something in the run that made it), and an
   `Entity` or `AssetRef` field that points at nothing the file can name (an attribute left out; see below).

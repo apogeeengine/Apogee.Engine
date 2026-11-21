@@ -354,7 +354,10 @@ public sealed unsafe partial class World
         }
 
         XmlNode node = StartElement(plan, entity);
-        foreach ((Entity id, ComponentInfo info) in ComponentsOf(entity))
+
+        // In the order of their names: an entity's components are in the order of their ids in this world, which another world numbers in the order it met them, so the same scene would be written in
+        // another order by the world that loaded it.
+        foreach ((Entity id, ComponentInfo info) in ComponentsOf(entity).OrderBy(static c => c.Info.Name, StringComparer.Ordinal))
         {
             if (IsSceneSkipped(info.Name))
             {
@@ -567,7 +570,20 @@ public sealed unsafe partial class World
             return plan.AddressOf.TryGetValue(named.Root, out string? root) ? root + "/" + named.Text : null;
         }
 
-        return plan.KeptIds.GetValueOrDefault(named.Text);
+        return KeptAddress(plan, named.Text);
+    }
+
+    // An address that starts with the number of an entity a kept element adds (`7`, or `7/2` inside an instance it adds), for this document: the new number of that entity, and what follows it as it was.
+    // Null when no kept element adds that entity.
+    private static string? KeptAddress(SavePlan plan, string text)
+    {
+        int slash = text.IndexOf('/', StringComparison.Ordinal);
+        if (!plan.KeptIds.TryGetValue(slash < 0 ? text : text[..slash], out string? number))
+        {
+            return null;
+        }
+
+        return slash < 0 ? number : number + text[slash..];
     }
 
     // ---- Saving: what an instance element could not apply
@@ -667,7 +683,7 @@ public sealed unsafe partial class World
     {
         if (text[0] != KeptData.Token)
         {
-            return plan.KeptIds.GetValueOrDefault(text, "");
+            return KeptAddress(plan, text) ?? "";
         }
 
         int slash = text.IndexOf('/', StringComparison.Ordinal);

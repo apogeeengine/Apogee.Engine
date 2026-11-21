@@ -339,7 +339,7 @@ public sealed class FileDialogsTests
         string[] bad =
         [
             "<Scene version=\"1\"",                                                 // does not parse
-            "<Scene version=\"2\"><Entity name=\"newer\"/></Scene>",                // from a newer engine: refused after the world was emptied
+            "<Scene version=\"3\"><Entity name=\"newer\"/></Scene>",                // from a newer engine: refused after the world was emptied
             "<Level/>",                                                             // not a scene
             "",
         ];
