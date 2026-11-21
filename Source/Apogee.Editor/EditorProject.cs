@@ -264,8 +264,17 @@ public sealed class EditorProject : IDisposable
         else
         {
             problem = null;
-            job = Job = new ImportJob(files, ScriptSession.Importers, new ProjectDropTargets(files, GameFolder), plan, ImportGate.Exit);
-            job.Start();
+            try
+            {
+                job = new ImportJob(files, ScriptSession.Importers, new ProjectDropTargets(files, GameFolder), plan, ImportGate.Exit);
+                job.Start(); // from here the worker gives the gate back
+                Job = job;
+            }
+            catch
+            {
+                ImportGate.Exit(); // the worker never started: nobody else will
+                throw;
+            }
         }
 
         return problem is null;
