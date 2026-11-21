@@ -56,6 +56,12 @@ not the entities of registered components and the reflection data under them, no
 - **Hierarchy:** `Roots()`, `Children(entity)` (in creation order) and `Subtree(entity)` (parents first). `ComponentsOf(entity)` lists the components and tags the registry describes (not relationship pairs or
   the name), with their `ComponentInfo`; `Components` is every component the world has registered. `SetParent` and `GetParent` were there before; `Trs.InLocalOf` gives the local transform that keeps an
   entity where it is under a new parent.
+- **Names:** a name is unique among the children of one parent, and among the top-level entities. `SetName` gives an entity a free name when a sibling has the one asked for (`Lamp`, `Lamp 2`, `Lamp 3`…; read
+  it back with `GetName`), `SetParent` does the same when the new parent has a child of that name, and an empty name takes the name away (no name never clashes). `UniqueName(name, parent?)` says what
+  a name would become. The loader, `Clone`, `Restore` and the editor's paste all use it. Names are compared as written (`lamp` and `Lamp` differ), and only the siblings count: a child and a top-level
+  entity may share a name, and so may the entity and the engine's own entities of the same name (Flecs has one called `Empty` in its core module). The one exception is a top-level name that a component or
+  system of the world already has (`Health`, `Transform`): Flecs keeps one entity of a name in a scope, so that entity would take its place in the index, and the user's entity gets `Health 2`. A load of many
+  entities of one name takes as long as a load of distinct ones.
 - **Copies:** `Clone(entity, parent?)` copies the components and the whole branch under the same parent, naming the copies `name (copy)`, `name (copy 2)` so they stay unique. A copy of an
   [instance of a prefab](../content/prefabs.md) is another instance; a copy of a branch of one, without its root, is plain entities (the entities' links to their prefab are kept only when the instance they belong to is copied too).
 - **Snapshots:** `Snapshot()` takes every user entity (ids with their generation, names, parents, component bytes), `SnapshotTree(entity)` one branch. `Restore(snapshot)` puts the world back: user entities

@@ -72,7 +72,7 @@ the scene's is skipped with a warning and the existing one is used.
 ### Reading
 
 Loading is forgiving, so that a scene outlives the code around it. A component or an attribute the world does not have is logged (with the line) and skipped; an attribute whose text is not a
-value of its field is logged and the field stays zero; a name that is taken under the same parent gets a free one (`crate 2`). What is an error (a `FormatException`) is a document that is not a scene:
+value of its field is logged and the field stays zero; a name that is taken among the entities with the same parent (or among the top-level ones) gets a free one (`crate 2`, `crate 3`…, also for the entities of the world the scene is loaded into). What is an error (a `FormatException`) is a document that is not a scene:
 XML that is not well-formed, a root other than `<Scene>`, and a `version` newer than the engine's.
 
 ## Prefab instances

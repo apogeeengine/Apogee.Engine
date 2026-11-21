@@ -85,7 +85,7 @@ the *Edit* menu and the hierarchy's context menu, which also has *Paste as child
 
 - **Where it goes.** A paste lands next to the active entity (under the same parent; at the root when nothing is selected); *Paste as child* puts it under the active entity. The new entities are selected, and the paste
   is one undo step ("Paste Cube", "Paste 3 entities"); undoing removes them, redoing brings them back under the same ids. A pasted entity keeps its local transform, so under another parent it moves with that parent.
-- **Names.** The pasted top-level entities get names no sibling has ("Cube", then "Cube 2"), also among themselves when they come from different parents. Names below them are kept.
+- **Names.** The pasted top-level entities get names no sibling has ("Cube", then "Cube 2"), also among themselves when they come from different parents; the loader decides, among the real siblings, so a pasted "Empty" stays "Empty" when no sibling has that name. Names below them are kept.
 - **References.** An `Entity` field that points to an entity inside the copied set is written as that entity's number in the document, and a paste points it at the new copy, so a copied branch stays wired to itself
   (and several selected entities to each other). A field that points outside the copied set is left empty: the scene format cannot name an entity that is not in the document. Asset fields travel as
   `path|uid` (the model's path, and its UID once it is imported) and are found again by the pasting project; one that cannot be found is left empty and logged. Components that a script defined travel in the
