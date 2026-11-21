@@ -236,19 +236,21 @@ public sealed class PrefabFuzzTests : PrefabTestBase
         return text.ToString();
     }
 
-    // Whether two entities with one parent have one name: a scene cannot say that (the loader gives the second another), which is not about prefabs. The engine lets it happen (seen after Snapshot/Restore sequences; the cause is not isolated: looking an
-    // entity up by its name seems to miss one that is there, so the next entity of that name is not given another).
-    private static bool HasSiblingsWithOneName(World world)
+    // How many edits a seed makes: from one to a few dozen, and the last seeds many more (a sequence that is long enough shows what a short one does not).
+    private static int EditCount(int seed) => 1 + (seed % 24) + (seed / 50 * 20);
+
+    // Two entities with one parent never have one name, and each is found by its name where it is (a scene cannot say two of one name, and Flecs loses one of them).
+    private static void AssertNamesAreUnique(World world)
     {
         foreach (Entity entity in world.UserEntities())
         {
-            if (world.GetName(entity) is { } name && world.Children(world.GetParent(entity)).Count(c => world.GetName(c) == name) > 1)
+            if (world.GetName(entity) is { } name)
             {
-                return true;
+                Entity parent = world.GetParent(entity);
+                Assert.Equal(1, (parent.IsNull ? world.Roots() : world.Children(parent)).Count(c => world.GetName(c) == name));
+                Assert.Equal(name, world.UniqueName(name, parent, entity));
             }
         }
-
-        return false;
     }
 
     // ---- The two promises
@@ -258,12 +260,8 @@ public sealed class PrefabFuzzTests : PrefabTestBase
     public void ASceneEditedAtRandomSavesLoadsAndSavesTheSame(int seed)
     {
         World.LoadScene(Base());
-        Edits(World, new Random(seed), 1 + (seed % 24));
-
-        if (HasSiblingsWithOneName(World))
-        {
-            return;
-        }
+        Edits(World, new Random(seed), EditCount(seed));
+        AssertNamesAreUnique(World);
 
         string saved = World.SaveScene();
 
@@ -280,11 +278,8 @@ public sealed class PrefabFuzzTests : PrefabTestBase
     public void ASceneSavedWhileItsPrefabIsBrokenGivesEverythingBackWhenItIsMended(int seed)
     {
         World.LoadScene(Base());
-        Edits(World, new Random(seed), 1 + (seed % 24));
-        if (HasSiblingsWithOneName(World))
-        {
-            return;
-        }
+        Edits(World, new Random(seed), EditCount(seed));
+        AssertNamesAreUnique(World);
 
         string saved = World.SaveScene();
         string mended = Read("prefabs/lamp.aprefab");
