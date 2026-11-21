@@ -58,6 +58,39 @@ public sealed unsafe partial class World
         _assetTypes[type] = (toRef, fromRef);
     }
 
+    /// <summary>
+    /// The reference (path and UID) that the handle of an asset type names, through the converters of <see cref="RegisterAssetType"/>: what a scene would save for it, and what an editor shows.
+    /// Null for handle 0, for a type nobody registered and for a handle that names nothing that can be saved (a model made in code has no path). It writes no warning.
+    /// </summary>
+    /// <param name="assetType">The asset type, as <c>[Property(Asset = "…")]</c> spells it (<see cref="FieldDef.AssetType"/>).</param>
+    /// <param name="handle">The handle of this run, as stored in the field.</param>
+    public AssetRef? AssetRefOf(string assetType, uint handle) =>
+        handle != 0 && assetType is not null && _assetTypes.TryGetValue(assetType, out var registered) && registered.ToRef(handle) is { IsEmpty: false } named ? named : null;
+
+    /// <summary>
+    /// The handle of this run for a reference, through the converters of <see cref="RegisterAssetType"/>: loading what it names when the type needs to, as a scene does. 0 for an empty reference, for a type
+    /// nobody registered, and for an asset that cannot be found or loaded (the last is logged as a warning, as in a scene).
+    /// </summary>
+    /// <param name="assetType">The asset type, as <c>[Property(Asset = "…")]</c> spells it (<see cref="FieldDef.AssetType"/>).</param>
+    /// <param name="reference">What the handle should name.</param>
+    public uint AssetHandleOf(string assetType, AssetRef reference)
+    {
+        if (reference.IsEmpty || assetType is null || !_assetTypes.TryGetValue(assetType, out var registered))
+        {
+            return 0;
+        }
+
+        try
+        {
+            return registered.FromRef(reference);
+        }
+        catch (Exception e) when (e is IOException or ContentException or FormatException or InvalidOperationException or ArgumentException)
+        {
+            Log.Warn("Scene", $"{reference} could not be loaded as a {assetType}: {e.Message}");
+            return 0;
+        }
+    }
+
     /// <summary>The files scene files are read from and written to (<see cref="LoadSceneFile"/>, <see cref="SaveSceneFile(string)"/>); set by whatever hosts the world. Null in a bare world, which has no files.</summary>
     public VirtualFileSystem? Files { get; set; }
 

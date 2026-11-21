@@ -34,6 +34,13 @@ component; another schema under a known name is an error. `GetComponentInfo(id)`
 `FieldAccess.Read`/`Write` (in `Apogee.Reflection`) read and write a field of the component's memory as a `Value`, with range checks.
 The pointer API (`GetPointer`, `EnsurePointer`, `SetPointer`) works on any component id.
 
+### Enum fields
+
+A field declared with an enum type (`public LightKind Kind;`), or an integer field marked `[Property(Enum = typeof(LightKind))]`, is stored as the integer of the enum's underlying type, which is also its `FieldKind`
+(`UInt8` for an enum of `byte`). `FieldDef.Enum` names its registered `EnumInfo`, which an inspector uses to list the members. Nothing else knows: Flecs describes it as that integer, scripts read and write a
+number, and a scene writes the number (`Kind="1"`), so renaming or adding a member never breaks a saved file. A number with no member (a flags value, or a value from a newer version of the game) is kept as it is.
+See [reflection](reflection.md#what-an-inspector-shows).
+
 ### Asset fields
 
 A `uint` field marked `[Property(Asset = "model")]` has the kind `FieldKind.AssetRef` and `FieldDef.AssetType = "model"` (see [reflection](reflection.md#asset-fields)). In memory it is four bytes, a `uint` handle
@@ -45,6 +52,10 @@ A scene does not store the handle, which only means something in the run that ma
 loading the asset when needed. The host registers `model` (`ModelRenderer.Model`) with the model library and the [asset database](../content/assets.md), so a scene holds
 `Model="res://models/car.glb|uid://4k2m9x7q1w3ze"`: the path is tried first, and when its file is gone the UID finds it where it moved. A scene written before UIDs holds the path alone, which loads as well. A reference that
 leads to no asset leaves the field 0 with a warning, and the scene loads on. A field of a type nobody registered (and a script-defined field with no `assetType`) is left out of the scene, with one warning per field.
+
+The same converters are public for a tool that edits a handle (the editor's asset picker): `world.AssetRefOf("model", handle)` gives the `AssetRef?` a handle names and `world.AssetHandleOf("model", reference)` gives
+the handle of this run for a reference, loading the asset as a scene does. `AssetRefOf` is null for handle 0, for a type nobody registered and for a handle that names nothing that can be saved; `AssetHandleOf` is 0
+for an empty reference, for an unregistered type, and for an asset that cannot be found or loaded (that one logs a warning). Neither warns about an unregistered type: asking is not saving.
 
 `Entity` is not a component name: `RegisterComponent` and `DefineComponent` refuse it (`InvalidOperationException`), because a scene file writes a child entity as `<Entity>`.
 

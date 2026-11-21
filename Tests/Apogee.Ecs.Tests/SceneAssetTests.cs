@@ -222,4 +222,72 @@ public sealed class SceneAssetTests : IDisposable
 
         Assert.DoesNotContain("look=\"", world.SaveScene(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AssetHandlesConvertThroughTheRegisteredType()
+    {
+        using World world = NewWorld();
+        uint car = Handle("res://models/car.glb");
+        AssetRef carRef = _assets.RefOf("res://models/car.glb");
+
+        // Handle to reference: what a scene would save for it.
+        Assert.Equal(carRef, world.AssetRefOf("model", car));
+        Assert.Equal(_carUid, world.AssetRefOf("model", car)!.Value.Uid);
+
+        // Reference to handle: the same handle back, from the full reference, from the path alone and from the UID alone.
+        Assert.Equal(car, world.AssetHandleOf("model", carRef));
+        Assert.Equal(car, world.AssetHandleOf("model", AssetRef.FromPath("res://models/car.glb")));
+        Assert.Equal(car, world.AssetHandleOf("model", AssetRef.FromUid(_carUid)));
+    }
+
+    [Fact]
+    public void AnUnknownTypeAHandleOfZeroAndAnEmptyReferenceConvertToNothing()
+    {
+        var sink = new Sink();
+        Log.AddSink(sink);
+        try
+        {
+            using World world = NewWorld();
+            uint car = Handle("res://models/car.glb");
+            AssetRef carRef = _assets.RefOf("res://models/car.glb");
+
+            Assert.Null(world.AssetRefOf("texture", car));        // nobody registered it
+            Assert.Equal(0u, world.AssetHandleOf("texture", carRef));
+            Assert.Null(world.AssetRefOf("model", 0));            // 0 is no asset: the converter is not asked
+            Assert.Null(world.AssetRefOf("model", 99));           // a handle the library does not know
+            Assert.Equal(0u, world.AssetHandleOf("model", default));
+            Assert.Equal(0u, world.AssetHandleOf("model", AssetRef.FromPath("res://models/gone.glb")));   // the converter finds nothing
+            Assert.Null(world.AssetRefOf("", car));
+            Assert.Equal(0u, world.AssetHandleOf("", carRef));
+
+            using World bare = NewWorld(registered: false);
+            Assert.Null(bare.AssetRefOf("model", car));
+            Assert.Equal(0u, bare.AssetHandleOf("model", carRef));
+
+            Assert.Empty(sink.Warnings);                          // asking is not a scene: no warning per call
+        }
+        finally
+        {
+            Log.RemoveSink(sink);
+        }
+    }
+
+    [Fact]
+    public void AConverterThatThrowsGivesHandleZeroAndAWarning()
+    {
+        var sink = new Sink();
+        Log.AddSink(sink);
+        try
+        {
+            using var world = new World();
+            world.RegisterAssetType("model", _ => null, _ => throw new FileNotFoundException("no such model"));
+            Assert.Equal(0u, world.AssetHandleOf("model", AssetRef.FromPath("res://models/car.glb")));
+            Assert.Contains(sink.Warnings, w => w.Contains("no such model", StringComparison.Ordinal));
+            Assert.Null(world.AssetRefOf("model", 3));   // a converter that names nothing
+        }
+        finally
+        {
+            Log.RemoveSink(sink);
+        }
+    }
 }
