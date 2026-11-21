@@ -192,4 +192,4 @@ used, a source otherwise, a mod's files). cooked XML (`XmlBinaryTests`: every fi
 ## Status and re-importing one asset
 
 `AssetImporter.StatusOf("models/car.glb")` says where one asset stands (`AssetStatus`: `NotImportable`, `NotImported`, `UpToDate`, or `Stale` when the file, its `.import.xml` or what the import read changed) and `Reimport(source)`
-imports just that asset again, leaving the rest of the index as it is. The [editor](../tools/editor.md)'s asset browser uses them.
+imports just that asset again, leaving the rest of the index as it is. The [editor](../tools/editor.md)'s asset browser uses them, and so does the editor when files are [dropped on it from the system](../tools/editor.md#bringing-files-in): it copies them into the game and calls `Reimport` for each, on a worker thread, with the import gate held so that nothing else imports at the same time.
