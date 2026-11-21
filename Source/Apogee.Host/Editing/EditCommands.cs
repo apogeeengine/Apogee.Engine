@@ -21,7 +21,10 @@ public sealed class WorldRef(Func<World> get)
 // The edits an editor makes to a world, as commands. Each keeps what it needs to undo itself: component bytes before and after, or a snapshot of an entity and its branch (which brings it back under
 // the same id, so the selection and the other commands in the history still point at it).
 
-/// <summary>Several commands that are one step.</summary>
+/// <summary>
+/// Several commands that are one step. A composite made only of <see cref="SetComponentCommand"/>s (an inspector edit of several entities) merges with a following one that sets the same components
+/// of the same entities, so the frames of one drag are one step; any other composite never merges.
+/// </summary>
 public sealed class CompositeCommand(string name, IReadOnlyList<IEditCommand> commands) : IEditCommand
 {
     public string Name => name;
@@ -42,7 +45,45 @@ public sealed class CompositeCommand(string name, IReadOnlyList<IEditCommand> co
         }
     }
 
-    public bool TryMerge(IEditCommand following) => false;
+    public bool TryMerge(IEditCommand following)
+    {
+        // All or nothing: every part of the following command has to find its own part here (the same entity and component, in whatever order) before any of them is merged.
+        if (following is not CompositeCommand other || other.Parts.Count != commands.Count || commands.Count == 0)
+        {
+            return false;
+        }
+
+        var mine = new Dictionary<(Entity, Entity), SetComponentCommand>(commands.Count);
+        foreach (IEditCommand command in commands)
+        {
+            if (command is not SetComponentCommand set || !mine.TryAdd((set.Entity, set.Component), set))
+            {
+                return false;
+            }
+        }
+
+        var pairs = new List<(SetComponentCommand Mine, SetComponentCommand Theirs)>(commands.Count);
+        var used = new HashSet<(Entity, Entity)>();
+        foreach (IEditCommand command in other.Parts)
+        {
+            if (command is not SetComponentCommand theirs || !mine.TryGetValue((theirs.Entity, theirs.Component), out SetComponentCommand? own) || !used.Add((theirs.Entity, theirs.Component)))
+            {
+                return false;
+            }
+
+            pairs.Add((own, theirs));
+        }
+
+        foreach ((SetComponentCommand own, SetComponentCommand theirs) in pairs)
+        {
+            own.TryMerge(theirs);
+        }
+
+        return true;
+    }
+
+    /// <summary>The commands this step is made of.</summary>
+    public IReadOnlyList<IEditCommand> Parts => commands;
 }
 
 /// <summary>Changes the value of a component on an entity (an inspector field). The changes of one gesture merge: the command keeps the first "before" and the last "after".</summary>
@@ -53,6 +94,12 @@ public sealed class SetComponentCommand(WorldRef worldRef, Entity entity, Entity
     private byte[] _after = after;
 
     public string Name => name;
+
+    /// <summary>The entity this command changes.</summary>
+    public Entity Entity => entity;
+
+    /// <summary>The component this command changes.</summary>
+    public Entity Component => component;
 
     /// <summary>The command for what is there now becoming <paramref name="after"/>; null when nothing changed.</summary>
     public static SetComponentCommand? Create(WorldRef worldRef, Entity entity, Entity component, ReadOnlySpan<byte> after, string name)
