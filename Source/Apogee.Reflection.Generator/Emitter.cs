@@ -64,7 +64,7 @@ internal static class Emitter
             {
                 if (other.IsFlags != first.IsFlags || !other.Members.SequenceEqual(first.Members))
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(Diagnostics.DuplicateName, Location.None, $"The enums {first.Key} and {other.Key} have the same name, {first.Name}, and different members: the registry knows an enum by its name."));
+                    context.ReportDiagnostic(Diagnostic.Create(Diagnostics.DuplicateName, other.Location ?? Location.None, $"The enums {first.Key} and {other.Key} have the same name, {first.Name}, and different members: the registry knows an enum by its name."));
                     return;
                 }
             }

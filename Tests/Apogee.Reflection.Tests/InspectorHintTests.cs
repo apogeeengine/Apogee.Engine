@@ -150,6 +150,85 @@ public sealed unsafe class InspectorHintTests
     }
 
     [Fact]
+    public void AHintAtTheEdgesOfItsRangeIsAccepted()
+    {
+        GeneratedCode code = GeneratedCode.Run(Header + """
+            namespace Fx.Edges;
+
+            public enum EdgeBig : ulong { Zero = 0, Max = ulong.MaxValue }
+            public enum EdgeNeg : sbyte { Min = -128, Neg = -1, Max = 127 }
+
+            [Component]
+            public struct Edges
+            {
+                [Property(Enum = typeof(EdgeBig))] public ulong Big;
+                [Property(Enum = typeof(EdgeNeg))] public sbyte Neg;
+                [Property(Enum = typeof(EdgeNeg))] public byte Unsigned;   // same size: the members -1 and -128 do not fit, so this is refused below
+            }
+            """, "FxEdges");
+        Diagnostic refused = Assert.Single(code.Diagnostics);
+        Assert.Equal("APG007", refused.Id);
+        Assert.Contains("Edges.Unsigned", refused.GetMessage(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
+
+        GeneratedCode fine = GeneratedCode.Run(Header + """
+            namespace Fx.EdgesOk;
+
+            public enum EdgeBigOk : ulong { Zero = 0, Max = ulong.MaxValue }
+            public enum EdgeNegOk : sbyte { Min = -128, Neg = -1, Max = 127 }
+
+            [Component]
+            public struct EdgesOk
+            {
+                [Property(Enum = typeof(EdgeBigOk))] public ulong Big;
+                [Property(Enum = typeof(EdgeNegOk))] public sbyte Neg;
+            }
+            """, "FxEdgesOk");
+        Assert.Empty(fine.Diagnostics);
+        fine.Load();
+        ComponentInfo info = TypeRegistry.FindComponent("EdgesOk")!;
+        Assert.Equal([("Big", FieldKind.UInt64, "EdgeBigOk"), ("Neg", FieldKind.Int8, "EdgeNegOk")], info.Fields.Select(f => (f.Name, f.Kind, f.Enum)));
+        Assert.Equal([("zero", 0L), ("max", -1L)], TypeRegistry.GetEnum("EdgeBigOk").Members.Select(m => (m.Name, m.Value)));
+    }
+
+    [Fact]
+    public void AnUnboundGenericEnumHintIsADiagnosticOrHarmlessButNeverACrash()
+    {
+        GeneratedCode code = GeneratedCode.Run(Header + """
+            public class Box<T> { public enum Slot : byte { A, B } }
+
+            [Component]
+            public struct Unbound { [Property(Enum = typeof(Box<>.Slot))] public byte V; }
+            """, "FxUnbound");
+
+        // Either the generator refuses it (APG007) or it describes the enum by name like any other: what it must not do is throw.
+        Assert.All(code.Diagnostics, d => Assert.Equal("APG007", d.Id));
+        if (code.Diagnostics.IsEmpty)
+        {
+            code.Load();
+            Assert.Equal("Slot", TypeRegistry.FindComponent("Unbound")!.FindField("V")!.Enum);
+        }
+    }
+
+    [Fact]
+    public void AClassPropertyEnumAndAComponentFieldEnumWithOneNameAreADiagnostic()
+    {
+        GeneratedCode code = GeneratedCode.Run(Header + """
+            namespace Fx.Clash2.One { public enum Mode2 : byte { Idle, Walk } }
+            namespace Fx.Clash2.Two { public enum Mode2 : byte { Fast, Slow } }
+
+            [ApogeeClass]
+            public partial class Walks : EngineObject { [Property] public Fx.Clash2.One.Mode2 Gait { get; set; } }
+
+            [Component]
+            public struct Clashing2 { public Fx.Clash2.Two.Mode2 Second; }
+            """, "FxClash2");
+        Diagnostic diagnostic = Assert.Single(code.Diagnostics);
+        Assert.Equal("APG003", diagnostic.Id);
+        Assert.True(diagnostic.Location.IsInSource);   // it points at an enum, not nowhere
+        Assert.Empty(code.Generated);
+    }
+
+    [Fact]
     public void ConstructionsOfOneGenericEnumShareAName()
     {
         GeneratedCode code = GeneratedCode.Run(Header + """

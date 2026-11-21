@@ -183,6 +183,7 @@ internal static class TypeMapper
                 Name = type.Name,
                 IsFlags = type.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == "System.FlagsAttribute"),
                 Doc = Analyzer.Summary(type),
+                Location = type.Locations.FirstOrDefault(l => l.IsInSource),
             };
             foreach (IFieldSymbol member in type.GetMembers().OfType<IFieldSymbol>().Where(f => f.IsConst && f.ConstantValue is not null))
             {

@@ -75,6 +75,9 @@ internal sealed class EnumModel
 
     public string? Doc { get; set; }
 
+    /// <summary>Where the enum is declared, for a diagnostic about it; null for an enum of another assembly.</summary>
+    public Location? Location { get; set; }
+
     public List<KeyValuePair<string, long>> Members { get; } = [];
 }
 
