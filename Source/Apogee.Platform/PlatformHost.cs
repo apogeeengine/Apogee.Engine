@@ -18,6 +18,7 @@ public static unsafe class PlatformHost
     private const string LogCategory = "Platform";
 
     private static readonly Dictionary<uint, Window> s_windows = [];
+    private static readonly DropCollector s_drops = new();
     private static bool s_initialized;
 
     public static bool IsInitialized => s_initialized;
@@ -29,6 +30,15 @@ public static unsafe class PlatformHost
     public static string? VideoDriver => s_initialized ? Utf8.FromPointer(SDL.GetCurrentVideoDriver()) : null;
 
     public static event RawEventCallback? RawEvent;
+
+    /// <summary>
+    /// Raised when the user drops files or folders from the operating system onto a window: once per drag-and-drop (see <see cref="FileDrop"/>), from <see cref="PumpEvents"/> on the main thread, with copies of
+    /// the paths. A handler that throws is logged and does not stop the pump.
+    /// </summary>
+    public static event Action<FileDrop>? FilesDropped;
+
+    /// <summary>Where the pointer is, in window points, while the user drags something from the operating system over a window, or null when no drag is going on (or the system gives no position).</summary>
+    public static (float X, float Y)? DragHover => s_drops.Hover;
 
     /// <summary>
     /// Initializes SDL's video, event and gamepad systems. <paramref name="videoDriver"/> forces a driver; the tests use "dummy", which has
@@ -91,6 +101,7 @@ public static unsafe class PlatformHost
         }
 
         FileDialog.Reset();
+        s_drops.Reset();
         SDL.Quit();
         s_windows.Clear();
         s_initialized = false;
@@ -107,6 +118,7 @@ public static unsafe class PlatformHost
         while (SDL.PollEvent(&sdlEvent))
         {
             RawEvent?.Invoke(in sdlEvent);
+            Deliver(s_drops.Handle(in sdlEvent));
 
             EventType type = (EventType)sdlEvent.Type;
             if (type == EventType.Quit)
@@ -120,8 +132,41 @@ public static unsafe class PlatformHost
             }
         }
 
+        Deliver(s_drops.CloseStale());
         FileDialog.Dispatch();
     }
+
+    /// <summary>Hands a finished drop to the subscribers. Application code: one that fails must not stop the pump or the next subscriber.</summary>
+    private static void Deliver(FileDrop? drop)
+    {
+        if (drop is null)
+        {
+            return;
+        }
+
+        if (FilesDropped is not { } handlers)
+        {
+            return;
+        }
+
+        // One by one: a multicast call would stop at the first handler that throws.
+        foreach (Action<FileDrop> handler in handlers.GetInvocationList())
+        {
+#pragma warning disable CA1031 // The handler is application code.
+            try
+            {
+                handler(drop);
+            }
+            catch (Exception e)
+            {
+                Log.Error(LogCategory, $"A file drop handler failed: {e}");
+            }
+#pragma warning restore CA1031
+        }
+    }
+
+    /// <summary>The test seam: feeds an event as the pump would, and delivers what it finishes.</summary>
+    internal static void HandleDropEvent(in Event sdlEvent) => Deliver(s_drops.Handle(in sdlEvent));
 
     public static void ClearQuitRequest() => QuitRequested = false;
 
