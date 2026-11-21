@@ -151,10 +151,26 @@ public sealed unsafe partial class World : EngineObject, IDisposable
     [Method]
     public string? GetName(Entity entity) => IsAlive(entity) ? Utf8.FromPointer(Flecs.GetName(Native, entity.Id)) : null;
 
+    /// <summary>
+    /// Names the entity. A name is unique among the children of one parent (and among the top-level entities): when a sibling has it, the entity gets "name 2", "name 3"… (see <see cref="UniqueName"/>),
+    /// and <see cref="GetName"/> tells what it got. An empty name takes the name away.
+    /// </summary>
     [Method]
     public void SetName(Entity entity, string name)
     {
-        fixed (byte* text = Utf8.ToZeroTerminated(name))
+        ArgumentNullException.ThrowIfNull(name);
+        if (!IsAlive(entity))
+        {
+            return;
+        }
+
+        if (name.Length == 0)
+        {
+            Flecs.RemoveId(Native, entity.Id, Flecs.MakePair(Flecs.IdentifierId, Flecs.Name));
+            return;
+        }
+
+        fixed (byte* text = Utf8.ToZeroTerminated(UniqueName(name, GetParent(entity), entity)))
         {
             Flecs.SetName(Native, entity.Id, text);
         }
@@ -163,13 +179,24 @@ public sealed unsafe partial class World : EngineObject, IDisposable
     [Method]
     public Entity GetParent(Entity entity) => new(Flecs.GetParent(Native, entity.Id));
 
-    /// <summary>Makes <paramref name="parent"/> the parent of <paramref name="entity"/> (its <see cref="Transform"/> becomes local to it), or with no parent (0) a root. It does not change the transform: set it to keep the entity where it is.</summary>
+    /// <summary>
+    /// Makes <paramref name="parent"/> the parent of <paramref name="entity"/> (its <see cref="Transform"/> becomes local to it), or with no parent (0) a root. It does not change the transform: set it
+    /// to keep the entity where it is. An entity whose name a child of the new parent has already gets a free one, as <see cref="SetName"/> gives.
+    /// </summary>
     public void SetParent(Entity entity, Entity parent)
     {
         Entity current = GetParent(entity);
         if (current.Id == parent.Id)
         {
             return;
+        }
+
+        // The name is given up for the move and taken again after it: on the way the entity is a top-level one, and if one of its name is there, Flecs would take that one's place in its name index and
+        // lose it when the entity goes on (two entities of one name in a scope are one entry). It gets a free name under the new parent if that has its name.
+        string? name = GetName(entity);
+        if (name is not null)
+        {
+            Flecs.RemoveId(Native, entity.Id, Flecs.MakePair(Flecs.IdentifierId, Flecs.Name));
         }
 
         if (current.Id != 0)
@@ -180,6 +207,11 @@ public sealed unsafe partial class World : EngineObject, IDisposable
         if (parent.Id != 0)
         {
             Flecs.AddId(Native, entity.Id, Flecs.MakePair(Flecs.ChildOf, parent.Id));
+        }
+
+        if (name is not null)
+        {
+            SetName(entity, name);
         }
     }
 

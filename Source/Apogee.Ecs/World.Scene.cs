@@ -875,13 +875,14 @@ public sealed unsafe partial class World
         PruneKept();
         var handles = new Dictionary<string, uint>(StringComparer.Ordinal);
         var notes = new LoadNotes();
+        var nameHints = new NameHints();
         for (int i = 0; i < created.Count; i++)
         {
             Entity entity = created[i];
             PlannedEntity item = items[i];
             if (item.Name is { Length: > 0 } entityName)
             {
-                TrySetName(entity, entityName);
+                TrySetName(entity, entityName, nameHints);
             }
 
             notes.Clear();
@@ -1069,25 +1070,8 @@ public sealed unsafe partial class World
 
     private string ResolveScenePath(string path) => Assets is { } assets ? assets.ResolvePath(path) : path;
 
-    private void TrySetName(Entity entity, string name)
-    {
-        Entity parent = GetParent(entity);
-        if (!IsNameFree(name, parent))
-        {
-            // The scene is loaded into a world that has an entity of that name there: the new one gets a free name.
-            for (int n = 2; ; n++)
-            {
-                string candidate = $"{name} {n}";
-                if (IsNameFree(candidate, parent))
-                {
-                    name = candidate;
-                    break;
-                }
-            }
-        }
-
-        SetName(entity, name);
-    }
+    // The name of a loaded entity: a free one when a sibling has it (one of the world's, when the scene is loaded into a populated one, or one named before it in the same scene).
+    private void TrySetName(Entity entity, string name, NameHints hints) => SetName(entity, UniqueName(name, GetParent(entity), entity, hints));
 
     private void DefineSceneComponents(XmlNode schemas)
     {

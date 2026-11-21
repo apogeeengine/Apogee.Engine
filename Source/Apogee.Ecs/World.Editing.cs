@@ -4,6 +4,7 @@ using System.Linq;
 using Apogee.Content.Xml;
 using Apogee.Core.Assets;
 using Apogee.Core.Logging;
+using Apogee.Interop;
 using Apogee.Native.Flecs;
 using Apogee.Reflection;
 using Flecs = Apogee.Native.Flecs.Ecs;
@@ -205,7 +206,7 @@ public sealed unsafe partial class World
         }
 
         string candidate = name + " (copy)";
-        for (int n = 2; !IsNameFree(candidate, parent); n++)
+        for (int n = 2; IsNameTaken(candidate, parent, default); n++)
         {
             candidate = $"{name} (copy {n})";
         }
@@ -213,21 +214,69 @@ public sealed unsafe partial class World
         return candidate;
     }
 
-    private bool IsNameFree(string name, Entity parent)
-    {
-        Entity found = parent.IsNull ? Lookup(name) : Lookup(GetName(parent) is null ? name : PathOf(parent) + "." + name);
-        return found.IsNull;
-    }
+    // ---- Names ---------------------------------------------------------------------------------------------------------------------------------
 
-    private string PathOf(Entity entity)
+    /// <summary>
+    /// The name, or "name 2", "name 3"… (the first of those that is free) when <paramref name="parent"/> (the top level when none) already has a child of that name other than
+    /// <paramref name="except"/>: what <see cref="SetName"/> gives an entity, so that a name is unique among siblings. It looks at the children of that one parent, as Flecs keeps them: not at the
+    /// whole world, so the entities of the engine (there is one called "Empty") do not count. Names are compared as they are written: "Lamp" and "lamp" are two names.
+    /// </summary>
+    /// <param name="name">The name wanted. An empty one is no name, and is returned as it is.</param>
+    /// <param name="parent">The parent the entity has or will have; none for the top level.</param>
+    /// <param name="except">The entity that is being named, whose own current name does not count.</param>
+    public string UniqueName(string name, Entity parent = default, Entity except = default) => UniqueName(name, parent, except, null);
+
+    internal string UniqueName(string name, Entity parent, Entity except, NameHints? hints)
     {
-        var names = new Stack<string>();
-        for (Entity current = entity; !current.IsNull; current = GetParent(current))
+        ArgumentNullException.ThrowIfNull(name);
+        if (name.Length == 0 || !IsNameTaken(name, parent, except))
         {
-            names.Push(GetName(current) ?? current.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return name;
         }
 
-        return string.Join('.', names);
+        // Within one load nothing is freed: the suffixes already given for this name under this parent are still taken, and the search goes on after them (many entities of one name are not quadratic).
+        int n = hints?.Next(parent, name) ?? 2;
+        string candidate = $"{name} {n}";
+        while (IsNameTaken(candidate, parent, except))
+        {
+            n++;
+            candidate = $"{name} {n}";
+        }
+
+        hints?.Used(parent, name, n);
+        return candidate;
+    }
+
+    // Whether a child of the parent (a top-level entity when none) has the name, apart from `except`. Any entity counts, an editor's helper or one of the engine's own that Flecs keeps at the top level
+    // (a component, a system) as much as a user's: Flecs keeps one entity of a name in a scope, and a second one would take the first's place in its index and leave it unfound.
+    private bool IsNameTaken(string name, Entity parent, Entity except)
+    {
+        Entity found = FindChildNamed(parent, name);
+        return !found.IsNull && found != except;
+    }
+
+    // The child of the parent (the top level when none) that has the name, from the name index Flecs keeps for that one scope: not ecs_lookup, which also searches the engine's modules (where "Empty"
+    // is) and reads a path.
+    private Entity FindChildNamed(Entity parent, string name)
+    {
+        if (name.Length > 0 && name[0] == '#' && name.AsSpan(1).IndexOfAnyExceptInRange('0', '9') < 0)
+        {
+            // Flecs reads such a name as an entity id: the siblings are looked at one by one.
+            foreach (Entity sibling in parent.IsNull ? Roots() : Children(parent))
+            {
+                if (GetName(sibling) == name)
+                {
+                    return sibling;
+                }
+            }
+
+            return default;
+        }
+
+        fixed (byte* text = Utf8.ToZeroTerminated(name))
+        {
+            return new Entity(Flecs.LookupChild(Native, parent.Id, text));
+        }
     }
 
     /// <summary>
@@ -437,7 +486,8 @@ public sealed unsafe partial class World
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        // Alive again, with the names cleared first (a name has to be unique among siblings, and two entities may have swapped theirs).
+        // Alive again, with the names cleared first (a name has to be unique among siblings, and two entities may have swapped theirs) and taken out of their parents: the parents are set one by one after, and
+        // two entities that swapped places (A under B before, B under A in the snapshot) would be each other's parent for a moment, which Flecs does not survive.
         foreach (EntityState state in snapshot.Entities)
         {
             var entity = new Entity(state.Id);
@@ -447,6 +497,10 @@ public sealed unsafe partial class World
             }
 
             Flecs.RemoveId(Native, state.Id, Flecs.MakePair(Flecs.IdentifierId, Flecs.Name));
+            if (GetParent(entity) is { IsNull: false } current)
+            {
+                Flecs.RemoveId(Native, state.Id, Flecs.MakePair(Flecs.ChildOf, current.Id));
+            }
         }
 
         bool sameWorld = ReferenceEquals(snapshot.Origin, _origin);
