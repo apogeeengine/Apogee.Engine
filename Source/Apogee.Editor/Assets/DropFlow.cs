@@ -249,9 +249,12 @@ public sealed class DropFlow(Func<EditorProject?> current, IDropSurface surface,
 
         if (plan.Files.Count == 0)
         {
-            tell(plan.Refused.Count > 0
-                ? "Nothing was added:\n" + string.Join("\n", plan.Refused.Take(5).Select(r => $"{System.IO.Path.GetFileName(r.Path)}: {r.Reason}")) + (plan.Refused.Count > 5 ? "\n(the console lists them all)" : "")
-                : "Nothing was added: every file is in the project already.");
+            // Only a drop that was refused needs the user's attention; one the user chose to skip is in the console already.
+            if (plan.Refused.Count > 0)
+            {
+                tell("Nothing was added:\n" + string.Join("\n", plan.Refused.Take(5).Select(r => $"{System.IO.Path.GetFileName(r.Path)}: {r.Reason}")) + (plan.Refused.Count > 5 ? "\n(the console lists them all)" : ""));
+            }
+
             return;
         }
 
