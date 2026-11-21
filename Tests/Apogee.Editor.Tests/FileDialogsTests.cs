@@ -98,7 +98,9 @@ public sealed class FileDialogsTests
 
         Assert.Single(messages);
         Assert.Contains("outside the game folder", messages[0]);
-        Assert.Contains(Game(rig).Replace('\\', '/'), messages[0]); // the message names the folder with forward slashes on every OS
+        // The message names the folder with forward slashes on every OS; Windows and macOS file systems ignore case, so the comparison does too (and prints both strings: the test runner shortens them).
+        string folder = Game(rig).Replace('\\', '/');
+        Assert.True(messages[0].Contains(folder, StringComparison.OrdinalIgnoreCase), $"expected '{folder}' in '{messages[0]}'");
         Assert.Null(rig.Project.ScenePath);
         Assert.False(File.Exists(outside));
     }

@@ -316,7 +316,7 @@ public sealed class PreferencesTests : IDisposable
         IReadOnlyList<string> problems = Open().AttachKeymap(keymap);
 
         string problem = Assert.Single(problems);
-        Assert.Contains("Ctrl+Z", problem);
+        Assert.Contains(KeyChord.Parse("Ctrl+Z").ToString(), problem); // Cmd+Z on a Mac: the message uses the label of the platform
         Assert.Contains("file.save", problem);
         Assert.Contains("edit.undo", problem);
         Assert.Equal([KeyChord.Parse("Ctrl+Z")], keymap.Bindings("file.save")); // reported, not refused
