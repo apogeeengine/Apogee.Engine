@@ -144,6 +144,35 @@ public sealed class ClipboardTests
     }
 
     [Fact]
+    public void ANameIsOnlyChangedWhenASiblingHasIt()
+    {
+        // The engine has an entity called "Empty" too (in Flecs' core module): it is nobody's sibling, so a pasted "Empty" keeps its name when no sibling has it.
+        using var rig = new ProjectRig();
+        EditorProject project = rig.Project;
+        World world = rig.World;
+        var clipboard = new MemoryClipboard();
+        Entity source = project.CreateEmpty();
+        Entity child = project.CreateEmpty(source);
+        project.Selected.Set([child]);
+        project.Copy(clipboard);
+
+        Entity first = Assert.Single(project.Paste(clipboard, default(Entity)));
+        Assert.Equal("Empty 2", world.GetName(first));                                   // the root "Empty" is a sibling
+
+        world.SetName(source, "Source");
+        Entity second = Assert.Single(project.Paste(clipboard, default(Entity)));
+        Assert.Equal("Empty", world.GetName(second));                                    // no sibling has it now
+        Entity third = Assert.Single(project.Paste(clipboard, default(Entity)));
+        Assert.Equal("Empty 3", world.GetName(third));
+        Assert.Equal(["Source", "Empty 2", "Empty", "Empty 3"], Names(world, world.Roots()));
+
+        project.History.Undo();
+        project.History.Undo();
+        Assert.Equal(["Source", "Empty 2"], Names(world, world.Roots()));
+        Assert.Equal("Empty", world.GetName(Assert.Single(project.Paste(clipboard, default(Entity)))));
+    }
+
+    [Fact]
     public void ReferencesInsideTheCopyFollowItAndOutsideOnesAreDropped()
     {
         using var rig = new ProjectRig();
