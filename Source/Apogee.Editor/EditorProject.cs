@@ -404,24 +404,7 @@ public sealed class EditorProject : IDisposable
     // ---- Edits: each is a command, so each can be undone ----
 
     /// <summary>A name that no sibling under <paramref name="parent"/> has: <paramref name="baseName"/>, then "baseName 2", "baseName 3".</summary>
-    public string UniqueName(string baseName, Entity parent = default)
-    {
-        IEnumerable<Entity> siblings = parent.IsNull ? World.Roots() : World.Children(parent);
-        HashSet<string?> taken = [.. siblings.Select(World.GetName)];
-        if (!taken.Contains(baseName))
-        {
-            return baseName;
-        }
-
-        for (int n = 2; ; n++)
-        {
-            string candidate = $"{baseName} {n}";
-            if (!taken.Contains(candidate))
-            {
-                return candidate;
-            }
-        }
-    }
+    public string UniqueName(string baseName, Entity parent = default) => World.UniqueName(baseName, parent);
 
     private Entity Make(string name, Entity parent, Double3 at, Action<Entity>? configure = null)
     {
@@ -576,12 +559,8 @@ public sealed class EditorProject : IDisposable
         }
 
         string name = tops.Count == 1 ? "Paste " + (tops[0].Attribute("name") ?? "entity") : $"Paste {tops.Count} entities";
-        var command = new CreateEntitiesCommand(_worldRef, name, () =>
-        {
-            List<Entity> roots = ClipboardScene.RootsOf(World, World.LoadScene(scene, under), under);
-            NameUniquely(roots, [.. tops.Select(node => node.Attribute("name"))], under);
-            return roots;
-        });
+        // The loader gives each pasted root a name that is free among the siblings that were there and the roots before it.
+        var command = new CreateEntitiesCommand(_worldRef, name, () => ClipboardScene.RootsOf(World, World.LoadScene(scene, under), under));
         try
         {
             History.Execute(command);
@@ -595,38 +574,6 @@ public sealed class EditorProject : IDisposable
         History.Seal();
         Selected.Set(command.Entities);
         return command.Entities;
-    }
-
-    // Gives pasted roots the names the scene text had (`names`, in the same order), made unique among the siblings that were there and the roots before them. The scene loader checks a name with a lookup
-    // that also finds the engine's own entities (there is one called "Empty"), so it can turn a free name into "Empty 2"; here the siblings' names decide.
-    private void NameUniquely(List<Entity> roots, IReadOnlyList<string?> names, Entity under)
-    {
-        if (roots.Count != names.Count)
-        {
-            return;
-        }
-
-        IEnumerable<Entity> siblings = under.IsNull ? World.Roots() : World.Children(under);
-        HashSet<string?> taken = [.. siblings.Where(s => !roots.Contains(s)).Select(World.GetName)];
-        for (int i = 0; i < roots.Count; i++)
-        {
-            if (names[i] is not { Length: > 0 } baseName)
-            {
-                continue;
-            }
-
-            string chosen = baseName;
-            for (int n = 2; taken.Contains(chosen); n++)
-            {
-                chosen = $"{baseName} {n}";
-            }
-
-            taken.Add(chosen);
-            if (World.GetName(roots[i]) != chosen)
-            {
-                World.SetName(roots[i], chosen);
-            }
-        }
     }
 
     /// <summary>
