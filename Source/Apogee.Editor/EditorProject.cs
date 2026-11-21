@@ -10,6 +10,7 @@ using Apogee.Content.Xml;
 using Apogee.Core.Logging;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
+using Apogee.Editor.Assets;
 using Apogee.Editor.Editing;
 using Apogee.Host;
 using Apogee.Host.Editing;
@@ -96,6 +97,15 @@ public sealed class EditorProject : IDisposable
 
     /// <summary>Raised after the session was replaced (Play, Stop): what was made from the old one (renderers, the world they read) has to be made again.</summary>
     public event Action? SessionReplaced;
+
+    /// <summary>
+    /// "An importer is running" (see <see cref="Assets.ImportGate"/>): the hot reloader's import in <see cref="Update"/>, an import job and the asset browser's re-import take it one at a time, because they all
+    /// write <c>imported/index.xml</c>.
+    /// </summary>
+    public ImportGate ImportGate { get; } = new();
+
+    /// <summary>The import of dropped files that is running or has just ended (its report not taken yet), or null. See <see cref="TryStartImport"/>.</summary>
+    public ImportJob? Job { get; private set; }
 
     private ScriptSession Start(bool runScripts, string? scene, bool realAudio) =>
         ScriptSession.StartGame(GameFolder, UserFolder, watch: true, realAudio: realAudio, realSteam: false, runScripts: runScripts, scene: scene);
@@ -229,6 +239,47 @@ public sealed class EditorProject : IDisposable
     /// <summary>The scene files of the game (every <c>.ascene</c> under <c>res://</c>), as virtual paths.</summary>
     public List<string> SceneFiles() => [.. Session.Files!.EnumerateFiles("res://", "*.ascene", recursive: true).Order(StringComparer.Ordinal)];
 
+    // ---- Importing dropped files ----
+
+    /// <summary>
+    /// Starts <paramref name="plan"/> on a worker thread: it copies the files into the project and imports them (see <see cref="ImportJob"/>). Refused, with the reason, while playing (the game has the files
+    /// open and the session is about to be replaced), while another import is running, or when the project has no writable file system. While the job runs the hot reloader is not polled, so two importers
+    /// never write the import index at once; when it ends, the next <see cref="Update"/> lets the reloader catch up (the artifacts are current, so it only reloads what the files changed).
+    /// </summary>
+    public bool TryStartImport(DropPlan plan, out ImportJob? job, out string? problem)
+    {
+        job = null;
+        if (IsPlaying)
+        {
+            problem = "Files cannot be added while the game is playing. Stop it first.";
+        }
+        else if (Session.Files is not { } files)
+        {
+            problem = "The game has no file system to add files to.";
+        }
+        else if (!ImportGate.TryEnter())
+        {
+            problem = "An import is already running. Wait for it to end.";
+        }
+        else
+        {
+            problem = null;
+            job = Job = new ImportJob(files, ScriptSession.Importers, new ProjectDropTargets(files, GameFolder), plan, ImportGate.Exit);
+            job.Start();
+        }
+
+        return problem is null;
+    }
+
+    /// <summary>Forgets the ended job (its report was taken).</summary>
+    public void ReleaseJob()
+    {
+        if (Job is { IsEnded: true })
+        {
+            Job = null;
+        }
+    }
+
     // ---- Play ----
 
     /// <summary>Runs the game's packages over a copy of the scene. Returns false (and says why in <see cref="PlayError"/>) when the game's scripts failed: the editor is back in editing, as it was.</summary>
@@ -240,6 +291,12 @@ public sealed class EditorProject : IDisposable
         }
 
         PlayError = null;
+        if (ImportGate.IsHeld)
+        {
+            PlayError = "Files are being imported. Play when the import has ended.";
+            return false;
+        }
+
         // The selection is kept as ids, alive or not: an entity can be gone in the play world and back after Stop.
         _beforePlay = World.Snapshot();
         string scene = World.SaveScene();
@@ -307,7 +364,19 @@ public sealed class EditorProject : IDisposable
     /// <summary>Called every frame: a run that is not paused advances; an editing session lets assets that changed on disk reload.</summary>
     public void Update(float deltaSeconds)
     {
-        Session.Reload();
+        // The reloader imports what changed, on this thread; an import job imports on its own. Never both: while the job holds the gate the reloader waits (what it noticed is kept for later).
+        if (ImportGate.TryEnter())
+        {
+            try
+            {
+                Session.Reload();
+            }
+            finally
+            {
+                ImportGate.Exit();
+            }
+        }
+
         if (IsPlaying && !IsPaused)
         {
             Session.Progress(deltaSeconds);
@@ -547,6 +616,43 @@ public sealed class EditorProject : IDisposable
         }
     }
 
+    /// <summary>
+    /// Makes one entity per model file, each at its position, as one step ("Add car", "Add 3 models"), and selects them. A model that does not load is left out with a message on the console. Nothing
+    /// happens while playing. Returns the new entities.
+    /// </summary>
+    public IReadOnlyList<Entity> CreateModels(IReadOnlyList<(string Path, Double3 At)> models)
+    {
+        if (IsPlaying)
+        {
+            return [];
+        }
+
+        var loaded = new List<(uint Id, string Name, Double3 At)>();
+        foreach ((string path, Double3 at) in models)
+        {
+            try
+            {
+                loaded.Add((Session.Models.Load(path), VfsPath.FileName(path) is { } file ? Path.GetFileNameWithoutExtension(file) : "Model", at));
+            }
+            catch (Exception e) when (e is ContentException or IOException)
+            {
+                Log.Error("Editor", $"{path} could not be loaded: {e.Message}");
+            }
+        }
+
+        if (loaded.Count == 0)
+        {
+            return [];
+        }
+
+        string name = loaded.Count == 1 ? "Add " + loaded[0].Name : $"Add {loaded.Count} models";
+        var command = new CreateEntitiesCommand(_worldRef, name, () => [.. loaded.Select(m => Make(UniqueName(m.Name), default, m.At, e => World.Set(e, new ModelRenderer { Model = m.Id })))]);
+        History.Execute(command);
+        History.Seal();
+        Selected.Set(command.Entities);
+        return command.Entities;
+    }
+
     public void Delete(Entity entity) => Delete([entity]);
 
     /// <summary>
@@ -653,6 +759,16 @@ public sealed class EditorProject : IDisposable
         }
 
         _disposed = true;
+        if (Job is { } job)
+        {
+            // The worker uses the project's files: it is stopped (at its next file) and waited for before the session goes.
+            job.Cancel();
+            if (!job.Wait(TimeSpan.FromMinutes(5)))
+            {
+                Log.Error("Editor", "The import did not end within five minutes; the project is closed anyway.");
+            }
+        }
+
         Session.Dispose();
     }
 }
