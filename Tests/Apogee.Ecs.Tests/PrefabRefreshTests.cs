@@ -455,7 +455,27 @@ public sealed class PrefabRefreshTests : PrefabTestBase
     }
 
     [Fact]
-    public void AnInstanceUpdatesWhenItsPrefabWasDroppedAndHandedBackByAnotherLibrary()
+    public void AReferenceToAMemberThePrefabDroppedIsKeptAndComesBackWithIt()
+    {
+        World.LoadScene(TwoLamps());
+        Entity switchEntity = World.Lookup("Switch");
+        World.Set(switchEntity, World.Get<Marks>(switchEntity) with { Target = Child(World.Lookup("Lamp"), "Base") });
+        string mended = Read("prefabs/lamp.aprefab");
+
+        ChangeLamp(text => Replace(text, BaseLamp, ""));
+
+        Assert.Equal(default, World.Get<Marks>(switchEntity).Target);                            // the entity is gone, so the field is empty...
+        string saved = World.SaveScene();
+        Assert.Contains("Target=\"2/3\"", saved, StringComparison.Ordinal);                      // ...but it remembers where it pointed
+
+        Write("prefabs/lamp.aprefab", mended);
+        using World again = OtherWorld();
+        again.LoadScene(saved);
+        Assert.Equal(Child(again, again.Lookup("Lamp"), "Base"), again.Get<Marks>(again.Lookup("Switch")).Target);
+    }
+
+    [Fact]
+    public void AWorldThatChangesLibraryForgetsWhatItWasWaitingFor()
     {
         // A world that has been told its library changed, then moved to another one, forgets what it was waiting for: the handles mean nothing in the new one.
         World.LoadScene(TwoLamps());

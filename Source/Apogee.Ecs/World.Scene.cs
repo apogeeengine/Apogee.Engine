@@ -636,7 +636,9 @@ public sealed unsafe partial class World
             return plan.TryAddress(named.Root, out string? root) ? root + "/" + named.Text : null;
         }
 
-        return KeptAddress(plan, named.Text);
+        // What names an entity a kept element of another instance adds: an update of this one alone has no such element to number it by, and the number it was written with is one nothing else has (see
+        // World.PrefabRefresh.cs), so it is written as it is and means the same when it is read again.
+        return KeptAddress(plan, named.Text) ?? (plan.Externals is not null && EntityAddress.IsValid(named.Text) ? named.Text : null);
     }
 
     // An address that starts with the number of an entity a kept element adds (`7`, or `7/2` inside an instance it adds), for this document: the new number of that entity, and what follows it as it was.

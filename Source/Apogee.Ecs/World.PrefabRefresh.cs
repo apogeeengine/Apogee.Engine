@@ -395,16 +395,19 @@ public sealed unsafe partial class World
             return;
         }
 
+        // What each dropped entity was called: the nearest entity above it in the document that stays (the instance's root, or an instance added below it) and what follows that one's address; one that is
+        // below none (an entity a kept element adds) by its number alone.
+        var droppedIds = new HashSet<ulong>(dropped.Select(static entity => entity.Id));
         var named = new Dictionary<ulong, DanglingRef>();
-        string below = update.RootAddress + "/";
         foreach ((string address, Entity entity) in update.Living)
         {
-            if (dropped.Contains(entity))
+            if (droppedIds.Contains(entity.Id))
             {
-                named[entity.Id] = address.StartsWith(below, StringComparison.Ordinal) ? new DanglingRef(update.Root.Id, address[below.Length..]) : new DanglingRef(0, address);
+                named[entity.Id] = NameBelowSurvivor(address, update.Living, droppedIds);
             }
         }
 
+        RetargetKeptReferences(named);
         var inside = new HashSet<ulong>(bound.Select(static entity => entity.Id));
         foreach (Entity entity in UserEntities())
         {
@@ -437,6 +440,77 @@ public sealed unsafe partial class World
                 }
             }
         }
+    }
+
+    // The elements kept aside in any instance of the world may name an entity that was just destroyed (KeptData.Token and its id): they name it by its place instead, as a load of the same text leaves them.
+    private void RetargetKeptReferences(Dictionary<ulong, DanglingRef> named)
+    {
+        foreach ((ulong owner, KeptData held) in _kept.ToList())
+        {
+            List<XmlNode>? changed = null;
+            for (int i = 0; i < held.Unapplied.Count; i++)
+            {
+                XmlNode copy = held.Unapplied[i].Clone(); // what is kept is shared with snapshots and clones: never changed
+                if (Retarget(copy, named))
+                {
+                    changed ??= [.. held.Unapplied];
+                    changed[i] = copy;
+                }
+            }
+
+            if (changed is not null)
+            {
+                _kept[owner] = new KeptData { Unapplied = changed, RawPrefab = held.RawPrefab, Assets = held.Assets, Refs = held.Refs };
+            }
+        }
+    }
+
+    private static bool Retarget(XmlNode node, Dictionary<ulong, DanglingRef> named)
+    {
+        bool any = false;
+        if (node.Name is "Entity" or "Override")
+        {
+            foreach (XmlNode child in node.Children)
+            {
+                any |= Retarget(child, named);
+            }
+
+            return any;
+        }
+
+        for (int i = 0; i < node.Attributes.Count; i++)
+        {
+            XmlProperty attribute = node.Attributes[i];
+            if (attribute.Value.Length < 2 || attribute.Value[0] != KeptData.Token)
+            {
+                continue;
+            }
+
+            int slash = attribute.Value.IndexOf('/', StringComparison.Ordinal);
+            ReadOnlySpan<char> id = slash < 0 ? attribute.Value.AsSpan(1) : attribute.Value.AsSpan(1, slash - 1);
+            if (ulong.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out ulong entity) && named.TryGetValue(entity, out DanglingRef? now))
+            {
+                string rest = slash < 0 ? "" : attribute.Value[slash..];
+                string text = now.Root != 0 ? KeptData.Token + now.Root.ToString(CultureInfo.InvariantCulture) + "/" + now.Text + rest : now.Text + rest;
+                node.Attributes[i] = attribute with { Value = text };
+                any = true;
+            }
+        }
+
+        return any;
+    }
+
+    private static DanglingRef NameBelowSurvivor(string address, Dictionary<string, Entity> living, HashSet<ulong> dropped)
+    {
+        for (int slash = address.LastIndexOf('/'); slash > 0; slash = address.LastIndexOf('/', slash - 1))
+        {
+            if (living.TryGetValue(address[..slash], out Entity above) && !dropped.Contains(above.Id))
+            {
+                return new DanglingRef(above.Id, address[(slash + 1)..]);
+            }
+        }
+
+        return new DanglingRef(0, address);
     }
 
     private void RememberReference(Entity entity, string component, string field, DanglingRef reference)
