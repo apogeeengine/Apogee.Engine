@@ -97,6 +97,7 @@ public sealed unsafe partial class World : EngineObject, IDisposable
 
     protected override void OnDestroyed()
     {
+        StopFollowingPrefabs();
         foreach (Query query in new List<Query>(_queries))
         {
             query.Dispose();

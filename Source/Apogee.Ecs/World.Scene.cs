@@ -121,7 +121,12 @@ public sealed unsafe partial class World
         // The entity's number in the file is its place in the order the document is walked, parents before children, instances' own entities left out (they are named by their place in the instance).
         // A node is nested in the node of its parent, so the nesting follows the order and the order is what a loaded scene is created in: a saved scene saves again to the same text.
         int number = 0;
-        SavePlan plan = PlanSave(roots, _ => ++number, default);
+        return WriteScene(PlanSave(roots, _ => ++number, default), roots);
+    }
+
+    // The planned entities as a Scene element.
+    private XmlNode WriteScene(SavePlan plan, IReadOnlyList<Entity> roots)
+    {
         (List<XmlNode> top, XmlNode? schemas) = WritePlanned(plan, roots);
         var scene = new XmlNode(SceneRoot);
         scene.SetAttribute("version", (plan.Instances.Count > 0 ? SceneVersionWithInstances : SceneVersion).ToString(CultureInfo.InvariantCulture));
@@ -178,6 +183,34 @@ public sealed unsafe partial class World
         /// <summary>The address entity fields use for each entity written: its number, or its place in its instance.</summary>
         public Dictionary<ulong, string> AddressOf { get; } = [];
 
+        /// <summary>
+        /// When set, an entity field that names a live entity this document does not hold is written as a number nothing else has, and the entity is recorded here by that number, instead of being left
+        /// out. A save for a file or the clipboard leaves such references out (what is written must stand on its own); an update of an instance in place needs them to put the entity back where it was.
+        /// </summary>
+        public Dictionary<string, Entity>? Externals { get; init; }
+
+        /// <summary>Whether an entity is alive (for <see cref="Externals"/>).</summary>
+        public Func<Entity, bool>? IsAlive { get; init; }
+
+        /// <summary>The address an entity field uses for the entity with this id: the entity's own, or (see <see cref="Externals"/>) a number made up for one the document does not hold; false for neither.</summary>
+        public bool TryAddress(ulong target, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? address)
+        {
+            if (AddressOf.TryGetValue(target, out address))
+            {
+                return true;
+            }
+
+            if (Externals is null || target == 0 || IsAlive?.Invoke(new Entity(target)) != true)
+            {
+                return false;
+            }
+
+            address = Number(default).ToString(CultureInfo.InvariantCulture);
+            AddressOf[target] = address;
+            Externals[address] = new Entity(target);
+            return true;
+        }
+
         /// <summary>The children of each entity written, as they were when planned.</summary>
         public Dictionary<ulong, List<Entity>> Kids { get; } = [];
 
@@ -209,9 +242,9 @@ public sealed unsafe partial class World
 
     // Walks the entities of `roots` and everything below them in the order they are written. `number` gives the number of an entity the document holds itself; `fileRoot` is the one entity that is
     // never an instance (the root of a prefab file being saved).
-    private SavePlan PlanSave(IReadOnlyList<Entity> roots, Func<Entity, int> number, Entity fileRoot)
+    private SavePlan PlanSave(IReadOnlyList<Entity> roots, Func<Entity, int> number, Entity fileRoot, Dictionary<string, Entity>? outside = null)
     {
-        var plan = new SavePlan(number, fileRoot, NewExpander(new ExpansionBudget(MaxLoadEntities)));
+        var plan = new SavePlan(number, fileRoot, NewExpander(new ExpansionBudget(MaxLoadEntities))) { Externals = outside, IsAlive = outside is null ? null : IsAlive };
         PruneKept();
         foreach (Entity root in roots)
         {
@@ -571,7 +604,7 @@ public sealed unsafe partial class World
             {
                 // A reference to another entity of the document is its address; to anything else, nothing.
                 ulong target = *(ulong*)at;
-                return plan.AddressOf.TryGetValue(target, out string? address) ? address : target == 0 ? DanglingText(entity, info.Name, field.Name, plan) : null;
+                return plan.TryAddress(target, out string? address) ? address : target == 0 ? DanglingText(entity, info.Name, field.Name, plan) : null;
             }
 
             case FieldKind.AssetRef:
@@ -600,7 +633,7 @@ public sealed unsafe partial class World
 
         if (named.Root != 0)
         {
-            return plan.AddressOf.TryGetValue(named.Root, out string? root) ? root + "/" + named.Text : null;
+            return plan.TryAddress(named.Root, out string? root) ? root + "/" + named.Text : null;
         }
 
         return KeptAddress(plan, named.Text);
@@ -721,7 +754,7 @@ public sealed unsafe partial class World
 
         int slash = text.IndexOf('/', StringComparison.Ordinal);
         ReadOnlySpan<char> id = slash < 0 ? text.AsSpan(1) : text.AsSpan(1, slash - 1);
-        if (!ulong.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out ulong entity) || !plan.AddressOf.TryGetValue(entity, out string? address))
+        if (!ulong.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out ulong entity) || !plan.TryAddress(entity, out string? address))
         {
             return "";
         }
@@ -881,44 +914,112 @@ public sealed unsafe partial class World
     // free), then the names and components, and last the links to prefabs.
     private List<Entity> Create(ScenePlan plan, Entity parent)
     {
+        DefinePlanned(plan);
+        List<Entity> created = Bind(plan, null, null);
+        Reparent(plan, created, parent);
+        Fill(plan, created, null, null);
+        NoteMadeWhileUpdatesWait(created);
+        return created;
+    }
+
+    // The components the scripts defined in the documents of a plan, defined before any field is read.
+    private void DefinePlanned(ScenePlan plan)
+    {
         foreach (XmlNode schemas in plan.Schemas)
         {
             DefineSceneComponents(schemas);
         }
+    }
 
-        List<PlannedEntity> items = plan.Items;
-        var created = new List<Entity>(items.Count);
-        for (int i = 0; i < items.Count; i++)
+    // The entity of each item of the plan, in order: a new one, or, for an update in place, the one that is already there at the item's address (`living`: the entities of the document that is being
+    // updated by their address). An address that no item claims (see ScenePlan.Addresses) binds nothing, and one entity is bound once. `made` collects the entities that were made.
+    private List<Entity> Bind(ScenePlan plan, Dictionary<string, Entity>? living, List<Entity>? made)
+    {
+        var existing = new Dictionary<int, Entity>();
+        var taken = new HashSet<ulong>();
+        if (living is not null)
         {
-            created.Add(CreateEntity());
-        }
-
-        for (int i = 0; i < created.Count; i++)
-        {
-            Entity under = items[i].Parent >= 0 ? created[items[i].Parent] : parent;
-            if (!under.IsNull)
+            foreach ((string address, int at) in plan.Addresses)
             {
-                SetParent(created[i], under);
+                if (living.TryGetValue(address, out Entity found) && taken.Add(found.Id))
+                {
+                    existing[at] = found;
+                }
             }
         }
 
+        var bound = new List<Entity>(plan.Items.Count);
+        for (int i = 0; i < plan.Items.Count; i++)
+        {
+            if (!existing.TryGetValue(i, out Entity entity))
+            {
+                entity = CreateEntity();
+                made?.Add(entity);
+            }
+
+            bound.Add(entity);
+        }
+
+        return bound;
+    }
+
+    // Puts each entity under the one its item says (the caller's `parent` for the top ones, which an update in place leaves where they are).
+    private void Reparent(ScenePlan plan, List<Entity> bound, Entity parent)
+    {
+        for (int i = 0; i < bound.Count; i++)
+        {
+            Entity under = plan.Items[i].Parent >= 0 ? bound[plan.Items[i].Parent] : parent;
+            if (!under.IsNull)
+            {
+                SetParent(bound[i], under);
+            }
+        }
+    }
+
+    // Gives every entity of the plan its name, components and links to prefabs. Every entity is there already, so that entity fields can refer to the ones that come later, and so are the parents (they decide
+    // whether a name is free). `living` are the ids of the entities that were there before (an update in place): their name and components are made to be what the plan says, and a component of
+    // them that the plan does not have is removed; `outside` are the entities an address of the plan names that are not in it (see SavePlan.Externals).
+    private void Fill(ScenePlan plan, List<Entity> bound, HashSet<ulong>? living, Dictionary<string, Entity>? outside)
+    {
+        List<PlannedEntity> items = plan.Items;
         var byAddress = new Dictionary<string, Entity>(plan.Addresses.Count, StringComparer.Ordinal);
         foreach ((string address, int at) in plan.Addresses)
         {
-            byAddress[address] = created[at];
+            byAddress[address] = bound[at];
+        }
+
+        if (outside is not null)
+        {
+            foreach ((string address, Entity entity) in outside)
+            {
+                byAddress.TryAdd(address, entity);
+            }
         }
 
         PruneKept();
+        if (living is not null)
+        {
+            ClearNamesThatChange(items, bound, living); // two entities may swap names: none may be in the way of the other
+        }
+
         var handles = new Dictionary<string, uint>(StringComparer.Ordinal);
         var notes = new LoadNotes();
         var nameHints = new NameHints();
-        for (int i = 0; i < created.Count; i++)
+        for (int i = 0; i < bound.Count; i++)
         {
-            Entity entity = created[i];
+            Entity entity = bound[i];
             PlannedEntity item = items[i];
+            bool isOld = living?.Contains(entity.Id) == true;
             if (item.Name is { Length: > 0 } entityName)
             {
                 TrySetName(entity, entityName, nameHints);
+            }
+
+            if (isOld)
+            {
+                RemoveComponentsThePlanLacks(entity, item);
+                Remove<PrefabInstance>(entity);
+                Remove<PrefabMember>(entity);
             }
 
             notes.Clear();
@@ -929,8 +1030,37 @@ public sealed unsafe partial class World
 
             LinkToPrefabs(entity, item, handles, byAddress, notes);
         }
+    }
 
-        return created;
+    // Takes the name off the old entities that are about to be named something else (or nothing).
+    private void ClearNamesThatChange(List<PlannedEntity> items, List<Entity> bound, HashSet<ulong> living)
+    {
+        for (int i = 0; i < bound.Count; i++)
+        {
+            string wanted = items[i].Name ?? "";
+            if (living.Contains(bound[i].Id) && GetName(bound[i]) is { } current && current != wanted)
+            {
+                SetName(bound[i], "");
+            }
+        }
+    }
+
+    // An old entity of an update in place has what the plan says and nothing the plan does not say: the components scenes save that it has and the plan does not are removed.
+    private void RemoveComponentsThePlanLacks(Entity entity, PlannedEntity item)
+    {
+        var wanted = new HashSet<string>(StringComparer.Ordinal);
+        foreach (XmlNode component in item.Components)
+        {
+            wanted.Add(component.Name);
+        }
+
+        foreach ((Entity id, ComponentInfo info) in ComponentsOf(entity))
+        {
+            if (!IsSceneSkipped(info.Name) && !wanted.Contains(info.Name))
+            {
+                Remove(entity, id);
+            }
+        }
     }
 
     // What ties an entity to the prefabs it came from: its id in the prefab file that holds it, the instance it is the root of, and what its instance element could not apply (kept as written, as copies:
@@ -978,6 +1108,10 @@ public sealed unsafe partial class World
         if (unapplied is not null || item.RawPrefab is not null || notes.Assets is not null || notes.Refs is not null)
         {
             _kept[entity.Id] = new KeptData { Unapplied = unapplied ?? [], RawPrefab = item.RawPrefab, Assets = notes.Assets, Refs = notes.Refs };
+        }
+        else
+        {
+            _kept.Remove(entity.Id); // an entity that is updated in place had what its old document said; this one says none of it
         }
     }
 
@@ -1203,7 +1337,12 @@ public sealed unsafe partial class World
                 }
             }
 
-            SetPointer(entity, id, info.Size, bytes);
+            // What an entity that is updated in place already has is left alone: nothing is told that something was set when it was not changed.
+            byte* current = GetPointer(entity, id);
+            if (current is null || !new ReadOnlySpan<byte>(current, info.Size).SequenceEqual(new ReadOnlySpan<byte>(bytes, info.Size)))
+            {
+                SetPointer(entity, id, info.Size, bytes);
+            }
         }
     }
 

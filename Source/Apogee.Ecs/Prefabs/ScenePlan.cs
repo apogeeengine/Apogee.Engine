@@ -43,6 +43,9 @@ internal sealed class PlannedEntity
     /// <summary>Why the instance could not be made from its prefab (it is the root alone), or null.</summary>
     public string? MissingReason { get; init; }
 
+    /// <summary>Whether the instance is missing because its prefab contains itself or is nested too deep (<see cref="ExpandedEntity.IsCut"/>), not because it is absent.</summary>
+    public bool IsCut { get; init; }
+
     /// <summary>What the instance element holds that could not be applied, to keep as it was written (see <see cref="ExpandedEntity.Unapplied"/>); the nodes are shared and must be cloned before they are stored.</summary>
     public IReadOnlyList<XmlNode>? Unapplied { get; init; }
 }
@@ -244,6 +247,7 @@ internal sealed class ScenePlan
                 InstancePrefab = entity.InstancePrefab,
                 InstanceRootId = entity.InstanceRootId,
                 MissingReason = entity.IsMissing ? entity.MissingReason : null,
+                IsCut = entity.IsCut,
                 Unapplied = entity.Unapplied.Count > 0 ? entity.Unapplied : null,
             });
         }

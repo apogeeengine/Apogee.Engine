@@ -136,7 +136,7 @@ internal sealed unsafe class PrefabDiff
             case FieldKind.Entity:
             {
                 ulong target = *(ulong*)at;
-                string? written = _plan.AddressOf.TryGetValue(target, out string? address) ? address : target == 0 ? _world.DanglingText(live, info.Name, field.Name, _plan) : null;
+                string? written = _plan.TryAddress(target, out string? address) ? address : target == 0 ? _world.DanglingText(live, info.Name, field.Name, _plan) : null;
                 text = written ?? "";
                 return ExpectedEntity(expected) != (written is null ? "" : Relative(written));
             }

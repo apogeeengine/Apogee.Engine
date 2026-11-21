@@ -62,8 +62,8 @@ public sealed unsafe partial class World
     /// <exception cref="InvalidOperationException">The world has no <see cref="Files"/> to make a library from.</exception>
     public PrefabLibrary Prefabs
     {
-        get => _prefabs ??= new PrefabLibrary(Files ?? throw new InvalidOperationException("this world has no files to load prefabs from"), Assets);
-        set => _prefabs = value ?? throw new ArgumentNullException(nameof(value));
+        get => _prefabs ?? Follow(new PrefabLibrary(Files ?? throw new InvalidOperationException("this world has no files to load prefabs from"), Assets));
+        set => Follow(value ?? throw new ArgumentNullException(nameof(value)));
     }
 
     // The library to take handles from when loading: the world's or, for a world with no files (it cannot make one), an empty one that only remembers what was asked for, so that an instance whose
@@ -101,6 +101,13 @@ public sealed unsafe partial class World
         PrefabLibrary library = LoadingLibrary;
         uint handle = library.Load(reference);
         string key = library.PathOf(handle) ?? library.RefOf(handle)?.ToString() ?? reference;
+
+        // An update in place reads the instances as they were made: from the documents the library had before the change.
+        if (_asOf is not null && _asOf.TryGetValue(handle, out XmlNode? before))
+        {
+            return before is null ? new ResolvedPrefab(key, null, "there was no such prefab yet") : new ResolvedPrefab(key, before);
+        }
+
         try
         {
             return new ResolvedPrefab(key, library.Require(handle));

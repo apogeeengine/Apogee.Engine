@@ -210,6 +210,47 @@ A prefab file is read by anyone who installs a mod, so expansion is bounded and 
 - **Ids.** Ids of entities an `<Override>` adds count in the prefab's numbering like any other: they may not repeat one, and `nextId` stays above them. An entity with no usable id, or one that repeats an
   address, is made but cannot be referred to.
 
+## When the prefab changes
+
+A prefab file changes while worlds hold instances of it: it is edited by hand, an editor saves it, a game that runs with [`--watch`](hot-reload.md) sees it change on disk. The instances follow it **in place**,
+and the entities they are made of keep their ids, so a selection, a reference from another entity and a variable in a script stay valid.
+
+```csharp
+PrefabReload result = world.Prefabs.Reload("res://prefabs/lamp.aprefab");   // reads the file again: Reloaded, Unchanged or Failed (with why)
+PrefabUpdate? update = world.ApplyPrefabUpdates();                           // makes the instances follow it, at a point where changing entities is safe
+```
+
+`PrefabLibrary.Reload` reads the file again and, when it is a prefab that loads and does not contain itself (directly or through the prefabs it holds), makes it the library's document and raises `Changed`.
+A world that follows the library (the world's `Prefabs`, which `world.Prefabs = library` shares between worlds, and a prefab written by `SavePrefabFile` announces itself the same way) writes down which prefab
+changed and what it was made from; nothing else happens until **`ApplyPrefabUpdates`**, which a host calls at a frame boundary after it has reloaded every file that changed: all of them are one update. A
+running game does this by itself when it is started with `--watch`; a host that must not have entities change under it (a drag, a dialog) sets `HoldPrefabUpdates` and applies when it is ready.
+
+What an update does to an instance, which it finds through the [dependency record](#nested-prefabs) of its expansion (so an instance of a prefab that holds the changed one is updated too, once, and so is an
+instance that was missing when its prefab appears):
+
+- What the instance changed is **kept where its target still exists**: a field set to another value stays that value and the rest follows the prefab (the instance has Max 40, the prefab goes from 9 to 90
+  and its Regen from 0.5 to 2: the instance has 40 and 2). An entity the instance removed stays removed, a name it changed stays.
+- What the prefab **gained** is made in every instance; what it **lost** is destroyed, with what the instance had added below it.
+- What an override said about something the prefab lost is **kept aside** in the instance, as when a scene is loaded: it applies again if the entity comes back, and a scene saved in between holds it.
+- Components that scenes leave out (`IgnoreInScenes`, a physics body) are not touched, and what an entity outside the instance names inside it keeps naming it. A field outside the instance that named an
+  entity the prefab dropped is empty now and remembers what it named, as after a load.
+- Entities that stay are changed rather than made again; a field that has the value it should is not set again.
+
+The result is what saving the scene before the change and loading it after would give: an update is a load of the instance's own document that changes the entities in place instead of making new ones, so
+the limits (nesting, [`MaxLoadEntities`](#limits) and the budget) are the load's. Nothing the update does can lose what an instance holds, and an instance it cannot update is **left exactly as it was**.
+
+- **A file that is not usable keeps the old prefab.** One that does not parse, is not a prefab, repeats an id, or holds an instance of itself (through a loop of any length, or nested too deep) is not adopted:
+  `Reload` says `Failed` and why, nothing is announced, and the instances stay. A file that is **deleted** is the same (an editor that saves by replacing the file, a version control branch that is switched),
+  and when it is back unchanged `Reload` says `Unchanged`. A file that was never there and appears makes the instances that were missing whole.
+- **An instance that cannot be updated** (the new prefab expands to more than `MaxLoadEntities`, or an entity of the instance is not part of what the instance and its prefab say) is in
+  `PrefabUpdate.Failed` with the reason and is not changed; the library has the new prefab, so saving it writes the difference as overrides (the old values pinned): nothing is lost.
+- **Instances made after the change was announced** (and before the update) are made from the new file and are left alone.
+
+`PrefabsChanged` (a C# event, and the `PrefabChanged` signal for scripts, with the prefab's path) says what an update did: the prefab files, the instances updated, the entities it made and destroyed, and the
+instances it left. **A tool treats an update as a change that did not come from the user and cannot be undone.** An editor with an undo history keeps the history for what the update did not touch, and ends
+it (or at least does not undo past the update) for the instances in `Updated`: a command that names an entity in `Destroyed` names nothing now, and one that would bring such an entity back brings it back as a plain
+entity. Selections of destroyed entities are cleared, those of the others stay valid.
+
 ## How overrides are stored
 
 An instance is saved as the element of [Overrides](#overrides) above, written for you: the world compares each instance with what its prefab expands to on its own, and writes what differs. Nothing is
@@ -235,9 +276,9 @@ recorded while you edit, so a change made by the editor, by a script or by code 
   override of the prefab's model, and a plain entity writes the reference it had.
 - **A reference that is not one.** A `prefab` attribute that is not an asset reference (a damaged UID, text) makes an empty instance with the text kept as it was written, and everything the element holds kept.
 - **A prefab that moved on.** The comparison is with the prefab *as it is now*. New fields, components and entities of the prefab are not overrides when a scene is *loaded* with the new prefab, since the
-  instance had nothing to say about them; a deleted entity that the scene had overrides for keeps them aside, and they apply again if the entity returns. But the live entities of a world that was running when
-  the file changed (it is saved from this world, which then reads the file again) still have the old prefab's entities and values, and the next save of an instance of it writes every difference as an override: the
-  new entity as a removal, the old value of a changed field pinned. Instances do not follow their prefab yet: until something refreshes them (loading the scene again does), that is what saving writes.
+  instance had nothing to say about them; a deleted entity that the scene had overrides for keeps them aside, and they apply again if the entity returns. The live entities of a world that was running when
+  the file changed are [brought up to date](#when-the-prefab-changes) before anything is saved from them; if that is not done (a file changed behind the world's back, with no `Reload`), the next save of an
+  instance of it writes every difference as an override: the new entity as a removal, the old value of a changed field pinned.
 - **A prefab that cannot be read** while the world holds its instance (the file was deleted, or replaced by one that contains itself) is compared as the single root it expands to: the live entities that
   came from it are written as additions and nothing is dropped. A scene loaded without the prefab keeps its element intact and saves it as it was. An instance whose prefab is missing is only its root: what is
   edited in it (a component added to the root, an entity added below it) is saved, and goes aside again when the scene is loaded again before the prefab is back, so a tool should treat it as read-only.
