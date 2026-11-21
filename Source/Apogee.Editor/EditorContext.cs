@@ -48,6 +48,9 @@ public sealed class EditorContext(EditorProject project, EditorCamera camera, Ed
     /// <summary>The renderer of the current session; null with no GPU (tests) or while the session is being replaced.</summary>
     public ViewportRenderer? Viewport { get; set; }
 
+    /// <summary>What the editor does with files dropped from the system: its progress is shown in the console, and it can be cancelled there. Null in tests that make a context without the app.</summary>
+    public Assets.DropFlow? Drops { get; set; }
+
     /// <summary>The render graph plan of the last viewport frame.</summary>
     public Apogee.Rendering.Graph.GraphPlan? Plan => Viewport?.Renderer.LastPlan;
 

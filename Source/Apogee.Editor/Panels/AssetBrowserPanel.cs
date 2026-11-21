@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Import;
 using Apogee.Core.Logging;
@@ -24,14 +25,24 @@ public sealed class AssetBrowserPanel
     private string _statusDirectory = "";
     private AssetImporter? _importer;
     private object? _importerSession;
+    private bool _wasBusy;
+
+    /// <summary>The folder the panel shows (a virtual path): where files dropped from the system are put.</summary>
+    public string Folder => _directory;
+
+    /// <summary>The panel on the screen, in points, as it was drawn last; null when it was not drawn (hidden behind another tab). Where a file dropped from the system is routed.</summary>
+    public (Vector2 Min, Vector2 Size)? WindowRect { get; private set; }
 
     public void Draw(EditorContext ctx, double now)
     {
+        WindowRect = null;
         if (!Ui.Begin("Assets"))
         {
             Ui.End();
             return;
         }
+
+        WindowRect = (Gui.N(ImGui.GetWindowPos()), Gui.N(ImGui.GetWindowSize()));
 
         VirtualFileSystem? files = ctx.Project.Session.Files;
         if (files is null)
@@ -54,7 +65,15 @@ public sealed class AssetBrowserPanel
         Gui.InputText("##assetfilter", ref _filter);
         Ui.Separator();
 
-        if (_statusDirectory != _directory || now - _statusAge > 2.0)
+        // An import job writes the index and the artifacts: nothing here reads or imports them meanwhile (see ImportGate), and what it did is looked at again as soon as it has ended.
+        bool busy = ctx.Project.ImportGate.IsHeld;
+        if (_wasBusy && !busy)
+        {
+            _statusAge = 0;
+        }
+
+        _wasBusy = busy;
+        if (!busy && (_statusDirectory != _directory || now - _statusAge > 2.0))
         {
             RefreshStatuses(files);
             _statusDirectory = _directory;
@@ -90,7 +109,7 @@ public sealed class AssetBrowserPanel
                 continue;
             }
 
-            DrawFile(ctx, file, name);
+            DrawFile(ctx, file, name, busy);
         }
 
         if (enter is not null)
@@ -164,7 +183,7 @@ public sealed class AssetBrowserPanel
         }
     }
 
-    private void DrawFile(EditorContext ctx, string path, string name)
+    private void DrawFile(EditorContext ctx, string path, string name, bool busy)
     {
         _statuses.TryGetValue(path, out AssetStatus status);
         bool importable = status != AssetStatus.NotImportable && _statuses.ContainsKey(path);
@@ -196,9 +215,18 @@ public sealed class AssetBrowserPanel
                 ctx.Project.OpenScene(path);
             }
 
-            if (Gui.MenuItem("Re-import", null, false, importable && _importer is not null))
+            if (Gui.MenuItem("Re-import", null, false, importable && _importer is not null && !busy) && ctx.Project.ImportGate.TryEnter())
             {
-                ImportReport report = _importer!.Reimport(path["res://".Length..]);
+                ImportReport report;
+                try
+                {
+                    report = _importer!.Reimport(path["res://".Length..]);
+                }
+                finally
+                {
+                    ctx.Project.ImportGate.Exit();
+                }
+
                 foreach ((string source, string message) in report.Failed)
                 {
                     Log.Error("Editor", $"{source}: {message}");

@@ -32,9 +32,33 @@ public sealed unsafe class ViewportPanel
     /// <summary>The viewport's rectangle on the screen, in points.</summary>
     public (Vector2 Min, Vector2 Size) Rect { get; private set; }
 
+    /// <summary>The whole panel (toolbar and image) on the screen, in points, as it was drawn last; null when it was not drawn (hidden behind another tab). Where a file dropped from the system is routed.</summary>
+    public (Vector2 Min, Vector2 Size)? WindowRect { get; private set; }
+
+    /// <summary>
+    /// The point in the world that the window point <paramref name="point"/> (clamped to the image) looks at: where the ray through it meets the ground, else five metres along the ray. Null when the
+    /// panel has no image this frame. Used for a model dropped from the system, which is placed where it was let go.
+    /// </summary>
+    public Double3? PlacementAt(EditorContext ctx, Vector2 point)
+    {
+        if (!Wanted || ctx.Viewport is not { } renderer || Rect.Size.X < 1 || Rect.Size.Y < 1)
+        {
+            return null;
+        }
+
+        return Place(renderer, Vector2.Clamp(point, Rect.Min, Rect.Min + Rect.Size) - Rect.Min, Rect.Size);
+    }
+
+    private static Double3 Place(ViewportRenderer renderer, Vector2 local, Vector2 size)
+    {
+        PickRay ray = Picking.RayThrough(renderer.Camera, local, size);
+        return Picking.HitGround(ray) ?? ray.Origin + (Double3)(ray.Direction * 5f);
+    }
+
     public void Draw(EditorContext ctx, Frame? frame, float density, float deltaSeconds)
     {
         Wanted = false;
+        WindowRect = null;
         ImGui.PushStyleVarVec2(ImGuiStyleVar.WindowPadding, new ImVec2());
         bool visible = Ui.Begin("Viewport", ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
         ImGui.PopStyleVar(1);
@@ -46,6 +70,7 @@ public sealed unsafe class ViewportPanel
             return;
         }
 
+        WindowRect = (Gui.N(ImGui.GetWindowPos()), Gui.N(ImGui.GetWindowSize()));
         DrawOptions(ctx);
 
         Vector2 size = Gui.Available;
@@ -160,9 +185,7 @@ public sealed unsafe class ViewportPanel
 
         if (Gui.AcceptText("ASSET") is { } path && (path.EndsWith(".glb", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase)))
         {
-            PickRay ray = Picking.RayThrough(renderer.Camera, Gui.Mouse - min, size);
-            Double3 at = Picking.HitGround(ray) ?? ray.Origin + (Double3)(ray.Direction * 5f);
-            ctx.Project.CreateModel(path, at);
+            ctx.Project.CreateModel(path, Place(renderer, Gui.Mouse - min, size));
         }
 
         Gui.EndDropTarget();

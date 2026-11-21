@@ -9,6 +9,7 @@ using Apogee.Content.FileSystem;
 using Apogee.Core.Diagnostics;
 using Apogee.Core.Logging;
 using Apogee.DevTools;
+using Apogee.Editor.Assets;
 using Apogee.Editor.Editing;
 using Apogee.Editor.Input;
 using Apogee.Editor.Panels;
@@ -148,6 +149,9 @@ public static unsafe class EditorApp
         private readonly ShaderLibrary _shaders;
         private readonly ProjectHost _projects;
         private readonly DialogFlow _dialogFlow;
+        private readonly DropFlow _drops;
+        private readonly PanelDropSurface _dropSurface = new();
+        private bool _clashAsked;
         private readonly EditorPreferences _prefs;
         private readonly Keymap _keymap = new();
         private readonly GizmoSettings _gizmo = new();
@@ -201,6 +205,8 @@ public static unsafe class EditorApp
             prefs.ApplyTo(_gizmo);
             _prefsWindow = new PreferencesWindow(prefs, _keymap, _gizmo, _keys);
             _dialogFlow = new DialogFlow(dialogs, () => _projects.Current, Say, RequestProject, UseBuiltIn);
+            _drops = new DropFlow(() => _projects.Current, _dropSurface, window.Id, Say);
+            PlatformHost.FilesDropped += _drops.Handle;
             projects.Closing += OnClosing;
             projects.Opened += OnOpened;
         }
@@ -278,7 +284,7 @@ public static unsafe class EditorApp
         {
             if (_context is null)
             {
-                _context = new EditorContext(project, new EditorCamera(), _log, _host) { Preferences = _prefs, Keymap = _keymap, Gizmo = _gizmo, Keys = _keys };
+                _context = new EditorContext(project, new EditorCamera(), _log, _host) { Preferences = _prefs, Keymap = _keymap, Gizmo = _gizmo, Keys = _keys, Drops = _drops };
             }
             else
             {
@@ -373,6 +379,7 @@ public static unsafe class EditorApp
         /// <summary>Lets go of the open project's GPU objects; the loop has ended.</summary>
         public void Release()
         {
+            PlatformHost.FilesDropped -= _drops.Handle;
             _projects.Close();
             _prefs.Flush();
         }
@@ -423,6 +430,7 @@ public static unsafe class EditorApp
                 {
                     ctx.Viewport?.UpdateInput(_window);
                     project.Update(delta);
+                    _drops.Update(); // reports an import that has ended and places the models of a drop on the viewport
                 }
 
                 Frame? frame = _loop.BeginFrame();
@@ -481,6 +489,8 @@ public static unsafe class EditorApp
                 DrawStart();
                 _prefsWindow.Draw();
                 DrawModals(null);
+                _dropSurface.ViewportRect = _dropSurface.AssetsRect = null;
+                _dropSurface.ModalOpen = AnyPopupOpen();
                 return;
             }
 
@@ -505,7 +515,20 @@ public static unsafe class EditorApp
 
             _prefsWindow.Draw();
             DrawModals(project);
+            RecordDropSurface();
         }
+
+        /// <summary>What the panels drew this frame, for routing the files the user drops before the next one (see <see cref="PanelDropSurface"/>).</summary>
+        private void RecordDropSurface()
+        {
+            _dropSurface.ViewportRect = _viewport.WindowRect;
+            _dropSurface.AssetsRect = _assets.WindowRect;
+            _dropSurface.AssetFolder = _assets.Folder;
+            _dropSurface.Placer = point => _viewport.PlacementAt(ctx, point);
+            _dropSurface.ModalOpen = AnyPopupOpen();
+        }
+
+        private static bool AnyPopupOpen() => ImGui.IsPopupOpenStr(null, ImGuiPopupFlags.AnyPopup);
 
         private static void BuildLayout(uint dock, ImVec2 size)
         {
@@ -867,10 +890,13 @@ public static unsafe class EditorApp
 
             // The play controls, in the middle of the bar.
             Gui.SameLine(30);
-            if (Gui.SmallButton(project.IsPlaying ? "Stop (F5)" : "Play (F5)"))
+            Gui.Disabled(!project.IsPlaying && project.ImportGate.IsHeld, () => // Play waits for an import to end
             {
-                TogglePlay(project);
-            }
+                if (Gui.SmallButton(project.IsPlaying ? "Stop (F5)" : "Play (F5)"))
+                {
+                    TogglePlay(project);
+                }
+            });
 
             if (project.IsPlaying)
             {
@@ -888,6 +914,12 @@ public static unsafe class EditorApp
             string scene = (project.ScenePath ?? "(unsaved scene)") + (project.Dirty ? " *" : "");
             Gui.SameLine(30);
             Ui.Text(scene);
+            if (_drops.Status is { } importing)
+            {
+                Gui.SameLine(30);
+                Ui.Text(importing);
+            }
+
             Gui.EndMainMenuBar();
         }
 
@@ -923,6 +955,12 @@ public static unsafe class EditorApp
             {
                 _openConfirmSwitch = false;
                 Gui.OpenPopup("Unsaved changes in this project");
+            }
+
+            if (_drops.Pending is not null && !_clashAsked)
+            {
+                _clashAsked = true;
+                Gui.OpenPopup("Files already in the project");
             }
 
             if (Message is not null)
@@ -1058,6 +1096,11 @@ public static unsafe class EditorApp
                 Gui.EndPopup();
             }
 
+            if (Modal("Files already in the project"))
+            {
+                DrawClashes();
+            }
+
             if (Modal("Message"))
             {
                 Ui.Text(Message ?? "");
@@ -1069,6 +1112,63 @@ public static unsafe class EditorApp
 
                 Gui.EndPopup();
             }
+        }
+
+        /// <summary>The question when dropped files have the names of files the project has: what to do with them (see <see cref="DropFlow.Resolve"/>).</summary>
+        private void DrawClashes()
+        {
+            if (_drops.Pending is not { } pending)
+            {
+                _clashAsked = false;
+                Gui.ClosePopup();
+                Gui.EndPopup();
+                return;
+            }
+
+            Ui.Text($"{pending.Clashes.Count} of the files you dropped have the name of a file the project has:");
+            foreach (string clash in pending.Clashes.Take(8))
+            {
+                Ui.Text("  " + clash);
+            }
+
+            if (pending.Clashes.Count > 8)
+            {
+                Ui.Text($"  ... and {pending.Clashes.Count - 8} more");
+            }
+
+            void Answer(ClashPolicy? choice)
+            {
+                _drops.Resolve(choice);
+                _clashAsked = false;
+                Gui.ClosePopup();
+            }
+
+            if (Gui.Button("Keep both"))
+            {
+                Answer(ClashPolicy.KeepBoth);
+            }
+
+            Gui.Tooltip("The dropped files get a free name (name 2). Nothing in the project changes.");
+            Gui.SameLine();
+            if (Gui.Button("Skip them"))
+            {
+                Answer(ClashPolicy.Skip);
+            }
+
+            Gui.SameLine();
+            if (Gui.Button("Replace"))
+            {
+                Answer(ClashPolicy.Replace);
+            }
+
+            Gui.Tooltip("Overwrites the project's files with the dropped ones. This cannot be undone. The assets keep their UID and import settings.");
+            Gui.SameLine();
+            if (Gui.Button("Cancel"))
+            {
+                Answer(null);
+            }
+
+            Gui.EndPopup();
         }
 
         private static bool Modal(string title)

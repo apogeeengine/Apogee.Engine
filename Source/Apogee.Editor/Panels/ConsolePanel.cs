@@ -26,6 +26,18 @@ public sealed class ConsolePanel
             ctx.Log.Clear();
         }
 
+        if (ctx.Drops is { Progress: { } progress } drops)
+        {
+            // Files being copied and imported (see DropFlow): how far, what now, and a way to stop it.
+            Gui.SameLine();
+            Ui.ProgressBar(progress, new Vector2(260, 0), drops.Status);
+            Gui.SameLine();
+            if (Gui.SmallButton("Cancel import"))
+            {
+                drops.Cancel();
+            }
+        }
+
         Ui.Separator();
         if (Gui.BeginChild("##log"))
         {
