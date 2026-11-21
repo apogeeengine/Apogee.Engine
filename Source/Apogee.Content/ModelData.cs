@@ -88,7 +88,8 @@ public sealed class MeshData(string name, Vertex[] vertices, uint[] indices, int
 /// <summary>A mesh placed in the world by the scene's node hierarchy.</summary>
 public readonly record struct MeshInstance(int Mesh, Matrix4x4 World);
 
-public enum LightKind
+/// <summary>The kind of a light. A byte, which is what <c>Light.Kind</c> (a one-byte component field) holds.</summary>
+public enum LightKind : byte
 {
     Directional,
     Point,

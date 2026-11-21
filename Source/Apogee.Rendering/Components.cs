@@ -25,7 +25,7 @@ public struct ModelRenderer
 public struct Light
 {
     /// <summary>The color, in linear 0 to 1.</summary>
-    [Property(Category = "Light")]
+    [Property(Category = "Light", Color = true)]
     public Vector3 Color;
 
     /// <summary>Candela for point and spot lights, lux for the sun.</summary>
@@ -44,7 +44,7 @@ public struct Light
     public float OuterCone;
 
     /// <summary>A <see cref="Apogee.Content.LightKind"/>: 0 directional, 1 point, 2 spot.</summary>
-    [Property(Min = 0, Max = 2, Category = "Light")]
+    [Property(Min = 0, Max = 2, Category = "Light", Enum = typeof(Apogee.Content.LightKind))]
     public byte Kind;
 
     public static Light Point(Vector3 color, float intensity, float range = 0f) => new() { Color = color, Intensity = intensity, Range = range, Kind = (byte)Apogee.Content.LightKind.Point };
