@@ -75,6 +75,7 @@ public sealed class ImportJobTests
     public void ADroppedImageIsCopiedAndImportedOffTheMainThread()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         EditorProject project = rig.Project;
         string image = source.Write("shade.png", TestAssets.Png(40));
@@ -103,6 +104,7 @@ public sealed class ImportJobTests
     public void TheReloaderCatchesUpAfterTheJobWithoutImportingAgain()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         EditorProject project = rig.Project;
         DropPlan plan = PlanFor(project, "res://textures", ClashPolicy.KeepBoth, source.Write("shade.png", TestAssets.Png(40)));
@@ -162,6 +164,7 @@ public sealed class ImportJobTests
     public void ACancelledJobStopsBetweenFiles()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         EditorProject project = rig.Project;
         using var entered = new ManualResetEventSlim();
@@ -212,6 +215,7 @@ public sealed class ImportJobTests
     public void PlayAndAnotherImportAreRefusedWhileOneRuns()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         EditorProject project = rig.Project;
         using var entered = new ManualResetEventSlim();
@@ -280,6 +284,7 @@ public sealed class ImportJobTests
     public void ReplaceOverwritesTheFileAndKeepsItsSettings()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         EditorProject project = rig.Project;
         AssetUid uid = AssetUid.New();
@@ -302,6 +307,7 @@ public sealed class ImportJobTests
     public void ASidecarWithAUidAnotherAssetHasGetsANewOne()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         EditorProject project = rig.Project;
         AssetUid shared = AssetUid.New();
@@ -329,6 +335,7 @@ public sealed class ImportJobTests
     public void ASidecarWithAFreshUidKeepsIt()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         AssetUid uid = AssetUid.New();
         string dropped = source.Write("a.png", TestAssets.Png());
@@ -346,6 +353,7 @@ public sealed class ImportJobTests
     public void AModelWithItsBufferIsCopiedAndImportedAsOne()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         string model = source.Write("tri/tri.gltf", TestAssets.GltfWithBuffer("tri.bin"));
         source.Write("tri/tri.bin", TestAssets.TriangleBuffer());
@@ -365,6 +373,7 @@ public sealed class ImportJobTests
     public void AFailedImportLeavesTheCopiedFileAndSaysSo()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         string bad = source.Write("bad.glb", "this is not a model at all, but it has bytes");
 
@@ -385,6 +394,7 @@ public sealed class ImportJobTests
     public void ClosingTheProjectStopsAndWaitsForTheJob()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         EditorProject project = rig.Project;
         DropPlan plan = PlanFor(project, "res://", ClashPolicy.KeepBoth, Enumerable.Range(0, 5).Select(i => source.Write($"f{i}.png", TestAssets.Png((byte)i))).ToArray());
@@ -394,5 +404,152 @@ public sealed class ImportJobTests
 
         Assert.True(job!.IsEnded);                                                                  // the worker was finished with the files before the session went
         Assert.False(project.ImportGate.IsHeld);
+    }
+
+    [Fact]
+    public void AProjectThatWasNeverImportedGetsNoIndexAndNoWholeProjectImport()
+    {
+        using var rig = new ProjectRig();
+        using var source = new DropSource();
+        EditorProject project = rig.Project;
+        File.WriteAllBytes(Path.Combine(Game(rig), "other.png"), TestAssets.Png(7));              // something else in the project: a whole-project import would make an artifact of it
+        var seen = new List<string>();
+        project.Session.Reloader!.AssetsChanged += seen.AddRange;
+
+        ImportJob job = JobFor(project, PlanFor(project, "res://", ClashPolicy.KeepBoth, source.Write("a.png", TestAssets.Png())));
+        job.Start();
+        Assert.True(job.Wait(s_wait));
+
+        ImportJobReport report = job.Report!;
+        Assert.True(report.Success);
+        Assert.True(report.NotImported);
+        Assert.Equal(["res://a.png"], report.Copied);
+        Assert.Empty(report.Imported);
+        DateTime until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!seen.Contains("res://a.png") && DateTime.UtcNow < until)
+        {
+            Thread.Sleep(100);
+            project.Update(0f);                                                                     // the reloader has noticed the files
+        }
+
+        Assert.Contains("res://a.png", seen);
+        Assert.False(Directory.Exists(Path.Combine(Game(rig), "imported")));                       // and imported nothing: no index, no artifact of other.png
+    }
+
+    [Fact]
+    public void AnImporterThatThrowsFailsItsFileAndTheNextOneStillImports()
+    {
+        using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
+        using var source = new DropSource();
+        int calls = 0;
+        var watched = new WatchedImporter(new ImageImporter(), () =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                throw new InvalidOperationException("an importer bug");
+            }
+        });
+        DropPlan plan = PlanFor(rig.Project, "res://", ClashPolicy.KeepBoth, source.Write("a.png", TestAssets.Png(1)), source.Write("b.png", TestAssets.Png(2)));
+
+        ImportJob job = JobFor(rig.Project, plan, watched);
+        job.Start();
+        Assert.True(job.Wait(s_wait));
+
+        ImportJobReport report = job.Report!;
+        Assert.Null(report.Error);                                                                  // a file's failure is the file's, not the job's
+        Assert.False(report.Success);
+        (string path, string message) = Assert.Single(report.Failed);
+        Assert.Equal("res://a.png", path);
+        Assert.Contains("an importer bug", message, StringComparison.Ordinal);
+        Assert.Equal(["res://b.png"], report.Imported);
+        Assert.False(rig.Project.ImportGate.IsHeld);
+    }
+
+    [Fact]
+    public void AFileThatChangedSinceThePlanIsNotCopied()
+    {
+        using var rig = new ProjectRig();
+        using var source = new DropSource();
+        string grows = source.Write("grows.png", TestAssets.Png(1));
+        string shrinks = source.Write("shrinks.png", TestAssets.Png(2));
+        DropPlan plan = PlanFor(rig.Project, "res://", ClashPolicy.KeepBoth, grows, shrinks);
+        File.AppendAllText(grows, "more bytes than the plan saw");                                  // a file that kept growing: never read past what the plan accepted
+        File.WriteAllBytes(shrinks, [1, 2, 3]);
+
+        ImportJob job = JobFor(rig.Project, plan);
+        job.Start();
+        Assert.True(job.Wait(s_wait));
+
+        Assert.Equal(2, job.Report!.Failed.Count);
+        Assert.All(job.Report.Failed, f => Assert.Contains("changed since it was dropped", f.Message, StringComparison.Ordinal));
+        Assert.Empty(job.Report.Copied);
+        Assert.False(File.Exists(Path.Combine(Game(rig), "grows.png")));
+    }
+
+    [Fact]
+    public void AFileSwappedForAPipeAfterThePlanDoesNotHoldTheWorker()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "There are no named pipes in the file system on Windows.");
+        using var rig = new ProjectRig();
+        using var source = new DropSource();
+        string path = source.Write("a.png", TestAssets.Png());
+        DropPlan plan = PlanFor(rig.Project, "res://", ClashPolicy.KeepBoth, path);
+        File.Delete(path);
+        try
+        {
+            using var made = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("mkfifo", [path]) { UseShellExecute = false })!;
+            made.WaitForExit();
+            Assert.SkipWhen(made.ExitCode != 0, "mkfifo failed here.");
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            Assert.Skip("There is no mkfifo here.");
+        }
+
+        ImportJob job = JobFor(rig.Project, plan);
+        job.Start();
+
+        Assert.True(job.Wait(TimeSpan.FromSeconds(20)));                                            // opening a pipe with no writer would wait for ever
+        Assert.Contains("changed since it was dropped", Assert.Single(job.Report!.Failed).Message, StringComparison.Ordinal);
+        Assert.False(rig.Project.ImportGate.IsHeld);
+    }
+
+    [Fact]
+    public void PlayWaitsUntilTheEndedJobHasBeenTaken()
+    {
+        using var rig = new ProjectRig();
+        using var source = new DropSource();
+        EditorProject project = rig.Project;
+        Assert.True(project.TryStartImport(PlanFor(project, "res://", ClashPolicy.KeepBoth, source.Write("a.png", TestAssets.Png())), out ImportJob? job, out _));
+        Assert.True(job!.Wait(s_wait));
+
+        Assert.False(project.ImportGate.IsHeld);                                                    // the worker is done and the gate free, but the report has not been taken
+        Assert.True(project.ImportBusy);
+        Assert.False(project.Play());
+        Assert.Contains("imported", project.PlayError, StringComparison.Ordinal);
+
+        project.ReleaseJob();
+        Assert.False(project.ImportBusy);
+        Assert.True(project.Play());
+    }
+
+    [Fact]
+    public void ThereIsOneGatePerGameFolderForTheWholeProcess()
+    {
+        using var rig = new ProjectRig();
+        string game = Game(rig);
+
+        Assert.Same(rig.Project.ImportGate, ImportGate.ForFolder(game));
+        Assert.Same(ImportGate.ForFolder(game), ImportGate.ForFolder(game + Path.DirectorySeparatorChar));
+        Assert.Same(ImportGate.ForFolder(game), ImportGate.ForFolder(Path.Combine(game, "packages", "..")));
+        Assert.NotSame(ImportGate.ForFolder(game), ImportGate.ForFolder(Path.Combine(rig.Root, "other")));
+
+        // A project closed in the middle of a job and opened again is a new object over the same folder: it finds the gate as the worker left it.
+        Assert.True(rig.Project.ImportGate.TryEnter());
+        Assert.True(ImportGate.ForFolder(game).IsHeld);
+        Assert.False(ImportGate.ForFolder(game).TryEnter());
+        rig.Project.ImportGate.Exit();
+        Assert.False(ImportGate.ForFolder(game).IsHeld);
     }
 }

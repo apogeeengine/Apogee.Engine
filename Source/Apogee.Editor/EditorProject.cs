@@ -36,6 +36,7 @@ public sealed class EditorProject : IDisposable
     {
         GameFolder = Path.GetFullPath(gameFolder);
         UserFolder = userFolder;
+        ImportGate = ImportGate.ForFolder(GameFolder);
         _worldRef = new WorldRef(() => Session?.World ?? throw new InvalidOperationException("The project has no session."));
         Session = Start(runScripts: false, scene: null, realAudio: false);
         Selected = new Selection(() => World);
@@ -102,7 +103,10 @@ public sealed class EditorProject : IDisposable
     /// "An importer is running" (see <see cref="Assets.ImportGate"/>): the hot reloader's import in <see cref="Update"/>, an import job and the asset browser's re-import take it one at a time, because they all
     /// write <c>imported/index.xml</c>.
     /// </summary>
-    public ImportGate ImportGate { get; } = new();
+    public ImportGate ImportGate { get; }
+
+    /// <summary>An import job runs, or has ended and has not been taken yet (see <see cref="ReleaseJob"/>): Play and new imports wait.</summary>
+    public bool ImportBusy => ImportGate.IsHeld || Job is not null;
 
     /// <summary>The import of dropped files that is running or has just ended (its report not taken yet), or null. See <see cref="TryStartImport"/>.</summary>
     public ImportJob? Job { get; private set; }
@@ -257,7 +261,7 @@ public sealed class EditorProject : IDisposable
         {
             problem = "The game has no file system to add files to.";
         }
-        else if (!ImportGate.TryEnter())
+        else if (Job is not null || !ImportGate.TryEnter())
         {
             problem = "An import is already running. Wait for it to end.";
         }
@@ -300,7 +304,7 @@ public sealed class EditorProject : IDisposable
         }
 
         PlayError = null;
-        if (ImportGate.IsHeld)
+        if (ImportBusy)
         {
             PlayError = "Files are being imported. Play when the import has ended.";
             return false;
@@ -770,11 +774,12 @@ public sealed class EditorProject : IDisposable
         _disposed = true;
         if (Job is { } job)
         {
-            // The worker uses the project's files: it is stopped (at its next file) and waited for before the session goes.
+            // The worker uses the project's files: it is stopped (at its next file or its next chunk of a big one) and waited for before the session goes. One thing it cannot be stopped in is a texture
+            // compression, so the wait is bounded: the worker then finishes alone, still holding the folder's gate (see ImportGate.ForFolder), so nothing else imports in that folder meanwhile.
             job.Cancel();
-            if (!job.Wait(TimeSpan.FromMinutes(5)))
+            if (!job.Wait(TimeSpan.FromSeconds(20)))
             {
-                Log.Error("Editor", "The import did not end within five minutes; the project is closed anyway.");
+                Log.Warn("Editor", "The import is still working on a file that cannot be interrupted: the project is closed, and the import ends by itself.");
             }
         }
 

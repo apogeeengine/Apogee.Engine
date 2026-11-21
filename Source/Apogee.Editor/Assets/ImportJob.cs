@@ -18,6 +18,7 @@ namespace Apogee.Editor.Assets;
 /// <param name="Imported">The assets that were imported, as virtual paths.</param>
 /// <param name="Failed">The files that were not copied or not imported, with the reason; the ones that were copied stay in place (the asset browser's <i>Re-import</i> tries again).</param>
 /// <param name="Reassigned">The assets whose <c>.import.xml</c> came with a UID that another asset of the project has, and got a new one (the path, the old UID, the new).</param>
+/// <param name="NotImported">The project has never been imported (it has no <c>imported/index.xml</c>), so the files were copied and not imported: it loads its files from their sources, and importing a first file would make the reloader import the whole project on the main thread.</param>
 /// <param name="Cancelled">The job was cancelled before it was done: what was copied stays, nothing was undone.</param>
 /// <param name="Error">An unexpected failure that ended the job.</param>
 public sealed record ImportJobReport(
@@ -25,6 +26,7 @@ public sealed record ImportJobReport(
     IReadOnlyList<string> Imported,
     IReadOnlyList<(string Path, string Message)> Failed,
     IReadOnlyList<(string Path, AssetUid Old, AssetUid New)> Reassigned,
+    bool NotImported,
     bool Cancelled,
     string? Error)
 {
@@ -59,6 +61,7 @@ public sealed class ImportJob
     private string _current = "";
     private int _cancel;
     private bool _stopped;               // the worker saw the cancel and left the work half done (worker only)
+    private bool _notImported;           // the project has no import index: nothing was imported (worker only)
     private int _state;                  // 0 not started, 1 running, 2 ended
     private ImportJobReport? _report;
     private Task _task = Task.CompletedTask;
@@ -133,6 +136,7 @@ public sealed class ImportJob
         var failed = new List<(string, string)>();
         var reassigned = new List<(string, AssetUid, AssetUid)>();
         string? error = null;
+        bool finished = false;
         try
         {
             CopyAll(copied, failed, reassigned);
@@ -140,6 +144,8 @@ public sealed class ImportJob
             {
                 ImportAll(copied, imported, failed);
             }
+
+            finished = true;
         }
 #pragma warning disable CA1031 // The worker's last line of defence: whatever went wrong is the report's error, and the editor goes on.
         catch (Exception e) when (e is not OutOfMemoryException)
@@ -150,7 +156,9 @@ public sealed class ImportJob
 #pragma warning restore CA1031
         finally
         {
-            Volatile.Write(ref _report, new ImportJobReport(copied, imported, failed, reassigned, _stopped && error is null, error));
+            // An exception nothing above handles (out of memory) must not read as a success.
+            error ??= finished ? null : "The import ended unexpectedly.";
+            Volatile.Write(ref _report, new ImportJobReport(copied, imported, failed, reassigned, _notImported, _stopped && error is null, error));
             Volatile.Write(ref _current, "");
             Volatile.Write(ref _state, 2);   // published after the report: the main thread reads the report only once it sees this
             _release();                      // the importer gate: given back last, so nothing that sees it free can still be running
@@ -171,7 +179,14 @@ public sealed class ImportJob
             Step($"Copying {file.Target}");
             try
             {
-                byte[] bytes = ReadSource(file);
+                byte[]? read = ReadSource(file);
+                if (read is null)
+                {
+                    _stopped = true; // cancelled in the middle of a big file
+                    return;
+                }
+
+                byte[] bytes = read;
                 if (file.IsCompanion && file.Target.EndsWith(ImportSidecar.Suffix, StringComparison.OrdinalIgnoreCase))
                 {
                     bytes = FreshUid(file, bytes, ref used, reassigned);
@@ -180,7 +195,9 @@ public sealed class ImportJob
                 Write(file, bytes);
                 copied.Add(file.Target);
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException or ContentException or VfsException)
+#pragma warning disable CA1031 // One file's failure, whatever it is, must not stop the others: it is this file's entry in the report.
+            catch (Exception e) when (e is not OutOfMemoryException)
+#pragma warning restore CA1031
             {
                 failed.Add((file.Target, e.Message));
                 Log.Error(LogCategory, $"{file.Target}: not copied: {e.Message}");
@@ -190,16 +207,48 @@ public sealed class ImportJob
         }
     }
 
-    /// <summary>Reads the dropped file again, checking that it is still what the plan accepted (a link or a file that grew since).</summary>
-    private static byte[] ReadSource(PlannedFile file)
+    /// <summary>
+    /// Reads the dropped file again, checking that it is still what the plan accepted, so that nothing the user (or another program) did since can hold the worker or grow the memory it takes: the size has to be the
+    /// one the plan saw (a pipe or a device reports none, so a file swapped for one is refused before it is opened, as is one that grew), a link is refused, and exactly that many bytes are read, in 1 MB
+    /// chunks with a look at the cancel between them. Null when the job was cancelled meanwhile.
+    /// </summary>
+    private byte[]? ReadSource(PlannedFile file)
     {
+        const int Chunk = 1024 * 1024;
         if (DropPlan.IsLink(file.Source))
         {
             throw new IOException($"{file.Source} became a link since it was dropped.");
         }
 
-        byte[] bytes = File.ReadAllBytes(file.Source);
-        return bytes.LongLength is 0 or > DropPlan.MaxFileBytes ? throw new IOException($"{file.Source} changed since it was dropped (now {bytes.LongLength} bytes).") : bytes;
+        if (new FileInfo(file.Source) is not { Exists: true } info || info.Length != file.Length)
+        {
+            throw new IOException($"{file.Source} changed since it was dropped.");
+        }
+
+        using var stream = new FileStream(file.Source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1, FileOptions.SequentialScan);
+        if (stream.Length != file.Length)
+        {
+            throw new IOException($"{file.Source} changed since it was dropped.");
+        }
+
+        byte[] bytes = new byte[file.Length]; // never more than the plan accepted (at most DropPlan.MaxFileBytes)
+        for (int done = 0; done < bytes.Length;)
+        {
+            if (Cancelled)
+            {
+                return null;
+            }
+
+            int read = stream.Read(bytes, done, Math.Min(Chunk, bytes.Length - done));
+            if (read == 0)
+            {
+                throw new IOException($"{file.Source} became shorter while it was being copied.");
+            }
+
+            done += read;
+        }
+
+        return bytes;
     }
 
     /// <summary>
@@ -271,6 +320,15 @@ public sealed class ImportJob
 
     private void ImportAll(List<string> copied, List<string> imported, List<(string, string)> failed)
     {
+        // A project that was never imported loads its files from their sources, and the hot reloader leaves it so until an import index exists. Importing one file would make that index, and the reloader would
+        // then import the whole project, on the main thread, as soon as the gate is free. So nothing is imported here: the files are in the project, and the asset browser's Re-import is the way to start.
+        if (!_files.FileExists("res://" + AssetImporter.CacheFolder + "/index.xml"))
+        {
+            _notImported = true;
+            Log.Info(LogCategory, "The project has not been imported: the files were added, and are loaded from their sources like the rest of it.");
+            return;
+        }
+
         var importer = new AssetImporter(_files, _importers);
         HashSet<string> there = [.. copied];
         foreach (PlannedFile file in _plan.Importable.Where(f => there.Contains(f.Target)))
@@ -293,7 +351,9 @@ public sealed class ImportJob
 
                 imported.AddRange(report.Imported.Select(s => "res://" + s));
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException or ContentException)
+#pragma warning disable CA1031 // As above: an importer that throws anything fails its own file only.
+            catch (Exception e) when (e is not OutOfMemoryException)
+#pragma warning restore CA1031
             {
                 failed.Add((file.Target, e.Message));
                 Log.Error(LogCategory, $"{file.Target}: not imported: {e.Message}");

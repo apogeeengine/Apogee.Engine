@@ -52,11 +52,23 @@ internal sealed class FakeTargets(IEnumerable<string>? files = null, IEnumerable
 
     public string ReadOnlyPrefix { get; set; } = "mod://";
 
-    public bool Exists(string virtualPath) => Files.Contains(virtualPath) || Folders.Contains(virtualPath);
+    /// <summary>Paths that are links (they count as existing, and are never replaced).</summary>
+    public HashSet<string> Links { get; } = [];
+
+    public bool Exists(string virtualPath) => Files.Contains(virtualPath) || Folders.Contains(virtualPath) || Links.Contains(virtualPath);
+
+    public bool IsLink(string virtualPath) => Links.Contains(virtualPath);
 
     public bool IsFolder(string virtualPath) => Folders.Contains(virtualPath);
 
     public bool CanWrite(string virtualPath) => virtualPath.StartsWith("res://", StringComparison.Ordinal) && !virtualPath.StartsWith(ReadOnlyPrefix, StringComparison.Ordinal);
+}
+
+/// <summary>A project that has been imported once has an import index; only such a project has files imported by a drop (see <c>ImportJob</c>).</summary>
+internal static class ImportedProject
+{
+    public static void Mark(EditorProject project) =>
+        _ = new Apogee.Content.Import.AssetImporter(project.Session.Files!, Apogee.Host.ScriptSession.Importers).Run();
 }
 
 /// <summary>Small valid files the importers take, built in code: a test needs its fixtures in the test project, and CI has no large files.</summary>

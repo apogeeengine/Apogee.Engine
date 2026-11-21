@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Apogee.Editor.Assets;
@@ -173,14 +174,17 @@ public sealed class DropPlanTests
     }
 
     [Fact]
-    public void AFolderWithTooManyFilesStopsAtTheLimitAndSaysSo()
+    public void AFolderWithTooManyFilesStopsAtTheLimitAndSaysSoOnce()
     {
         using var source = new DropSource();
-        Directory.CreateDirectory(source.FullPath("many"));
+        Directory.CreateDirectory(source.FullPath("many/a"));
         for (int i = 0; i < DropPlan.MaxFiles + 5; i++)
         {
-            File.WriteAllBytes(source.FullPath($"many/f{i:D5}.luau"), [1]);
+            File.WriteAllBytes(source.FullPath($"many/a/f{i:D5}.luau"), [1]);
         }
+
+        source.Write("many/z1.luau", "x");                                                        // after the limit, in the folder above: not taken, and not another message
+        source.Write("many/z2.luau", "x");
 
         DropPlan plan = DropPlan.Make([source.FullPath("many")], "res://", new FakeTargets(), s_importable);
 
@@ -301,4 +305,139 @@ public sealed class DropPlanTests
     [InlineData("tex/a%20b.png", "tex/a b.png")]
     [InlineData("caf%C3%A9.png", "café.png")]
     public void ARelativeUriIsReadAsAPath(string uri, string expected) => Assert.Equal(expected, DropPlan.RelativeUri(uri));
+
+    [Fact]
+    public void TheImportersFolderTakesNoFiles()
+    {
+        using var source = new DropSource();
+        string image = source.Write("a.png", TestAssets.Png());
+        string index = source.Write("imported/index.xml", "<Imports/>");
+        source.Write("imported/assets.xml", "<Assets/>");
+        var targets = new FakeTargets(files: ["res://imported/index.xml"], folders: ["res://imported"]);
+
+        DropPlan intoIt = DropPlan.Make([image], "res://imported", targets, s_importable);
+        DropPlan intoBelow = DropPlan.Make([image], "res://imported/models", targets, s_importable);
+        DropPlan replacing = DropPlan.Make([index], "res://imported", targets, s_importable, ClashPolicy.Replace);
+        DropPlan aFolderOfThatName = DropPlan.Make([source.FullPath("imported")], "res://", targets, s_importable, ClashPolicy.Replace);
+
+        foreach (DropPlan plan in new[] { intoIt, intoBelow, replacing, aFolderOfThatName })
+        {
+            Assert.Empty(plan.Files);
+            Assert.NotEmpty(plan.Refused);
+        }
+
+        Assert.Single(aFolderOfThatName.Refused);                                                   // said once for the folder, not for each file in it
+    }
+
+    [Fact]
+    public void TheGameFolderOrAFolderHoldingItIsRefused()
+    {
+        using var source = new DropSource();
+        string game = source.FullPath("game");
+        source.Write("game/game.xml", "<Game/>");
+        string inside = source.Write("game/a.png", TestAssets.Png());
+        source.Write("other/b.png", TestAssets.Png());
+
+        DropPlan itself = DropPlan.Make([game], "res://", new FakeTargets(), s_importable, gameFolder: game + Path.DirectorySeparatorChar);
+        DropPlan parent = DropPlan.Make([source.Root], "res://", new FakeTargets(), s_importable, gameFolder: game);
+        DropPlan sibling = DropPlan.Make([source.FullPath("other")], "res://", new FakeTargets(), s_importable, gameFolder: game);
+        DropPlan aFileOfIt = DropPlan.Make([inside], "res://", new FakeTargets(), s_importable, gameFolder: game);
+
+        Assert.Empty(itself.Files);
+        Assert.Contains("game folder", Assert.Single(itself.Refused).Reason, StringComparison.Ordinal);
+        Assert.Empty(parent.Files);
+        Assert.Single(parent.Refused);
+        Assert.Equal("res://other/b.png", Assert.Single(sibling.Files).Target);
+        Assert.Equal("res://a.png", Assert.Single(aFileOfIt.Files).Target);                         // a file of the project can still be copied within it
+    }
+
+    [Fact]
+    public void AHiddenFolderDroppedOnItsOwnIsRefused()
+    {
+        using var source = new DropSource();
+        source.Write(".secret/a.png", TestAssets.Png());
+
+        DropPlan plan = DropPlan.Make([source.FullPath(".secret")], "res://", new FakeTargets(), s_importable);
+
+        Assert.Empty(plan.Files);
+        Assert.Contains("hidden", Assert.Single(plan.Refused).Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReplaceNeverWritesThroughALink()
+    {
+        using var source = new DropSource();
+        string image = source.Write("a.png", TestAssets.Png());
+        var live = new FakeTargets(files: ["res://a.png"]);
+        live.Links.Add("res://a.png");                                                              // a link in the project, to a file anywhere
+        var dangling = new FakeTargets();
+        dangling.Links.Add("res://a.png");                                                          // a link whose target is gone
+
+        DropPlan one = DropPlan.Make([image], "res://", live, s_importable, ClashPolicy.Replace);
+        DropPlan two = DropPlan.Make([image], "res://", dangling, s_importable, ClashPolicy.Replace);
+
+        foreach (DropPlan plan in new[] { one, two })
+        {
+            PlannedFile file = Assert.Single(plan.Files);
+            Assert.Equal("res://a 2.png", file.Target);
+            Assert.False(file.Replaces);
+        }
+    }
+
+    [Fact]
+    public void AGltfThatGoesThroughALinkedFolderIsRefused()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating a symbolic link needs a privilege on Windows.");
+        using var source = new DropSource();
+        source.Write("real/x.bin", TestAssets.TriangleBuffer());
+        source.Write("m/m.gltf", TestAssets.GltfWithBuffer("lnk/x.bin"));
+        Directory.CreateSymbolicLink(source.FullPath("m/lnk"), source.FullPath("real"));            // a folder that is a link: its files are files from anywhere
+
+        DropPlan plan = Plan(source, new FakeTargets(), "res://", ClashPolicy.KeepBoth, "m/m.gltf");
+
+        Assert.Empty(plan.Files);
+        Assert.Contains("link", Assert.Single(plan.Refused).Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheSameFileNamedTwoWaysInAGltfIsOneFile()
+    {
+        using var source = new DropSource();
+        source.Write("m.gltf", """
+            {"asset":{"version":"2.0"},"buffers":[{"byteLength":36,"uri":"a.bin"},{"byteLength":36,"uri":"a%2Ebin"}]}
+            """);
+        source.Write("a.bin", TestAssets.TriangleBuffer());
+
+        DropPlan plan = Plan(source, new FakeTargets(), "res://", ClashPolicy.KeepBoth, "m.gltf");
+
+        Assert.Empty(plan.Refused);
+        Assert.Equal(["res://a.bin", "res://m.gltf"], plan.Files.Select(f => f.Target).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void ARefusedModelsBytesDoNotCountAgainstTheTotal()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Files this large are not sparse on Windows file systems: writing them would fill the disk.");
+        using var source = new DropSource();
+        string big = source.Write("big.gltf", [1]);                                                 // too large to be a .gltf: refused whole
+        using (var stream = new FileStream(big, FileMode.Open, FileAccess.Write))
+        {
+            stream.SetLength(DropPlan.MaxFileBytes - 1);
+        }
+
+        List<string> images = [];
+        for (int i = 0; i < 4; i++)
+        {
+            string path = source.Write($"i{i}.png", [1]);
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Write);
+            stream.SetLength(DropPlan.MaxFileBytes);                                                // four of them are exactly the total
+            images.Add(path);
+        }
+
+        DropPlan plan = DropPlan.Make([big, .. images], "res://", new FakeTargets(), s_importable);
+
+        Assert.Equal(4, plan.Files.Count);
+        Assert.Single(plan.Refused);
+        Assert.EndsWith("big.gltf", plan.Refused[0].Path, StringComparison.Ordinal);
+    }
 }

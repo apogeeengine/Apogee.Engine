@@ -890,7 +890,7 @@ public static unsafe class EditorApp
 
             // The play controls, in the middle of the bar.
             Gui.SameLine(30);
-            Gui.Disabled(!project.IsPlaying && project.ImportGate.IsHeld, () => // Play waits for an import to end
+            Gui.Disabled(!project.IsPlaying && project.ImportBusy, () => // Play waits for an import to end
             {
                 if (Gui.SmallButton(project.IsPlaying ? "Stop (F5)" : "Play (F5)"))
                 {

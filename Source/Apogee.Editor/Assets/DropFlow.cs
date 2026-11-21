@@ -177,7 +177,9 @@ public sealed class DropFlow(Func<EditorProject?> current, IDropSurface surface,
 
         _running = null;
         ImportJobReport report = job.Report!;
-        PlannedFile[] imported = [.. job.Plan.Importable.Where(f => report.Imported.Contains(f.Target))];
+        // A model that was imported gets its entity; so does one that was only copied because the project has not been imported (it loads from its source). One whose import failed does not.
+        HashSet<string> failed = [.. report.Failed.Select(f => f.Path)];
+        PlannedFile[] imported = [.. job.Plan.Importable.Where(f => report.Copied.Contains(f.Target) && !failed.Contains(f.Target))];
         project.ReleaseJob();
         Summarize(report, job.Plan);
 
@@ -226,7 +228,7 @@ public sealed class DropFlow(Func<EditorProject?> current, IDropSurface surface,
     {
         IReadOnlyCollection<string> extensions = [.. ScriptSession.Importers.SelectMany(i => i.Extensions)];
         var targets = new ProjectDropTargets(project.Session.Files!, project.GameFolder);
-        return DropPlan.Make(_paths, _folder, targets, extensions, policy);
+        return DropPlan.Make(_paths, _folder, targets, extensions, policy, project.GameFolder);
     }
 
     private void Start(EditorProject project, DropPlan plan)
@@ -272,7 +274,7 @@ public sealed class DropFlow(Func<EditorProject?> current, IDropSurface surface,
 
     private static void Summarize(ImportJobReport report, DropPlan plan)
     {
-        string text = $"Added {report.Copied.Count} file(s), imported {report.Imported.Count}"
+        string text = $"Added {report.Copied.Count} file(s), " + (report.NotImported ? "not imported (the project has not been imported yet)" : $"imported {report.Imported.Count}")
             + (report.Failed.Count > 0 ? $", {report.Failed.Count} failed" : "")
             + (report.Cancelled ? " (cancelled: what was copied stays)" : "")
             + (plan.Refused.Count > 0 ? $", {plan.Refused.Count} not added" : "") + ".";

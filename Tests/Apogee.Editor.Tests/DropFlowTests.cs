@@ -90,6 +90,7 @@ public sealed class DropFlowTests
     public void ADroppedModelOnTheViewportBecomesAnEntityAfterItsImport()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         Rig editor = Make(rig);
         editor.Surface.Area = DropArea.Viewport;
@@ -139,6 +140,7 @@ public sealed class DropFlowTests
     public void ADropOnTheAssetBrowserJustImports()
     {
         using var rig = new ProjectRig();
+        ImportedProject.Mark(rig.Project);
         using var source = new DropSource();
         Rig editor = Make(rig);
         editor.Surface.AssetFolder = "res://textures";
@@ -332,5 +334,34 @@ public sealed class DropFlowTests
 
         surface.AssetsRect = null;                                                                  // a panel behind another tab was not drawn: it takes nothing
         Assert.Equal(DropArea.None, surface.AreaAt(300, 500));
+    }
+
+    [Fact]
+    public void ADropOnAProjectThatWasNeverImportedCopiesAndPlacesButImportsNothing()
+    {
+        using var rig = new ProjectRig();
+        using var source = new DropSource();
+        Rig editor = Make(rig);
+        editor.Surface.Area = DropArea.Viewport;
+        Assert.False(File.Exists(Path.Combine(Game(rig), "imported", "index.xml")));
+
+        editor.Flow.Handle(Drop(true, source.Write("box.glb", TestAssets.Glb())));
+        Finish(rig.Project, editor.Flow);
+
+        Assert.True(File.Exists(Path.Combine(Game(rig), "models", "box.glb")));
+        Assert.False(Directory.Exists(Path.Combine(Game(rig), "imported")));                        // no index was made: the reloader would import the whole project
+        Assert.Single(Models(rig));                                                                 // the model loads from its source, so the entity is made
+    }
+
+    [Fact]
+    public void TheGameFolderOrAFolderHoldingItCannotBeDropped()
+    {
+        using var rig = new ProjectRig();
+        Rig editor = Make(rig);
+
+        editor.Flow.Handle(Drop(true, Game(rig)));
+
+        Assert.Contains("game folder", Assert.Single(editor.Messages), StringComparison.Ordinal);
+        Assert.Null(rig.Project.Job);
     }
 }

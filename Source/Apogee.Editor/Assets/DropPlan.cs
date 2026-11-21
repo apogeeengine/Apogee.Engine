@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using Apogee.Content.Assets;
 using Apogee.Content.FileSystem;
+using Apogee.Content.Import;
 
 namespace Apogee.Editor.Assets;
 
@@ -29,6 +30,9 @@ public interface IDropTargets
 
     /// <summary>What is at the virtual path is a folder.</summary>
     bool IsFolder(string virtualPath);
+
+    /// <summary>What is at the virtual path is a link (even one whose target is gone): a write there would go through it, to wherever it leads.</summary>
+    bool IsLink(string virtualPath);
 
     /// <summary>A file can be written at the virtual path: it is in a writable root (the game's folder), not in a read-only one (a package's <c>mod://</c> folder, a pack).</summary>
     bool CanWrite(string virtualPath);
@@ -119,22 +123,25 @@ public sealed class DropPlan
     /// <param name="targets">What the project has.</param>
     /// <param name="importableExtensions">The extensions an importer takes, with the dot (<c>ScriptSession.Importers</c>).</param>
     /// <param name="policy">What to do with a name the project has.</param>
-    public static DropPlan Make(IReadOnlyList<string> osPaths, string targetFolder, IDropTargets targets, IReadOnlyCollection<string> importableExtensions, ClashPolicy policy = ClashPolicy.KeepBoth)
+    /// <param name="gameFolder">The game folder on the disk, when known: a dropped folder that is it, or holds it, is refused (it would copy the project into itself).</param>
+    public static DropPlan Make(IReadOnlyList<string> osPaths, string targetFolder, IDropTargets targets, IReadOnlyCollection<string> importableExtensions, ClashPolicy policy = ClashPolicy.KeepBoth, string? gameFolder = null)
     {
         ArgumentNullException.ThrowIfNull(osPaths);
         ArgumentNullException.ThrowIfNull(targets);
         ArgumentNullException.ThrowIfNull(importableExtensions);
         var plan = new DropPlan();
-        new Builder(plan, targets, importableExtensions, policy).Run(osPaths, targetFolder);
+        new Builder(plan, targets, importableExtensions, policy, gameFolder).Run(osPaths, targetFolder);
         return plan;
     }
 
     /// <summary>The working state of one <see cref="Make"/>.</summary>
-    private sealed class Builder(DropPlan plan, IDropTargets targets, IReadOnlyCollection<string> importable, ClashPolicy policy)
+    private sealed class Builder(DropPlan plan, IDropTargets targets, IReadOnlyCollection<string> importable, ClashPolicy policy, string? gameFolder)
     {
         private readonly HashSet<string> _taken = new(StringComparer.Ordinal);   // virtual paths the plan has given out
         private readonly HashSet<string> _consumed = new(StringComparer.Ordinal); // sources that another file carries
         private int _seen;
+        private int _folders;
+        private bool _truncated;                                                  // a limit was hit and said so: nothing more is read
         private long _bytes;
 
         /// <summary>A file of the drop and where it lands (relative to the folder of its unit, with <c>/</c>).</summary>
@@ -176,12 +183,18 @@ public sealed class DropPlan
                 else if (Directory.Exists(full))
                 {
                     string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(full));
-                    if (Name(name, full) is null)
+                    if (name.StartsWith('.'))
                     {
-                        continue;
+                        plan._refused.Add(new RefusedFile(full, "it is a hidden folder"));
                     }
-
-                    Collect(full, Join(folder, name), 0, candidates);
+                    else if (HoldsGameFolder(full))
+                    {
+                        plan._refused.Add(new RefusedFile(full, "it is the game folder, or holds it: dropping it would copy the game into itself"));
+                    }
+                    else if (Name(name, full) is not null)
+                    {
+                        Collect(full, Join(folder, name), 0, candidates);
+                    }
                 }
                 else if (File.Exists(full))
                 {
@@ -222,6 +235,12 @@ public sealed class DropPlan
                 return false;
             }
 
+            if (IsCache(folder))
+            {
+                problem = $"{folder} holds what the importer makes: drop into a folder of the game's own files";
+                return false;
+            }
+
             if (!targets.CanWrite(Join(folder, "x")))
             {
                 problem = $"{folder} is read-only (a package or a pack): drop into a folder of the game itself";
@@ -240,9 +259,21 @@ public sealed class DropPlan
         /// <summary>Lists the files of <paramref name="directory"/> into <paramref name="found"/> (with the virtual folder each lands in), within the limits.</summary>
         private void Collect(string directory, string virtualFolder, int depth, List<(string, string)> found)
         {
-            if (_seen > MaxFiles)
+            if (_truncated)
             {
-                return; // the limit was reached and said so
+                return;
+            }
+
+            if (IsCache(virtualFolder))
+            {
+                plan._refused.Add(new RefusedFile(directory, $"{virtualFolder} would hold what the importer makes: rename the folder"));
+                return;
+            }
+
+            if (++_folders > MaxFiles)
+            {
+                Truncate(directory, "folders");
+                return;
             }
 
             if (depth > MaxDepth)
@@ -264,6 +295,11 @@ public sealed class DropPlan
 
             foreach (string entry in entries)
             {
+                if (_truncated)
+                {
+                    return;
+                }
+
                 string name = Path.GetFileName(entry);
                 if (name.StartsWith('.'))
                 {
@@ -283,13 +319,45 @@ public sealed class DropPlan
                 }
                 else if (++_seen > MaxFiles)
                 {
-                    plan._refused.Add(new RefusedFile(directory, $"it holds more than {MaxFiles} files: only the first were taken"));
+                    Truncate(directory, "files");
                     return;
                 }
                 else
                 {
                     found.Add((entry, virtualFolder));
                 }
+            }
+        }
+
+        /// <summary>A limit was reached: said once, and the walk ends everywhere.</summary>
+        private void Truncate(string where, string what)
+        {
+            _truncated = true;
+            plan._refused.Add(new RefusedFile(where, $"the drop holds more than {MaxFiles} {what}: only the first were taken"));
+        }
+
+        /// <summary>The importer's own folder (<c>res://imported</c>): its index and UID list are not for dropping files into or over.</summary>
+        private static bool IsCache(string virtualPath) => VfsPath.IsUnder(virtualPath, "res://" + AssetImporter.CacheFolder);
+
+        /// <summary>The folder <paramref name="dropped"/> is the game folder or has it inside (compared as the file system does, links resolved).</summary>
+        private bool HoldsGameFolder(string dropped)
+        {
+            if (gameFolder is null)
+            {
+                return false;
+            }
+
+            StringComparison comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            static string Slash(string path) => Path.EndsInDirectorySeparator(path) ? path : path + Path.DirectorySeparatorChar;
+            try
+            {
+                string game = Path.GetFullPath(gameFolder);
+                return Slash(game).StartsWith(Slash(Path.GetFullPath(dropped)), comparison)
+                    || Slash(Apogee.Editor.Editing.VirtualPaths.RealPath(game)).StartsWith(Slash(Apogee.Editor.Editing.VirtualPaths.RealPath(Path.GetFullPath(dropped))), comparison);
+            }
+            catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return false;
             }
         }
 
@@ -324,6 +392,7 @@ public sealed class DropPlan
                 return null;
             }
 
+            long bytesBefore = _bytes - primary.Length;
             string? problem = null;
             List<string> uris = [];
             try
@@ -344,21 +413,28 @@ public sealed class DropPlan
 
             var members = new List<Item> { primary };
             string directory = Path.GetDirectoryName(source)!;
-            foreach (string uri in uris.Distinct(StringComparer.Ordinal))
+            var relatives = new List<string>();
+            foreach (string uri in uris)
+            {
+                if (RelativeUri(uri) is not { } decoded)
+                {
+                    problem ??= $"it names {uri}, which is not a file beside it or below it";
+                }
+                else if (!relatives.Contains(decoded, PathComparer))
+                {
+                    relatives.Add(decoded); // a.bin and a%2Ebin are one file
+                }
+            }
+
+            foreach (string relative in relatives)
             {
                 if (problem is not null)
                 {
                     break;
                 }
 
-                if (RelativeUri(uri) is not { } relative)
-                {
-                    problem = $"it names {uri}, which is not a file beside it or below it";
-                    break;
-                }
-
                 string file = Path.Combine(directory, relative.Replace('/', Path.DirectorySeparatorChar));
-                if (IsLink(file) || !File.Exists(file))
+                if (LinkOnTheWay(directory, relative) || !File.Exists(file))
                 {
                     problem = $"it names {relative}, which is missing (or is a link)";
                 }
@@ -374,6 +450,7 @@ public sealed class DropPlan
 
             if (problem is not null)
             {
+                _bytes = bytesBefore; // nothing of a refused model is taken, so none of it counts
                 plan._refused.Add(new RefusedFile(source, problem));
                 return null;
             }
@@ -386,6 +463,24 @@ public sealed class DropPlan
 
             AddSidecar(source, name, members);
             return new Unit(folder, name, members);
+        }
+
+        private static StringComparer PathComparer => OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+        /// <summary>The file, or a folder between <paramref name="directory"/> and it, is a link (a folder linked to somewhere else would bring in files from anywhere).</summary>
+        private static bool LinkOnTheWay(string directory, string relative)
+        {
+            string path = directory;
+            foreach (string segment in relative.Split('/'))
+            {
+                path = Path.Combine(path, segment);
+                if (IsLink(path))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void AddSidecar(string source, string relative, List<Item> members)
@@ -468,6 +563,12 @@ public sealed class DropPlan
         private void Place(Unit unit)
         {
             List<string> wanted = [.. unit.Members.Select(m => Join(unit.Folder, m.Relative))];
+            if (wanted.Any(IsCache))
+            {
+                plan._refused.Add(new RefusedFile(unit.Members[0].Source, $"it would land in {unit.Folder}, which holds what the importer makes"));
+                return;
+            }
+
             bool existing = wanted.Any(targets.Exists);
             bool taken = wanted.Any(_taken.Contains);
             if (existing)
@@ -483,7 +584,7 @@ public sealed class DropPlan
             {
                 plan._skipped.Add(wanted[0]);
             }
-            else if (!taken && policy == ClashPolicy.Replace && !wanted.Any(targets.IsFolder))
+            else if (!taken && policy == ClashPolicy.Replace && !wanted.Any(targets.IsFolder) && !wanted.Any(targets.IsLink))
             {
                 Add(unit, unit.Folder, replace: true);
             }
@@ -556,13 +657,13 @@ public sealed class DropPlan
 
     private static string Join(string folder, string name) => folder.EndsWith('/') ? folder + name : folder + "/" + name;
 
-    /// <summary>A symbolic link or a junction (or anything else that is a reparse point): its target may be anywhere.</summary>
+    /// <summary>A symbolic link or a junction: its target may be anywhere.</summary>
     internal static bool IsLink(string path)
     {
         try
         {
-            var info = new FileInfo(path);
-            return info.LinkTarget is not null || (info.Attributes != (FileAttributes)(-1) && info.Attributes.HasFlag(FileAttributes.ReparsePoint));
+            // Symbolic links and junctions. Not every reparse point: a cloud file that is not downloaded yet (OneDrive) is one, and is an ordinary file for our purposes.
+            return new FileInfo(path).LinkTarget is not null;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

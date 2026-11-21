@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 using Apogee.Content.FileSystem;
@@ -19,6 +20,9 @@ public sealed class ProjectDropTargets(VirtualFileSystem files, string gameFolde
 
     /// <inheritdoc/>
     public bool CanWrite(string virtualPath) => files.CanWrite(virtualPath);
+
+    /// <inheritdoc/>
+    public bool IsLink(string virtualPath) => IsLinkAt(virtualPath);
 
     private bool IsLinkAt(string virtualPath)
     {
@@ -47,7 +51,15 @@ public sealed class ProjectDropTargets(VirtualFileSystem files, string gameFolde
 /// </summary>
 public sealed class ImportGate
 {
+    // One per game folder for the whole process, not one per open project: closing a project while a job still runs (a Basis encode cannot be cut short) and opening the same folder again must not give two importers
+    // two gates. Few entries, ever (one per folder the editor opened).
+    private static readonly ConcurrentDictionary<string, ImportGate> s_byFolder = new(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
     private int _held;
+
+    /// <summary>The gate of the game folder <paramref name="gameFolder"/>: the same object for the same folder, however it is spelled (a trailing slash, a link to it).</summary>
+    public static ImportGate ForFolder(string gameFolder) =>
+        s_byFolder.GetOrAdd(Path.TrimEndingDirectorySeparator(Apogee.Editor.Editing.VirtualPaths.RealPath(Path.GetFullPath(gameFolder))), _ => new ImportGate());
 
     /// <summary>Someone holds the gate.</summary>
     public bool IsHeld => Volatile.Read(ref _held) != 0;
