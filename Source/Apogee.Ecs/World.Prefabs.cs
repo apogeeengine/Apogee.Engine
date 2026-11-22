@@ -83,9 +83,11 @@ public sealed unsafe partial class World
         return new PrefabExpander(
             reference =>
             {
-                if (!resolved.TryGetValue(reference, out ResolvedPrefab? known))
+                // What an instance that is up to date is read as is not what the others are read as (see _asCurrent): another entry for it.
+                string key = _asCurrent ? "\0" + reference : reference;
+                if (!resolved.TryGetValue(key, out ResolvedPrefab? known))
                 {
-                    resolved[reference] = known = ResolvePrefab(reference);
+                    resolved[key] = known = ResolvePrefab(reference);
                 }
 
                 return known;

@@ -138,6 +138,14 @@ internal sealed unsafe class PrefabDiff
                 ulong target = *(ulong*)at;
                 string? written = _plan.TryAddress(target, out string? address) ? address : target == 0 ? _world.DanglingText(live, info.Name, field.Name, _plan) : null;
                 text = written ?? "";
+
+                // A field that waits for an entity (it names nothing now, and remembers where the entity will be) waits for the one the prefab names, when that is the same place: that is the prefab's value, not a
+                // change. Without this an entity the prefab dropped, and brought back, would leave the fields that named it pinned to nothing.
+                if (target == 0 && written is not null && expected is { Length: > 0 } && expected == written)
+                {
+                    return false;
+                }
+
                 return ExpectedEntity(expected) != (written is null ? "" : Relative(written));
             }
 

@@ -761,4 +761,22 @@ public sealed class PrefabRefreshTests : PrefabTestBase
 
         Assert.True(other.CaptureCounter >= World.CaptureCounter);                               // what it keeps from the other world cannot meet a number of its own
     }
+
+    [Fact]
+    public void AFieldInsideAnInstanceThatNamedADroppedMemberNamesItAgainWhenItIsBack()
+    {
+        World.LoadScene($"<Scene version=\"2\"><Entity id=\"1\" name=\"CornerB\" prefab=\"{Corner}\"/></Scene>");
+        Entity lamp = Child(World.Lookup("CornerB"), "Lamp");
+        Entity bulb = Child(lamp, "Bulb");
+        World.Set(bulb, World.Get<Marks>(bulb) with { Target = Child(lamp, "Base") });
+        string mended = Read("prefabs/lamp.aprefab");
+
+        ChangeLamp(text => Replace(text, BaseLamp, ""));
+        Assert.Equal(default, World.Get<Marks>(bulb).Target);
+        Write("prefabs/lamp.aprefab", mended);
+        Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
+        World.ApplyPrefabUpdates();
+
+        Assert.Equal(Child(lamp, "Base"), World.Get<Marks>(bulb).Target);
+    }
 }

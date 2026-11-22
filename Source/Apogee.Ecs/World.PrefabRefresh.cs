@@ -41,6 +41,8 @@ public sealed unsafe partial class World
     private PrefabLibrary? _followed;
     private Dictionary<uint, XmlNode?>? _asOf;                         // while set, prefabs are read as they were (see ResolvePrefab)
     private bool _applying;                                            // ApplyPrefabUpdates is running
+    private HashSet<ulong>? _upToDateNow;                              // the instances ApplyPrefabUpdates leaves alone because they were saved over their prefab
+    private bool _asCurrent;                                           // an instance of that kind is being read: its prefabs are read as they are, not as they were
     private Aftermath? _aftermath;                                     // what the instances updated so far did to the world, while ApplyPrefabUpdates runs
 
     private DanglingRef? DroppedBy(ulong entity) => _aftermath is { } aftermath && aftermath.Dropped.TryGetValue(entity, out DanglingRef? named) ? named : null;
@@ -137,6 +139,12 @@ public sealed unsafe partial class World
     // there was none. False when the entities are made from the current one.
     private bool DocumentAsOf(uint handle, out XmlNode? document)
     {
+        if (_asCurrent)
+        {
+            document = null;
+            return false;
+        }
+
         if (_asOf is not null)
         {
             return _asOf.TryGetValue(handle, out document);
@@ -308,10 +316,10 @@ public sealed unsafe partial class World
         var update = new PrefabUpdate(keys);
         var aftermath = new Aftermath();
         _aftermath = aftermath;
+        _upToDateNow = upToDate;
         bool started = false;
         try
         {
-            aftermath.WatchesReferences = _kept.Values.Any(static kept => kept.Refs is not null);
             foreach (Entity root in AffectedInstances(before, new HashSet<string>(keys, StringComparer.Ordinal), upToDate))
             {
                 started = true;
@@ -341,6 +349,7 @@ public sealed unsafe partial class World
         {
             _applying = false;
             _aftermath = null;
+            _upToDateNow = null;
         }
 
         if (update.Touched)
@@ -360,8 +369,8 @@ public sealed unsafe partial class World
     /// <summary>What the updates of all instances leave to be done to the rest of the world, collected so that it is done once.</summary>
     private sealed class Aftermath
     {
-        /// <summary>Whether some entity holds an entity field that waits for an entity (see <see cref="KeptData.Refs"/>): only then is it worth noting what the updates made.</summary>
-        public bool WatchesReferences { get; set; }
+        /// <summary>What each updated instance is: its plan and the entity of each item of it.</summary>
+        public List<(ScenePlan Plan, List<Entity> Bound)> Planned { get; } = [];
 
         /// <summary>The entities that were dropped, by id, and what each was called: the nearest entity above it that stays and what follows its address.</summary>
         public Dictionary<ulong, DanglingRef> Dropped { get; } = [];
@@ -467,10 +476,7 @@ public sealed unsafe partial class World
         try
         {
             dropped = Reconcile(plan, made, out List<Entity> bound);
-            if (aftermath.WatchesReferences)
-            {
-                NoteReachable(aftermath, plan.Target, bound);
-            }
+            aftermath.Planned.Add((plan.Target, bound));
         }
         catch (Exception e) when (IsRecoverable(e))
         {
@@ -636,8 +642,14 @@ public sealed unsafe partial class World
             LetGoOfReferencesToDropped(aftermath.Dropped);
         }
 
-        if (aftermath.Reach.Count > 0 || aftermath.Numbered.Count > 0)
+        // Fields that wait for an entity (before the updates, or because one of them dropped what they named) are tied to the entities the updates made.
+        if (aftermath.Dropped.Count > 0 || _kept.Values.Any(static kept => kept.Refs is not null))
         {
+            foreach ((ScenePlan plan, List<Entity> bound) in aftermath.Planned)
+            {
+                NoteReachable(aftermath, plan, bound);
+            }
+
             ReconnectReferences(aftermath);
         }
     }
@@ -656,7 +668,7 @@ public sealed unsafe partial class World
             int slash = address.IndexOf('/', StringComparison.Ordinal);
             if (slash < 0)
             {
-                aftermath.Numbered[address] = entity;
+                aftermath.Numbered.TryAdd(address, entity); // a copy of an instance has its kept elements' numbers too: the first one is the number's
                 continue;
             }
 
@@ -813,9 +825,8 @@ public sealed unsafe partial class World
             Dictionary<(string Component, string Field), DanglingRef>? left = null;
             foreach (((string component, string field), DanglingRef waiting) in refs)
             {
-                bool found = waiting.Root != 0
-                    ? aftermath.Reach.TryGetValue((waiting.Root, waiting.Text), out Entity target)
-                    : aftermath.Numbered.TryGetValue(waiting.Text, out target);
+                Entity target;
+                bool found = waiting.Root != 0 ? aftermath.Reach.TryGetValue((waiting.Root, waiting.Text), out target) : TryFindByNumber(aftermath, waiting.Text, out target);
                 if (found && IsAlive(target) && TryTie(new Entity(owner), component, field, target))
                 {
                     left ??= new Dictionary<(string, string), DanglingRef>(refs);
@@ -836,6 +847,19 @@ public sealed unsafe partial class World
                 }
             }
         }
+    }
+
+    // The entity an update made that a number names (what a kept element adds), or one inside it (the number, then the address below it).
+    private static bool TryFindByNumber(Aftermath aftermath, string text, out Entity found)
+    {
+        int slash = text.IndexOf('/', StringComparison.Ordinal);
+        if (slash < 0)
+        {
+            return aftermath.Numbered.TryGetValue(text, out found);
+        }
+
+        found = default;
+        return aftermath.Numbered.TryGetValue(text[..slash], out Entity above) && aftermath.Reach.TryGetValue((above.Id, text[(slash + 1)..]), out found);
     }
 
     // Makes an entity field that is empty name the entity; false when the entity has no such field, or it names something.

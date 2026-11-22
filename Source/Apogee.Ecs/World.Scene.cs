@@ -365,10 +365,20 @@ public sealed unsafe partial class World
 
         // Each instance has the budget an Instantiate or a load had for it: a world made of many large instances can be saved, and a prefab that grew since cannot make one expansion unbounded.
         plan.Expander.UseBudget(new ExpansionBudget(MaxLoadEntities));
-        Expansion expansion = plan.Expander.Expand(element, address);
-        var pairs = new Dictionary<ulong, ExpandedEntity>();
-        Pair(plan, entity, expansion.Root, pairs);
-        return new InstanceSave(address, reference, expansion, pairs);
+
+        // An instance that was saved over its own prefab (see World.PrefabRefresh.cs) was made from the document the prefab has now, whichever the update that contains it is reading.
+        _asCurrent = _upToDateNow?.Contains(entity.Id) == true;
+        try
+        {
+            Expansion expansion = plan.Expander.Expand(element, address);
+            var pairs = new Dictionary<ulong, ExpandedEntity>();
+            Pair(plan, entity, expansion.Root, pairs);
+            return new InstanceSave(address, reference, expansion, pairs);
+        }
+        finally
+        {
+            _asCurrent = false;
+        }
     }
 
     // Pairs the live entity with the expected one, then their children: a live child is the expected child with the same prefab member tag (id and file), when it is the same kind of entity (an instance
