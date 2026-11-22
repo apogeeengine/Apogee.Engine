@@ -37,7 +37,7 @@ public abstract class PrefabFuzzBase : PrefabTestBase
 
     private string NewName() => $"n{_names++}";
 
-    private static T Pick<T>(Random random, IReadOnlyList<T> from) => from[random.Next(from.Count)];
+    protected static T Pick<T>(Random random, IReadOnlyList<T> from) => from[random.Next(from.Count)];
 
     private static Quaternion OddRotation(Random random) => random.Next(3) switch
     {
@@ -171,7 +171,7 @@ public abstract class PrefabFuzzBase : PrefabTestBase
 
     // ---- What a world is
 
-    private static string PathOf(World world, Entity entity)
+    protected static string PathOf(World world, Entity entity)
     {
         var names = new Stack<string>();
         for (Entity current = entity; !current.IsNull; current = world.GetParent(current))
