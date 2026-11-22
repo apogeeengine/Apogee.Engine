@@ -18,7 +18,7 @@ namespace Apogee.Ecs.Tests;
 /// </summary>
 public sealed class PrefabFuzzTests : PrefabTestBase
 {
-    public static IEnumerable<object[]> Seeds() => Enumerable.Range(0, 200).Select(seed => new object[] { seed });
+    public static IEnumerable<object[]> Seeds() => Enumerable.Range(0, 600).Select(seed => new object[] { seed });
 
     private static readonly float[] Floats = [0f, -0f, 1f, 1.5f, -2.5f, float.NaN, 1e-45f, 3.4e38f, 1e7f, 0.1f, float.NegativeInfinity];
     private static readonly double[] Doubles = [0, -0.0, 1e7, 1e-300, 123456.789, -3, 0.5, 1e12];
