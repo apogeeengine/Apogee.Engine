@@ -29,9 +29,8 @@ The layout (a dock space: hierarchy on the left, inspector on the right, the vie
   select with a box**, Ctrl+A for all and Escape for none. Double click or F2 renames the active entity, Ctrl+X, Ctrl+C, Ctrl+V and Ctrl+D cut, copy, paste and duplicate the selection (see [Copy and paste](#copy-and-paste)), **Delete removes every selected entity as one undo step** ("Delete 3 entities"), right click
   opens the menu, and **dragging a node drags the whole selection** (or only that node when it is not selected) **onto another to make them children** (onto the empty space below to make them roots), as one step.
   An entity keeps its place in the world when it changes parent, and a name a sibling already has is made unique, also between the entities that move together.
-- **Inspector.** The components of the active entity (the last one picked; editing several at once comes later), drawn from the registry's descriptions: a checkbox, drag field, slider (when `[Property]` gives a `Min` and a `Max`), three drag fields for a vector or a double
-  position, three angles for a rotation, a drop target for an entity reference, and for `ModelRenderer.Model` the model's path (type one, or drop a model file on it). Fields are grouped under their `Category`, `Hidden`
-  ones are left out and `ReadOnly` ones greyed; right click a component to remove it; *Add component* lists every registered component. See [what an inspector shows](../core/reflection.md#what-an-inspector-shows).
+- **Inspector.** The components of the selected entities, drawn from the registry's descriptions: see [The inspector](#the-inspector). With several entities selected it shows the active entity's components
+  that all of them have, and an edit changes every one.
 - **Assets.** The virtual file system: `res://` and, when listed, the packages' `mod://id/` folders; each importable file shows whether it is imported, out of date, or not imported yet (`AssetImporter.StatusOf`),
   and *Re-import* imports one file again (`Reimport`). Double click a `.ascene` to open it; drag a model into the viewport or the inspector; drop files from the system on the panel to add them to the folder it shows (see [Bringing files in](#bringing-files-in)).
 - **Console.** The log, filtered by level; while files are being imported its header shows the progress and a *Cancel import* button.
@@ -48,6 +47,56 @@ The selection is not an undo step. It is kept as entity ids: an entity that was 
 deleting entities takes them out of the selection (undoing the delete does not select them again), and the selection survives Play and Stop like the history does. While the game plays, selecting works and every edit
 stays disabled. The code is `Source/Apogee.Editor/Editing/Selection.cs` (plain classes over a world, with no ImGui, so it is tested without a window); the hierarchy panel only translates the requests of ImGui's
 multi-select (a click, a range, the box, Escape) into `SelectionRequest`s, which `SelectionRequests.Apply` applies against the list of visible nodes.
+
+## The inspector
+
+A field is drawn by a **drawer**, picked from a table in this order: a drawer registered for the whole component, one for the field, one for the field's asset type, then the defaults, which look at what the registry says about the field
+(an enum, a colour) and then at its kind. The defaults are:
+
+- **Numbers.** A checkbox, a drag field (a slider when `[Property]` gives a `Min` and a `Max`), three drag fields for a vector or a double position, three angles for a rotation. An asset handle is still a plain number, and
+  `ModelRenderer.Model` still shows the model's path (type one, or drop a model file on it) until the asset picker replaces them.
+- **Entity reference.** The entity's name on a button that takes a dropped entity, and *Clear*.
+- **Enum.** A field the registry says holds an enum (`[Property(Enum = typeof(LightKind))]`, or a field of an enum type) is a combo of the enum's members; a flags enum is a node with a checkbox for each member that has a bit.
+  A value that is no member shows as its number and stays until another is picked, and the bits of a flags value that no member names are kept when a checkbox changes.
+- **Colour.** A `Vector3` marked `Color = true` is a colour picker (`ColorEdit3`, HDR and float): a light can be brighter than white, so values outside 0 to 1 are shown and kept.
+
+Fields are grouped under their `Category`, `Hidden` ones are left out, `ReadOnly` ones greyed, and a field's `///` summary is its tooltip.
+
+**Defaults.** *Add component* starts a component from `ComponentDefaults` (in `Apogee.Host.Editing`): a table from the component's name to its bytes, seeded by `RegisterEngine()` with the identity `Transform`, `CameraComponent.Default` and a white
+point `Light`. A component nobody registered, such as one a script defines, starts as zeros. Right click a component's heading and choose *Reset to default* to put the whole value back, or right click a field for *Reset to default* on that field alone.
+Each is one undo step. A game or an editor extension adds its own with `ComponentDefaults.Register(name, bytes)`.
+
+**Several entities.** With several selected, the inspector shows the active entity's components that **all** of them have, with the active entity's values. A field whose bytes differ among them shows ImGui's mixed value (`---`, a dash
+in a checkbox, "---" in a combo). An edit writes the bytes of **that field only** on every selected entity, so each keeps its own values for the others, and one drag, pick or click is **one undo step** (a composite of one change for each
+entity, which merges with the next change to the same entities until the widget is let go of). *Add component* adds a component to every selected entity that lacks it, *Remove component* removes it from all, and *Reset to default* resets all.
+Changing the name still renames the active entity only.
+
+### Custom inspectors
+
+An editor extension (C# only: the editor is the one place a drawer can live; games define components in scripts and get the defaults) registers drawers on `InspectorDrawers` before the inspector first draws:
+
+```csharp
+// One field: a drawer gets the field, its bytes (write the new value back into them and return true), whether the selected entities disagree, and the widgets.
+InspectorDrawers.RegisterField("Health", "Current", (in FieldEdit edit) =>
+{
+    int current = MemoryMarshal.Read<int>(edit.Bytes);
+    var value = new double[] { current };
+    if (!edit.Ui.Drag(edit.Label, value, 1, 0, 100, "%.0f", edit.Mixed))
+    {
+        return false;
+    }
+
+    int next = (int)value[0];
+    MemoryMarshal.Write(edit.Bytes, in next);
+    return true;
+});
+
+InspectorDrawers.RegisterAssetType("texture", (in FieldEdit edit) => BuiltInDrawers.Numbers(in edit));   // every AssetRef field of that asset type
+InspectorDrawers.RegisterComponent("Health", (in ComponentEdit edit) => false);                          // the whole component, in place of its fields
+```
+
+`FieldEdit.Ui` is an `IInspectorUi`: the widgets (drag fields, checkbox, combo, colour, entity reference, path) with the mixed flag, which `ImGuiInspectorUi` draws with ImGui and the tests answer with a fake, so a drawer is tested with no window. The built-in drawers
+(`BuiltInDrawers.Numbers`, `EntityReference`, `Enum`, `Color`) are public, to call for part of a field. A component drawer gets the whole value and a mixed flag for each field; only the fields whose bytes it changed are written to the selected entities.
 
 ## Group transforms
 
@@ -280,7 +329,7 @@ Editing is off while playing: the panels show the game's world, read-only.
 
 ## What is not here
 
-An import settings editor and an import dialog (files are [dropped in](#bringing-files-in); their settings are the `.import.xml` next to them, see [Asset import](../content/import.md)), materials, animations, an Export dialog (a game is exported with [`./build.sh export`](export.md)), editing several selected entities at once in the inspector (it shows the active one), material and logic graph editors (imnodes is ready for them), multi-viewport windows, and a physics ray cast for picking (an editing session has no physics bodies).
+An import settings editor and an import dialog (files are [dropped in](#bringing-files-in); their settings are the `.import.xml` next to them, see [Asset import](../content/import.md)), materials, animations, an Export dialog (a game is exported with [`./build.sh export`](export.md)), material and logic graph editors (imnodes is ready for them), multi-viewport windows, and a physics ray cast for picking (an editing session has no physics bodies).
 Sound plays in play mode through OpenAL Soft ([Audio](../audio/index.md)), which ships beside the editor like any other library.
 
 ## Tests
@@ -288,5 +337,5 @@ Sound plays in play mode through OpenAL Soft ([Audio](../audio/index.md)), which
 `Tests/Apogee.Editor.Tests`: the field codec for every `FieldKind` (a rotation as angles, integers clamped), the editor camera, picking (rays, boxes, spheres, the ground, and the selection box with what is behind the
 camera left out), the selection model (toggle, ranges in the visible order, top level, dead entities, the active entity, the multi-select requests), copy, cut, paste and duplicate through a memory clipboard (the same tree under new ids as one step, next to the active entity or under it, unique names, references inside the copy followed and outside ones dropped, models by path, undo of a cut, text that is not a scene, duplicating several, playing), the group transforms (the pivots, moving at ten million metres, rotating and scaling about the centre or in place, local axes, a member under a turned, non-uniformly scaled or mirrored parent, a selected child not moved twice, exactness of a move with a turned pivot, ten million metres out, the scale caveat and its 45 degree value, and the life of a drag: dropped when cut short, sealed, blocked until the button is let go), the keymap (chords parsed and printed for each platform, the defaults and their menu text, conflicts in a context or against an *Anywhere* shortcut, exact modifiers, contexts, no shortcut while typing, held keys, and this page's table equal to the real one), the preferences in a temporary editor folder (values surviving a reopen and only differences written, the debounce with a fake clock, recent projects most recent first without duplicates and with missing ones dropped and a bound of ten, the last scene per project, key bindings saved as a difference and read back with unknown actions kept, collisions and bad chords reported on load, a corrupt file or a newer one set aside with a copy and never overwritten, in-memory preferences that never write), the rebinding logic with a fake keyboard (capturing the next chord with its modifiers, a modifier alone, Escape giving up, shortcuts off while a key is awaited, a colliding chord accepted and warned about, clear and reset), the file dialogs through a scripted fake (an OS path becoming a game path only inside the game folder; Save as writing the chosen file, adding the extension, refusing a path outside the game; Open scene opening it, refusing other paths, files that are not scenes and missing ones; a cancel doing nothing and an error asking for the built-in entry; a second dialog refused; a result that arrives after the project changed dropped; a scene that fails to load leaving the editor exactly as it was and the next Save writing the old scene; a failing save reported with the scene still modified; a name the game cannot use; a result while playing; a second dialog using the built-in entry; only game folders opened; the dialog gate with a fake clock: refusing a second dialog, free again after an exception or a lost dialog, a late answer dropped; paths of a symlinked and a root-level game folder), switching projects (the old project disposed first, the events in order, a missing folder keeping the open project, a game that fails to start reported and the previous project reopened), the project (creating, naming, reparenting,
 duplicating and deleting, one or several, through the history; the modified mark clearing when undo returns to the saved scene; a scene saved to a file and opened again with the model's path; Play running the game's
-scripts over the scene and Stop restoring the world under the same ids with the selection and history intact; a failing game), dropping files from the system (the plan: where files land, numbering, `Replace` and `Skip`, a glTF's buffers and images, uris that climb out and absolute ones, folders and their limits, read-only roots, refused kinds, names, links and sizes; the import job: copied and imported on another thread, the reloader catching up without importing again and not polling while the importer is held, cancelling between files, Play and a second import refused, nothing overwritten that appeared after the plan, `Replace` keeping the UID, a copied sidecar's UID made new, a model with its buffer, a failed import leaving the file, closing the project waiting for the worker; the flow: an entity at the dropped point as one undo step, the asset browser only importing, every refusal, the question about names, the routing by panel rectangle; the real SDL drop event needs a display and a person and is tested through its synthetic events in `Tests/Apogee.Platform.Tests`), and, on a GPU (skipped without one), a frame of the viewport with no validation errors whose render graph lays out as nodes. `Tests/Apogee.Host.Tests` covers the history and
-its commands (a drag over several entities is one step).
+scripts over the scene and Stop restoring the world under the same ids with the selection and history intact; a failing game), dropping files from the system (the plan: where files land, numbering, `Replace` and `Skip`, a glTF's buffers and images, uris that climb out and absolute ones, folders and their limits, read-only roots, refused kinds, names, links and sizes; the import job: copied and imported on another thread, the reloader catching up without importing again and not polling while the importer is held, cancelling between files, Play and a second import refused, nothing overwritten that appeared after the plan, `Replace` keeping the UID, a copied sidecar's UID made new, a model with its buffer, a failed import leaving the file, closing the project waiting for the worker; the flow: an entity at the dropped point as one undo step, the asset browser only importing, every refusal, the question about names, the routing by panel rectangle; the real SDL drop event needs a display and a person and is tested through its synthetic events in `Tests/Apogee.Platform.Tests`), the inspector through a fake UI with no ImGui (the lookup order of the drawer table, numbers drawn as before, enum combos with an unknown value and flags checkboxes with unnamed bits kept, colours outside 0 to 1, entity references, hidden, read-only and playing fields, an edit of several entities changing only that field as one step per drag, mixed values, the shared components, add, remove and reset with defaults), and, on a GPU (skipped without one), a frame of the viewport with no validation errors whose render graph lays out as nodes. `Tests/Apogee.Host.Tests` covers the history and
+its commands (a drag over several entities is one step, composites of the same targets merging, the component defaults).

@@ -34,6 +34,7 @@ public sealed class EditorProject : IDisposable
 
     public EditorProject(string gameFolder, string? userFolder = null)
     {
+        ComponentDefaults.RegisterEngine();   // what Add component and Reset to default start the engine's components as
         GameFolder = Path.GetFullPath(gameFolder);
         UserFolder = userFolder;
         ImportGate = ImportGate.ForFolder(GameFolder);
