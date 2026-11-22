@@ -18,6 +18,9 @@ public abstract class PrefabFuzzBase : PrefabTestBase
     private static readonly double[] Doubles = [0, -0.0, 1e7, 1e-300, 123456.789, -3, 0.5, 1e12];
     private int _names;
 
+    /// <summary>Whether the random edits copy entities. A copy of an instance that keeps data aside has the same numbers for it as the original, which a reference that waits for one of them cannot tell apart.</summary>
+    protected virtual bool MayClone => true;
+
     protected string Base() => $"""
         <Scene version="2">
           <Entity id="1" name="Player"><Transform Position="1 2 3" Rotation="0 0 0 1" Scale="1 1 1"/></Entity>
@@ -123,7 +126,11 @@ public abstract class PrefabFuzzBase : PrefabTestBase
 
                 break;
             case 12:
-                world.Clone(target);
+                if (MayClone)
+                {
+                    world.Clone(target);
+                }
+
                 break;
             case 13:
                 world.Instantiate(random.Next(2) == 0 ? LampPath : CornerPath, random.Next(3) == 0 ? default : target);

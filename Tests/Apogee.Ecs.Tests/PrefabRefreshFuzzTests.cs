@@ -12,6 +12,9 @@ namespace Apogee.Ecs.Tests;
 /// </summary>
 public sealed class PrefabRefreshFuzzTests : PrefabFuzzBase
 {
+    // Copies are made by the test itself, while a change waits (see the second theory); the random edits make none, so that what a reference waits for is one entity.
+    protected override bool MayClone => false;
+
     private const string BaseLamp = "<Entity id=\"3\" name=\"Base\"><Transform Position=\"0 0 0\" Rotation=\"0 0 0 1\" Scale=\"1 1 1\"/></Entity>";
     private const string BulbHealth = "<Health Current=\"5\" Max=\"9\" Regen=\"0.5\"/>";
 
