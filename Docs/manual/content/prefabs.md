@@ -242,9 +242,15 @@ the limits (nesting, [`MaxLoadEntities`](#limits) and the budget) are the load's
 - **A file that is not usable keeps the old prefab.** One that does not parse, is not a prefab, repeats an id, or holds an instance of itself (through a loop of any length, or nested too deep) is not adopted:
   `Reload` says `Failed` and why, nothing is announced, and the instances stay. A file that is **deleted** is the same (an editor that saves by replacing the file, a version control branch that is switched),
   and when it is back unchanged `Reload` says `Unchanged`. A file that was never there and appears makes the instances that were missing whole.
-- **An instance that cannot be updated** (the new prefab expands to more than `MaxLoadEntities`, or an entity of the instance is not part of what the instance and its prefab say) is in
-  `PrefabUpdate.Failed` with the reason and is not changed; the library has the new prefab, so saving it writes the difference as overrides (the old values pinned): nothing is lost.
-- **Instances made after the change was announced** (and before the update) are made from the new file and are left alone.
+- **An instance that cannot be updated** (the new prefab expands to more than `MaxLoadEntities`, an entity of the instance is not part of what the instance and its prefab say, or anything throws
+  while it is being changed: a model that cannot be loaded in an unexpected way, an observer) is put back exactly as it was (the entities that were destroyed come back with their ids), is in
+  `PrefabUpdate.Failed` with the reason, and the other instances are updated all the same. The library has the new prefab, so saving it writes the difference as overrides (the old values pinned): nothing is lost.
+- **Until the update is applied, everything is made from the old file.** A load, `Instantiate`, `Clone`, a restored snapshot and a save that happen between `Reload` and `ApplyPrefabUpdates` use the document the
+  instances were made from, so what they make is what the update expects, and is brought up to date with the rest (a new lamp under a member of a corner included). A snapshot remembers the documents
+  its instances were made from: restoring one into a world whose prefab has changed since (Stop after a prefab was edited during Play) asks for the update it needs.
+- **An instance saved over its own prefab** (`SavePrefabFile` from an instance of it) has what the file says, and is not updated from the old file: what was added to it is the file's now.
+- **References into instances.** An entity field outside the updated instances that named an entity the prefab dropped is emptied and remembers it; one that waits for an entity (emptied by an earlier
+  update, or loaded before its prefab had it) is tied to it when an update makes it. This is done once for all instances of one apply.
 
 `PrefabsChanged` (a C# event, and the `PrefabChanged` signal for scripts, with the prefab's path) says what an update did: the prefab files, the instances updated, the entities it made and destroyed, and the
 instances it left. **A tool treats an update as a change that did not come from the user and cannot be undone.** An editor with an undo history keeps the history for what the update did not touch, and ends
