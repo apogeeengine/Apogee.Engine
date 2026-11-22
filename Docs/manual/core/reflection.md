@@ -124,6 +124,14 @@ On a class, a property that names an asset has the type `Apogee.Core.Assets.Asse
 `uid://…` alone), and the generated `.d.luau` says `string` (`string?` for `AssetRef?`). Text that is not an asset reference is an error in the script (`Value.ToAssetRef` throws a `ValueException`)
 and the property keeps its value.
 
+### Properties of classes in the inspector
+
+The hints above (`Min`, `Max`, `Step`, `Category`, `Hidden`, `ReadOnly`, `Color`) are read the same way from a class's properties, and the editor's object inspector (*Debug > Engine objects*, see [the editor](../tools/editor.md#engine-objects))
+draws an `[ApogeeClass]` object from them: the properties of its base classes first, each by its `TypeRef` (a bool, a number, a string, a vector, a rotation, an enum from its `EnumInfo`, an entity, an object that opens in place, a list of any of
+those), through `PropertyDef.Getter` and `PropertyDef.Setter` over `Value`, which are the delegates scripts use. A property with no setter is shown and not edited. A setter that throws a `ValueException` (or anything else) is how a class
+refuses a value: the inspector shows the message and leaves the property alone, so a setter has to leave the object as it was when it throws. A getter should not throw, and an object that a property returns may be destroyed at any time (`IsDestroyed`): the inspector copes with both, but it
+reads every property each frame, so a getter should be cheap. Two things the registry does not say, because it never had to: whether a string is long text (the editor has `InspectorDrawers.RegisterMultiline` for that), and which string is an asset reference (an `AssetRef` property is a plain string in its `TypeRef`, so the inspector shows its text).
+
 ## Using the registry
 
 `TypeRegistry.GetClass("Actor")` gives a `ClassInfo`; `FindProperty("speed")`, `FindMethod("try_move")` and `FindSignal("damaged")`

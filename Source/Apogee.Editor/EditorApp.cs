@@ -161,6 +161,7 @@ public static unsafe class EditorApp
         private (string Folder, string? Scene) _recordedScene;
         private readonly ConsolePanel _console = new();
         private readonly RenderGraphPanel _graph = new();
+        private readonly EngineObjectsPanel _engineObjects = new();
         private readonly ViewportPanel _viewport = new();
         private EditorContext? _context;
         private HierarchyPanel _hierarchy = new();
@@ -512,6 +513,7 @@ public static unsafe class EditorApp
             _console.Draw(ctx);
             ProfilerPanel.Draw(ctx);
             _graph.Draw(ctx);
+            _engineObjects.Draw(ctx);
 
             _prefsWindow.Draw();
             DrawModals(project);
@@ -883,6 +885,11 @@ public static unsafe class EditorApp
                 if (Gui.MenuItem("RmlUi debugger", null, rml, project.IsPlaying))
                 {
                     project.Session.Ui.Debugger = !rml;
+                }
+
+                if (Gui.MenuItem("Engine objects", null, _engineObjects.IsOpen))
+                {
+                    _engineObjects.Toggle();
                 }
 
                 Gui.EndMenu();
