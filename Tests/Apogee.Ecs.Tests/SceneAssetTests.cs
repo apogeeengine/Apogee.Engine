@@ -273,6 +273,33 @@ public sealed class SceneAssetTests : IDisposable
     }
 
     [Fact]
+    public void TheTextOfAReferenceThatDidNotLoadCanBeReadAndForgotten()
+    {
+        using World world = NewWorld();
+        Entity lost = world.LoadScene("""
+            <Scene version="1">
+              <Entity id="1" name="lost"><Furnished Count="7" Model="res://models/gone.glb|uid://0000000000zzz"/></Entity>
+            </Scene>
+            """)[0];
+
+        Assert.Equal("res://models/gone.glb|uid://0000000000zzz", world.UnresolvedAssetOf(lost, "Furnished", "Model"));
+        Assert.Null(world.UnresolvedAssetOf(lost, "Furnished", "Count"));
+        Assert.Contains("gone.glb", world.SaveScene(), StringComparison.Ordinal);       // saving brings the reference back
+
+        // An editor that clears the field forgets the text: the next save leaves the attribute out.
+        Assert.True(world.SetUnresolvedAsset(lost, "Furnished", "Model", null));
+        Assert.False(world.SetUnresolvedAsset(lost, "Furnished", "Model", null));
+        Assert.Null(world.UnresolvedAssetOf(lost, "Furnished", "Model"));
+        string cleared = world.SaveScene();
+        Assert.DoesNotContain("gone.glb", cleared, StringComparison.Ordinal);
+        Assert.Contains("Count=\"7\"", cleared, StringComparison.Ordinal);
+
+        // And undoing it puts the same text back.
+        Assert.True(world.SetUnresolvedAsset(lost, "Furnished", "Model", "res://models/gone.glb|uid://0000000000zzz"));
+        Assert.Contains("res://models/gone.glb|uid://0000000000zzz", world.SaveScene(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AConverterThatThrowsGivesHandleZeroAndAWarning()
     {
         var sink = new Sink();

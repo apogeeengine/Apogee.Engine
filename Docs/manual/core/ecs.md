@@ -57,6 +57,9 @@ The same converters are public for a tool that edits a handle (the editor's asse
 the handle of this run for a reference, loading the asset when the type needs to. `AssetRefOf` is null for handle 0, for a type nobody registered and for a handle that names nothing that can be saved; `AssetHandleOf` is 0
 for an empty reference, for an unregistered type, and for an asset the converter does not find, all without a warning (asking is not saving, and an editor asks often); only a converter that throws because the asset cannot be loaded is logged.
 
+A field that is 0 because its scene named an asset that did not load keeps the reference text, and a save writes it again, so that the reference works when the file is back. An editor shows it with
+`world.UnresolvedAssetOf(entity, "ModelRenderer", "Model")` and, when the person replaces or clears the field, drops it with `world.SetUnresolvedAsset(entity, component, field, null)` (passing the old text back undoes that); without it, clearing a broken field would be undone by the next save.
+
 `Entity` is not a component name: `RegisterComponent` and `DefineComponent` refuse it (`InvalidOperationException`), because a scene file writes a child entity as `<Entity>`.
 
 ### Editing: hierarchy, copies, snapshots and scenes
