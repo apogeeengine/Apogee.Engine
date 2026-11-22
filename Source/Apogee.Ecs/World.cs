@@ -237,7 +237,10 @@ public sealed unsafe partial class World : EngineObject, IDisposable
 
     public void Modified(Entity entity, Entity component) => Flecs.ModifiedId(Native, entity.Id, component.Id);
 
-    /// <summary>Sets the component from <paramref name="data"/> (copied) and adds it when missing.</summary>
+    /// <summary>
+    /// Sets the component from <paramref name="data"/> (copied) and adds it when missing. The data must not be a pointer into a component of this world (<see cref="GetPointer"/>): adding the component
+    /// moves the entity to another table, which can move that memory before it is read; copy the bytes out first.
+    /// </summary>
     public void SetPointer(Entity entity, Entity component, int size, void* data) => Flecs.SetId(Native, entity.Id, component.Id, (nuint)size, data);
 
     // ---- Components, typed -------------------------------------------------------------------------------------------------------------

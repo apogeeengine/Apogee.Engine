@@ -334,7 +334,14 @@ public sealed unsafe partial class World
             }
             else
             {
-                SetPointer(copy, id, info.Size, GetPointer(source, id));
+                // The bytes are taken out of the source's table first: setting them on the copy changes tables (the copy may join the source's, which grows and moves its memory), and a pointer into one
+                // would read what is no longer there.
+                byte[] bytes = new byte[info.Size];
+                new ReadOnlySpan<byte>(GetPointer(source, id), info.Size).CopyTo(bytes);
+                fixed (byte* data = bytes)
+                {
+                    SetPointer(copy, id, info.Size, data);
+                }
             }
         }
 

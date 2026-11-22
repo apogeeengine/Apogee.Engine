@@ -122,6 +122,33 @@ public sealed class EditingTests : IDisposable
         Assert.Equal("child (copy)", _world.GetName(moved));
     }
 
+    [Fact]
+    public void ACloneHasTheBytesOfTheOriginalWhenItJoinsTheTableOfTheOriginalAndTheTableGrows()
+    {
+        // Setting the last component on the copy moves it into the original's table, which grows and moves its memory: the bytes come from the original's table before that, not through a pointer into it.
+        // The original is alone in its table at first, and then the table has 1, 2, 3... of them: whichever way the table grows, each copy is what its original is.
+        Entity target = Make("target");
+        var originals = new List<Entity>();
+        for (int i = 0; i < 40; i++)
+        {
+            Entity e = Make($"e{i}");
+            _world.Set(e, new Marks { Alive = true, Level = (byte)(i + 1), Target = target, Mass = i + 0.5 });
+            _world.Set(e, new Health { Current = 1000 + i, Max = 100 + i, Regen = 1.5f });
+            originals.Add(e);
+            foreach (Entity original in originals)
+            {
+                Entity copy = _world.Clone(original);
+                Health health = _world.Get<Health>(original);
+                Assert.Equal(health, _world.Get<Health>(copy));
+                Marks marks = _world.Get<Marks>(original);
+                Assert.Equal(marks.Level, _world.Get<Marks>(copy).Level);
+                Assert.Equal(target, _world.Get<Marks>(copy).Target);
+                Assert.Equal(marks.Mass, _world.Get<Marks>(copy).Mass);
+                _world.Destroy(copy);
+            }
+        }
+    }
+
     // ---- Snapshots ----
 
     [Fact]
