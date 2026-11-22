@@ -128,8 +128,25 @@ public sealed class EditorProject : IDisposable
     /// <summary>The import of dropped files that is running or has just ended (its report not taken yet), or null. See <see cref="TryStartImport"/>.</summary>
     public ImportJob? Job { get; private set; }
 
-    private ScriptSession Start(bool runScripts, string? scene, bool realAudio) =>
-        ScriptSession.StartGame(GameFolder, UserFolder, watch: true, realAudio: realAudio, realSteam: false, runScripts: runScripts, scene: scene);
+    private ScriptSession Start(bool runScripts, string? scene, bool realAudio)
+    {
+        ScriptSession session = ScriptSession.StartGame(GameFolder, UserFolder, watch: true, realAudio: realAudio, realSteam: false, runScripts: runScripts, scene: scene);
+
+        // A prefab that changes on disk makes its instances follow it in place (entities are made and destroyed), which is not a step of the history: a command that names an entity the update destroyed
+        // would act on nothing. The history of an editing session ends there (the world is as it is, and the scene stays as modified as it was); Play's world has no history to end.
+        if (!runScripts)
+        {
+            session.World.PrefabsChanged += update =>
+            {
+                if (update.Updated.Count > 0)
+                {
+                    History.Clear();
+                }
+            };
+        }
+
+        return session;
+    }
 
     // ---- Scenes ----
 

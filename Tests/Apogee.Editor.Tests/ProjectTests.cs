@@ -467,4 +467,31 @@ public sealed class ProjectTests
         Entity loaded = rig.World.Roots().Single();
         Assert.Equal("res://models/ball.glb", rig.Project.Session.Models.PathOf(rig.World.Get<ModelRenderer>(loaded).Model));
     }
+
+    [Fact]
+    public void APrefabEditedOnDiskUpdatesItsInstancesAndEndsTheHistoryOfTheEditingSession()
+    {
+        using var rig = new ProjectRig();
+        const string Lamp = "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"1\" name=\"Lamp\"><Entity id=\"2\" name=\"Bulb\"/><Entity id=\"3\" name=\"Base\"/></Entity></Prefab>";
+        string file = rig.Write("game/packages/scene/prefabs/lamp.aprefab", Lamp);
+        rig.World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"One\" prefab=\"res://packages/scene/prefabs/lamp.aprefab\"/></Scene>");
+        Entity one = rig.World.Lookup("One");
+        Entity bulb = rig.World.Children(one).Single(e => rig.World.GetName(e) == "Bulb");
+        Entity foot = rig.World.Children(one).Single(e => rig.World.GetName(e) == "Base");
+        Assert.True(rig.Project.Rename(foot, "Foot"));                                          // a step of the history, on an entity the update is going to destroy
+        Assert.True(rig.Project.History.CanUndo);
+
+        File.WriteAllText(file, Lamp.Replace("<Entity id=\"3\" name=\"Base\"/>", "", StringComparison.Ordinal));
+        var timeout = System.Diagnostics.Stopwatch.StartNew();
+        while (rig.Project.History.CanUndo && timeout.Elapsed < TimeSpan.FromSeconds(20))
+        {
+            rig.Project.Update(0.016f);                                                         // the reloader waits until the file has been quiet for a moment
+            System.Threading.Thread.Sleep(20);
+        }
+
+        Assert.False(rig.Project.History.CanUndo);                                              // nothing in it names the entity that is gone
+        Assert.False(rig.World.IsAlive(foot));
+        Assert.True(rig.World.IsAlive(bulb));
+        Assert.False(rig.Project.History.Undo());
+    }
 }
