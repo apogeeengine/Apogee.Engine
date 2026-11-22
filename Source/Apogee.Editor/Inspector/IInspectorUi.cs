@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Apogee.Editor.Assets;
 
 namespace Apogee.Editor.Inspector;
 
@@ -64,8 +65,12 @@ public interface IInspectorUi
     /// </summary>
     bool EntityReference(string label, string text, ref ulong id, bool mixed);
 
-    /// <summary>A text field for a path (Enter commits) that also takes an asset dragged from the asset browser when its file name ends with one of <paramref name="dropExtensions"/>.</summary>
-    bool PathInput(string label, ref string path, IReadOnlyList<string> dropExtensions);
+    /// <summary>
+    /// An asset reference: a button with the file's name (<see cref="AssetFieldView.Text"/>, red when broken, the detail as its tooltip) that opens a popup with a filter box and the files of
+    /// <paramref name="picker"/>'s type (only the rows on the screen are drawn), accepts a file dragged from the asset browser, and has a clear button and a <i>Show in assets</i> menu. Returns what the
+    /// person did; the drawer decides what it means.
+    /// </summary>
+    AssetFieldResult AssetReference(string label, in AssetFieldView view, AssetPicker picker);
 
     /// <summary>The menu of a right click on the last widget, with one entry; true when it was chosen.</summary>
     bool ContextMenuItem(string label);

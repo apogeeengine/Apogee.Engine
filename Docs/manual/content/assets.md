@@ -172,6 +172,15 @@ assets:resolve("res://old/car.glb|uid://4k2m9x7q1w3ze")  -- the path if its file
 A game cooked with `--pack --cooked` has the artifacts of its imported assets and not their sources. A path that names an imported source still resolves (the pack's index says it was imported), and
 `models:load` accepts it, so scenes and scripts written with source paths run the same shipped.
 
+## In the editor
+
+The editor's inspector shows an asset field by the file it names and lets you pick another from a list of the game's files of that kind, or drop one on it: see [Asset fields](../tools/editor.md#asset-fields). What that depends on here:
+
+- A field is saved as the reference of the file the picker chose, `path|uid`, with the UID the file has at that moment (none for a file that has not been imported: the path alone is saved, and the next import gives the file its UID).
+- The list is made from the files of `AssetDatabase.Roots` (`res://` first, then the packages in load order), by extension (`AssetKinds`, in `Apogee.Host.Editing`: `model`, `texture`, `scene`, and what a package registers), leaving out `imported/`, hidden names and sidecars.
+- A reference is **found** when its path has a file, **moved** when only its UID leads to one (the editor says where, and a save writes the new path), and **missing** when neither does: such a field is drawn in red with the text it was written as.
+- A scene that named a file that did not load keeps that text (`World.UnresolvedAssetOf`) and writes it back on save, so that the reference works again when the file does. An editor that replaces the field drops the text with `World.SetUnresolvedAsset(entity, component, field, null)`.
+
 ## Tests
 
 `Tests/Apogee.Core.Tests/AssetRefTests.cs` covers the text forms. `Tests/Apogee.Content.Tests/AssetUidTests.cs` covers the UID in sidecars (made, kept, edited in place with comments, quotes, CRLF and a byte order mark), the key that ignores it
@@ -183,5 +192,5 @@ roots, hostile and cooked files, a writable document that was skipped, a failed 
 wrong, a script with 500,000 mentions, a UID on two files, a UID in capitals, `game.xml`, `mod.xml` and element text, previews) and `Move` (sidecar, artifact and lists, a model used by two scenes that still resolves through its UID,
 refusals, a failed move put back, a move that cannot be undone and the same call finishing it, an interrupted one finished). `Tests/Apogee.Content.Tests/FileSystemTests.cs` covers the durable write and the limits of a listing.
 
-`Tests/Apogee.Ecs.Tests/SceneAssetTests.cs` covers asset fields in scenes (saved as path and UID, loaded from either, a moved asset found through its UID, an unregistered type), `GamePackerTests` the path-only reference in a cooked pack,
+`Tests/Apogee.Ecs.Tests/SceneAssetTests.cs` covers asset fields in scenes (saved as path and UID, loaded from either, a moved asset found through its UID, an unregistered type, the text of a reference that did not load read and forgotten), `Tests/Apogee.Editor.Tests/AssetCatalogTests.cs` and `AssetPickerTests.cs` the editor's list and picker, `GamePackerTests` the path-only reference in a cooked pack,
 `Tests/Apogee.Rendering.Tests/ModelLibraryPathTests.cs` `uid://` in `ModelLibrary.Load`, and `RuntimeTests.AModelLoadsByUidAndASavedSceneFindsAModelThatWasMoved` the `assets` global and a scene saved by a script that loads after the model moved.

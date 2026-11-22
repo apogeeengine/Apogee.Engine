@@ -26,6 +26,8 @@ public sealed class AssetBrowserPanel
     private AssetImporter? _importer;
     private object? _importerSession;
     private bool _wasBusy;
+    private string? _revealed;
+    private bool _scrollToRevealed;
 
     /// <summary>The folder the panel shows (a virtual path): where files dropped from the system are put.</summary>
     public string Folder => _directory;
@@ -36,6 +38,17 @@ public sealed class AssetBrowserPanel
     public void Draw(EditorContext ctx, double now)
     {
         WindowRect = null;
+
+        // "Show in assets" from an inspector field: the folder of the file opens and the file is marked, and the window comes to the front.
+        if (ctx.Project.Catalog.TakeReveal() is { } reveal)
+        {
+            _directory = VfsPath.DirectoryOf(reveal);
+            _filter = "";
+            _revealed = reveal;
+            _scrollToRevealed = true;
+            ImGui.SetNextWindowFocus();
+        }
+
         if (!Ui.Begin("Assets"))
         {
             Ui.End();
@@ -196,7 +209,14 @@ public sealed class AssetBrowserPanel
 
         bool isScene = path.EndsWith(".ascene", StringComparison.OrdinalIgnoreCase);
         Gui.PushId(path);
-        if (Gui.Selectable(name + tag, false, ImGuiSelectableFlags.AllowDoubleClick) && ImGui.IsMouseDoubleClickedNil(ImGuiMouseButton.Left) && isScene)
+        bool revealed = path == _revealed;
+        if (revealed && _scrollToRevealed)
+        {
+            ImGui.SetScrollHereY(0.5f);
+            _scrollToRevealed = false;
+        }
+
+        if (Gui.Selectable(name + tag, revealed, ImGuiSelectableFlags.AllowDoubleClick) && ImGui.IsMouseDoubleClickedNil(ImGuiMouseButton.Left) && isScene)
         {
             ctx.Project.OpenScene(path);
         }

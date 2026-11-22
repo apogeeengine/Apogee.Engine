@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Apogee.DevTools;
+using Apogee.Editor.Assets;
 using Apogee.Interop;
 using Apogee.Native.CImGui;
 
@@ -146,22 +147,147 @@ public sealed unsafe class ImGuiInspectorUi : IInspectorUi
     }
 
     /// <inheritdoc />
-    public bool PathInput(string label, ref string path, IReadOnlyList<string> dropExtensions)
+    public AssetFieldResult AssetReference(string label, in AssetFieldView view, AssetPicker picker)
     {
-        bool changed = Gui.InputText(label, ref path, ImGuiInputTextFlags.EnterReturnsTrue);
+        AssetFieldResult result = default;
+        bool broken = view.Broken;
+        if (broken)
+        {
+            ImGui.PushStyleColorVec4(ImGuiCol.Text, new ImVec4 { X = 1f, Y = 0.35f, Z = 0.3f, W = 1f });
+        }
+
+        bool open = Gui.Button($"{view.Text}##asset", new System.Numerics.Vector2(-60, 0));
+        if (broken)
+        {
+            ImGui.PopStyleColor(1);
+        }
+
+        if (view.Detail is { } detail)
+        {
+            Gui.Tooltip(detail);
+        }
+
         if (Gui.BeginDropTarget())
         {
-            if (Gui.AcceptText("ASSET") is { } dropped && HasExtension(dropped, dropExtensions))
+            if (Gui.AcceptText("ASSET") is { } dropped)
             {
-                path = dropped;
-                changed = true;
+                result = new AssetFieldResult(AssetFieldAction.Drop, dropped);
             }
 
             Gui.EndDropTarget();
         }
 
+        if (Gui.BeginContextMenu("assetmenu"))
+        {
+            if (Gui.MenuItem("Show in assets", null, false, view.CanShow))
+            {
+                result = new AssetFieldResult(AssetFieldAction.Show);
+            }
+
+            Gui.EndPopup();
+        }
+
+        if (open)
+        {
+            picker.Open();
+            Gui.OpenPopup("pick");
+        }
+
+        if (DrawPicker(picker) is { } picked)
+        {
+            result = new AssetFieldResult(AssetFieldAction.Pick, picked);
+        }
+
+        Gui.SameLine();
+        if (Gui.SmallButton("Clear"))
+        {
+            result = new AssetFieldResult(AssetFieldAction.Clear);
+        }
+
+        Gui.SameLine();
+        Ui.Text(label);
+        if (view.Problem is { } problem)
+        {
+            Ui.TextColored(new System.Numerics.Vector4(1f, 0.35f, 0.3f, 1f), problem);
+        }
+
         Remember(false);
-        return changed;
+        return result;
+    }
+
+    // The popup: a filter box and the files that match, drawn through a clipper so that only the rows on the screen cost anything. Returns the path chosen this frame.
+    private static string? DrawPicker(AssetPicker picker)
+    {
+        if (!Gui.BeginPopup("pick"))
+        {
+            return null;
+        }
+
+        string? picked = null;
+        Ui.Text($"Pick a {picker.Label.ToLowerInvariant()}");
+        if (ImGui.IsWindowAppearing())
+        {
+            ImGui.SetKeyboardFocusHere(0);
+        }
+
+        ImGui.SetNextItemWidth(420);
+        string filter = picker.Filter;
+        if (Gui.InputText("##filter", ref filter))
+        {
+            picker.Filter = filter;
+        }
+
+        IReadOnlyList<CatalogEntry> results = picker.Results;
+        if (picker.Loading)
+        {
+            Ui.Text("Listing the assets...");
+        }
+        else if (results.Count == 0)
+        {
+            Ui.Text(picker.Filter.Length == 0 ? $"The game has no {picker.Label.ToLowerInvariant()} files." : "Nothing matches.");
+        }
+        else
+        {
+            Ui.Text(picker.Truncated ? $"{results.Count} files (the list is cut short: the project has too many)" : $"{results.Count} files");
+        }
+
+        if (Gui.BeginChild("##list", new System.Numerics.Vector2(420, 260)))
+        {
+            ImGuiListClipper* clipper = ImGui.ImGuiListClipperImGuiListClipper();
+            ImGui.ImGuiListClipperBegin(clipper, results.Count, -1f);
+            while (ImGui.ImGuiListClipperStep(clipper))
+            {
+                for (int i = clipper->DisplayStart; i < clipper->DisplayEnd; i++)
+                {
+                    CatalogEntry entry = results[i];
+                    string folder = VfsFolder(entry.Path);
+                    if (Gui.Selectable($"{entry.Name}   {folder}##{i}", false))
+                    {
+                        picked = entry.Path;
+                    }
+
+                    Gui.Tooltip(entry.Path);
+                }
+            }
+
+            ImGui.ImGuiListClipperEnd(clipper);
+            ImGui.ImGuiListClipperDestroy(clipper);
+        }
+
+        Gui.EndChild();
+        if (picked is not null)
+        {
+            Gui.ClosePopup();
+        }
+
+        Gui.EndPopup();
+        return picked;
+    }
+
+    private static string VfsFolder(string path)
+    {
+        int slash = path.LastIndexOf('/');
+        return slash > 0 ? path[..slash] : "";
     }
 
     /// <inheritdoc />
@@ -175,19 +301,6 @@ public sealed unsafe class ImGuiInspectorUi : IInspectorUi
         bool chosen = Gui.MenuItem(label);
         Gui.EndPopup();
         return chosen;
-    }
-
-    private static bool HasExtension(string path, IReadOnlyList<string> extensions)
-    {
-        foreach (string extension in extensions)
-        {
-            if (path.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static void Mixed(bool mixed)

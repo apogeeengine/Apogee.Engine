@@ -75,8 +75,34 @@ public sealed unsafe class InspectorEditor(EditorProject project)
     }
 
     /// <summary>Writes <paramref name="value"/> as the bytes of <paramref name="field"/> on every target, as one step (the next edit of the same field, before <see cref="Seal"/>, joins it). False when nothing changed.</summary>
-    public bool WriteField(IReadOnlyList<Entity> targets, Entity component, ComponentInfo info, FieldDef field, ReadOnlySpan<byte> value) =>
-        Execute(FieldEditCommands.SetBytes(project.WorldRef, targets, component, field.Offset, value, $"Edit {info.Name}.{field.Name}"));
+    public bool WriteField(IReadOnlyList<Entity> targets, Entity component, ComponentInfo info, FieldDef field, ReadOnlySpan<byte> value)
+    {
+        string name = $"Edit {info.Name}.{field.Name}";
+        IEditCommand? set = FieldEditCommands.SetBytes(project.WorldRef, targets, component, field.Offset, value, name);
+        if (field.Kind != FieldKind.AssetRef)
+        {
+            return Execute(set);
+        }
+
+        // An asset field that a loaded scene could not fill is 0 and still has the text the scene named, which a save writes again. Whoever edits the field replaces that text, so it goes in the same step
+        // (and comes back with undo): clearing a broken reference has to survive a save.
+        World world = project.World;
+        List<IEditCommand> parts = set is null ? [] : [set];
+        foreach (Entity target in targets)
+        {
+            if (world.IsAlive(target) && world.Has(target, component) && UnresolvedAssetCommand.Forget(project.WorldRef, target, info.Name, field.Name, name) is { } forget)
+            {
+                parts.Add(forget);
+            }
+        }
+
+        return parts.Count switch
+        {
+            0 => false,
+            1 => Execute(parts[0]),
+            _ => Execute(new CompositeCommand(name, parts)),
+        };
+    }
 
     /// <summary>Writes several places of the component on every target as one step: what a drawer of a whole component changed. False when nothing changed.</summary>
     public bool WriteRegions(IReadOnlyList<Entity> targets, Entity component, ComponentInfo info, IReadOnlyList<(int Offset, byte[] Value)> regions) =>

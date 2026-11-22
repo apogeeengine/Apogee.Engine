@@ -41,9 +41,25 @@ public sealed class EditorProject : IDisposable
         _worldRef = new WorldRef(() => Session?.World ?? throw new InvalidOperationException("The project has no session."));
         Session = Start(runScripts: false, scene: null, realAudio: false);
         Selected = new Selection(() => World);
+        SessionReplacing += ReleaseCatalog;   // the catalog reads the session's files: it lets go before they are disposed
     }
 
     public string GameFolder { get; }
+
+    private AssetCatalog? _catalog;
+
+    /// <summary>
+    /// The assets of the game by kind, for the pickers of asset fields (see <see cref="AssetCatalog"/>). It belongs to the current session: Play and Stop make a new one, and it refreshes when the hot reloader
+    /// reports changes.
+    /// </summary>
+    public AssetCatalog Catalog =>
+        _catalog ??= new AssetCatalog(Session.Files ?? throw new InvalidOperationException("The session has no file system."), Session.World.Assets ?? throw new InvalidOperationException("The session has no asset database."));
+
+    private void ReleaseCatalog()
+    {
+        _catalog?.Dispose();
+        _catalog = null;
+    }
 
     /// <summary>The project was disposed: its session is gone (see <see cref="Dispose"/>), and the editor no longer shows it.</summary>
     public bool IsDisposed => _disposed;
@@ -383,7 +399,10 @@ public sealed class EditorProject : IDisposable
         {
             try
             {
-                Session.Reload();
+                if (Session.Reload() is { Any: true })
+                {
+                    _catalog?.Invalidate();   // files changed: what the pickers list is looked at again
+                }
             }
             finally
             {
@@ -731,6 +750,7 @@ public sealed class EditorProject : IDisposable
             }
         }
 
+        ReleaseCatalog();
         Session.Dispose();
     }
 }

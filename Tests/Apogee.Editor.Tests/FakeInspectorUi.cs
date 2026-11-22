@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Apogee.Editor.Assets;
 using Apogee.Editor.Inspector;
 
 namespace Apogee.Editor.Tests;
 
 /// <summary>One widget the inspector drew: what kind, its label, and what it was shown with.</summary>
-internal sealed record DrawnWidget(string Kind, string Label, bool Mixed, bool Disabled, string Text = "", double[] Numbers = null!, IReadOnlyList<string>? Items = null, int Selected = -1, double Speed = 0, double Min = 0, double Max = 0, string Format = "");
+internal sealed record DrawnWidget(string Kind, string Label, bool Mixed, bool Disabled, string Text = "", double[] Numbers = null!, IReadOnlyList<string>? Items = null, int Selected = -1, double Speed = 0, double Min = 0, double Max = 0, string Format = "", AssetFieldView? Asset = null);
 
 /// <summary>
 /// An <see cref="IInspectorUi"/> that records what was drawn and answers as a person would: a script says which widget the person changed (by its label) and to what. No ImGui, so the drawers and the
@@ -42,8 +43,20 @@ internal sealed class FakeInspectorUi : IInspectorUi
     /// <summary>The entity id a reference is changed to, by label (0 clears it).</summary>
     public Dictionary<string, ulong> EntityTo { get; } = [];
 
-    /// <summary>The text a path field is changed to, by label.</summary>
-    public Dictionary<string, string> PathTo { get; } = [];
+    /// <summary>The file the person picks in an asset field's popup, by label.</summary>
+    public Dictionary<string, string> AssetPickTo { get; } = [];
+
+    /// <summary>The file the person drops on an asset field, by label.</summary>
+    public Dictionary<string, string> AssetDropTo { get; } = [];
+
+    /// <summary>The asset fields (by label) whose <i>Clear</i> is pressed.</summary>
+    public HashSet<string> AssetClear { get; } = [];
+
+    /// <summary>The asset fields (by label) whose <i>Show in assets</i> is chosen.</summary>
+    public HashSet<string> AssetShow { get; } = [];
+
+    /// <summary>What an asset field's popup listed (the paths), by label, as of the last frame it was drawn.</summary>
+    public Dictionary<string, string[]> PopupListed { get; } = [];
 
     /// <summary>The fields (by name) on which the person right-clicks and chooses <i>Reset to default</i>.</summary>
     public HashSet<string> ResetOn { get; } = [];
@@ -153,17 +166,27 @@ internal sealed class FakeInspectorUi : IInspectorUi
         return true;
     }
 
-    public bool PathInput(string label, ref string path, IReadOnlyList<string> dropExtensions)
+    public AssetFieldResult AssetReference(string label, in AssetFieldView view, AssetPicker picker)
     {
         _last = label;
-        Drawn.Add(new DrawnWidget("path", label, false, IsDisabled, Text: path, Items: dropExtensions));
-        if (!PathTo.TryGetValue(label, out string? to))
+        Drawn.Add(new DrawnWidget("asset", label, view.Mixed, IsDisabled, Text: view.Text, Asset: view));
+        PopupListed[label] = [.. picker.Results.Select(e => e.Path)];
+        if (AssetPickTo.TryGetValue(label, out string? picked))
         {
-            return false;
+            return new AssetFieldResult(AssetFieldAction.Pick, picked);
         }
 
-        path = to;
-        return true;
+        if (AssetDropTo.TryGetValue(label, out string? dropped))
+        {
+            return new AssetFieldResult(AssetFieldAction.Drop, dropped);
+        }
+
+        if (AssetClear.Contains(label))
+        {
+            return new AssetFieldResult(AssetFieldAction.Clear);
+        }
+
+        return AssetShow.Contains(label) ? new AssetFieldResult(AssetFieldAction.Show) : default;
     }
 
     public bool ContextMenuItem(string label) => label == "Reset to default" && _ids.Count > 0 && ResetOn.Contains(_ids.Peek());
@@ -180,7 +203,10 @@ internal sealed class FakeInspectorUi : IInspectorUi
         PickIndex.Clear();
         ColorTo.Clear();
         EntityTo.Clear();
-        PathTo.Clear();
+        AssetPickTo.Clear();
+        AssetDropTo.Clear();
+        AssetClear.Clear();
+        AssetShow.Clear();
         ResetOn.Clear();
         HeldOn.Clear();
         ReleasedOn.Clear();

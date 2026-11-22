@@ -408,4 +408,63 @@ public sealed class ProjectTests
         Assert.Equal(aside, Picking.Pick(rig.World, new PickRay(new Double3(8, 0, 0), new Vector3(0, 0, -1)), _ => null));
         Assert.Equal(far, Picking.Pick(rig.World, ray, _ => null, [far]));   // a candidate list narrows the search
     }
+
+    [Fact]
+    public void PickingAModelSetsTheHandleAndUndoPutsTheOldOneBack()
+    {
+        using var rig = new InspectorRig();
+        System.Runtime.CompilerServices.RuntimeHelpers.RunModuleConstructor(typeof(ModelRenderer).Module.ModuleHandle);
+        rig.Write("game/models/box.glb", "not a real model");
+        rig.Write("game/models/ball.glb", "not a real model");
+        ComponentInfo info = TypeRegistry.GetComponent<ModelRenderer>();
+        Entity id = rig.World.Component<ModelRenderer>();
+        uint box = rig.Project.Session.Models.Load("res://models/box.glb");
+        Entity e = rig.World.CreateEntity("e");
+        rig.World.Set(e, new ModelRenderer { Model = box });
+        rig.Select([e]);
+        rig.ForgetHistory();
+
+        rig.Ui.AssetPickTo["Model"] = "res://models/ball.glb";
+        rig.Draw(e, info: info, id: id);
+
+        uint ball = rig.Project.Session.Models.Load("res://models/ball.glb");
+        Assert.Equal(ball, rig.World.Get<ModelRenderer>(e).Model);
+        rig.Project.History.Undo();
+        Assert.Equal(box, rig.World.Get<ModelRenderer>(e).Model);
+        rig.Project.History.Redo();
+        Assert.Equal(ball, rig.World.Get<ModelRenderer>(e).Model);
+    }
+
+    [Fact]
+    public void APickedModelIsSavedWithItsPathAndUid()
+    {
+        using var rig = new InspectorRig();
+        System.Runtime.CompilerServices.RuntimeHelpers.RunModuleConstructor(typeof(ModelRenderer).Module.ModuleHandle);
+        var boxUid = AssetUid.New();
+        var ballUid = AssetUid.New();
+        rig.Write("game/models/box.glb", "not a real model");
+        rig.Write("game/models/box.glb.import.xml", $"<Import uid=\"{boxUid}\"/>");
+        rig.Write("game/models/ball.glb", "not a real model");
+        rig.Write("game/models/ball.glb.import.xml", $"<Import uid=\"{ballUid}\"/>");
+        ComponentInfo info = TypeRegistry.GetComponent<ModelRenderer>();
+        Entity id = rig.World.Component<ModelRenderer>();
+        Entity e = rig.World.CreateEntity("e");
+        rig.World.Set(e, new ModelRenderer { Model = rig.Project.Session.Models.Load("res://models/box.glb") });
+        rig.Select([e]);
+
+        rig.Ui.AssetPickTo["Model"] = "res://models/ball.glb";
+        rig.Draw(e, info: info, id: id);
+        rig.Project.SaveSceneAs("res://scenes/level");
+
+        string text = File.ReadAllText(Path.Combine(rig.Root, "game/scenes/level.ascene"));
+        Assert.Contains($"Model=\"res://models/ball.glb|{ballUid}\"", text, StringComparison.Ordinal);   // the path and the uid, not the number of this run
+        Assert.DoesNotContain("box.glb", text, StringComparison.Ordinal);                                   // and nothing of the old model
+        Assert.DoesNotContain(boxUid.ToString(), text, StringComparison.Ordinal);
+
+        // Opened again, the field names the picked file.
+        rig.Project.NewScene();
+        rig.Project.OpenScene("res://scenes/level.ascene");
+        Entity loaded = rig.World.Roots().Single();
+        Assert.Equal("res://models/ball.glb", rig.Project.Session.Models.PathOf(rig.World.Get<ModelRenderer>(loaded).Model));
+    }
 }

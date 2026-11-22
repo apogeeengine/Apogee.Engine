@@ -30,6 +30,12 @@ internal sealed unsafe class InspectorRig : IDisposable
 
     public World World => _rig.World;
 
+    /// <summary>The temporary folder that holds the game folder.</summary>
+    public string Root => _rig.Root;
+
+    /// <summary>Writes a file under <see cref="Root"/> (see <see cref="ProjectRig.Write"/>).</summary>
+    public string Write(string name, string text) => _rig.Write(name, text);
+
     public InspectorEditor Editor { get; }
 
     public InspectorView View { get; }
@@ -129,7 +135,8 @@ public sealed class InspectorTests
         Assert.Equal(DrawerLevel.Kind, choice.Level);
         Assert.True(Same(choice.Field, BuiltInDrawers.Numbers));
         Assert.True(Same(table.Find(info, reference).Field, BuiltInDrawers.EntityReference));
-        Assert.True(Same(table.Find(info, handle).Field, BuiltInDrawers.Numbers));           // until a picker is registered
+        Assert.Equal(DrawerLevel.Kind, table.Find(info, handle).Level);
+        Assert.True(Same(table.Find(info, handle).Field, BuiltInDrawers.AssetReference));    // every asset field gets the picker, whatever its type
         Assert.Equal(DrawerLevel.Hint, table.Find(info, kind).Level);
         Assert.True(Same(table.Find(info, kind).Field, BuiltInDrawers.Enum));
         Assert.Equal(DrawerLevel.Hint, table.Find(info, tint).Level);
@@ -176,15 +183,19 @@ public sealed class InspectorTests
     }
 
     [Fact]
-    public void TheModelRendererModelIsAFieldDrawerThatThePickerWillReplace()
+    public void TheModelRendererModelHasNoDrawerOfItsOwnAndGetsTheAssetPicker()
     {
         RuntimeHelpersInit();
         var table = DrawerTable.CreateDefault();
         ComponentInfo info = TypeRegistry.GetComponent<ModelRenderer>();
         DrawerChoice choice = table.Find(info, info.FindField("Model")!);
 
-        Assert.Equal(DrawerLevel.Field, choice.Level);
-        Assert.True(Same(choice.Field, BuiltInDrawers.ModelPath));
+        Assert.Equal(DrawerLevel.Kind, choice.Level);
+        Assert.True(Same(choice.Field, BuiltInDrawers.AssetReference));
+
+        // A field of the kind with no asset type is only a number.
+        ComponentInfo plain = Component("InspUntyped", new FieldDef("Handle", FieldKind.AssetRef, 0));
+        Assert.True(Same(table.Find(plain, plain.Fields[0]).Field, BuiltInDrawers.Numbers));
     }
 
     [Fact]
@@ -235,7 +246,7 @@ public sealed class InspectorTests
             new FieldDef("On", FieldKind.Bool, 4),
             new FieldDef("Turn", FieldKind.Quaternion, 8),
             new FieldDef("Where", FieldKind.Double3, 24),
-            new FieldDef("Handle", FieldKind.AssetRef, 48, AssetType: "inspNone"));
+            new FieldDef("Handle", FieldKind.AssetRef, 48));
         Entity id = rig.Register(info);
         Entity e = rig.World.CreateEntity("e");
         byte[] bytes = new byte[info.Size];
@@ -255,7 +266,7 @@ public sealed class InspectorTests
         Assert.Equal([1.0], rig.Ui.Single("toggle", "On").Numbers);
         Assert.Equal(("%.1f deg", 0.5), (rig.Ui.Single("drag", "Turn").Format, rig.Ui.Single("drag", "Turn").Speed));
         Assert.Equal([2.5, 0, 0], rig.Ui.Single("drag", "Where").Numbers);
-        DrawnWidget handle = rig.Ui.Single("drag", "Handle");        // an asset handle is still a plain number until the picker lands
+        DrawnWidget handle = rig.Ui.Single("drag", "Handle");        // an asset handle with no asset type has no picker to draw it: a plain number
         Assert.Equal([9.0], handle.Numbers);
         Assert.Equal("%.0f", handle.Format);
     }
@@ -743,28 +754,5 @@ public sealed class InspectorTests
 
         rig.Select([a]);
         Assert.DoesNotContain("Light", rig.Editor.AddCandidates(rig.Targets, "").Select(c => c.Name));      // a has it, and is the only one
-    }
-
-    [Fact]
-    public void TheModelOfAModelRendererIsAPathAndAMissingFileLeavesItAlone()
-    {
-        using var rig = new InspectorRig();
-        ComponentInfo info = TypeRegistry.GetComponent<ModelRenderer>();
-        Entity id = rig.World.Component<ModelRenderer>();
-        Entity e = rig.World.CreateEntity("e");
-        rig.World.Set(e, new ModelRenderer());
-        rig.Select([e]);
-        rig.ForgetHistory();
-
-        rig.DrawKeeping(e, info: info, id: id);
-        DrawnWidget path = rig.Ui.Single("path", "Model");
-        Assert.Equal("", path.Text);
-        Assert.Equal([".glb", ".gltf"], path.Items);
-
-        rig.Ui.NextFrame();
-        rig.Ui.PathTo["Model"] = "res://models/not-there.glb";
-        rig.Draw(e, info: info, id: id);
-        Assert.Equal(0u, rig.World.Get<ModelRenderer>(e).Model);
-        Assert.Empty(rig.Project.History.Steps);
     }
 }

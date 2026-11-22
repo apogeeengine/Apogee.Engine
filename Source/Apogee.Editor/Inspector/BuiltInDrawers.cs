@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Apogee.Core.Logging;
+using Apogee.Content.FileSystem;
+using Apogee.Core.Assets;
 using Apogee.Ecs;
+using Apogee.Editor.Assets;
 using Apogee.Editor.Editing;
+using Apogee.Host.Editing;
 using Apogee.Reflection;
 
 namespace Apogee.Editor.Inspector;
@@ -15,8 +18,6 @@ namespace Apogee.Editor.Inspector;
 /// </summary>
 public static class BuiltInDrawers
 {
-    private static readonly string[] s_modelExtensions = [".glb", ".gltf"];
-
     /// <summary>The numbers of a field through <see cref="FieldCodec"/>: a checkbox, a drag field or slider, three drag fields for a vector, three angles for a rotation. Also what an asset handle shows until a picker draws it.</summary>
     public static unsafe bool Numbers(in FieldEdit edit)
     {
@@ -179,33 +180,119 @@ public static class BuiltInDrawers
         return true;
     }
 
-    /// <summary>The path of a model for <c>ModelRenderer.Model</c>: type a path (Enter loads it) or drop a model file; an empty path clears it. A file that is not there is logged and the field stays as it was.</summary>
-    public static bool ModelPath(in FieldEdit edit)
+    /// <summary>
+    /// A reference to an asset (a <see cref="FieldKind.AssetRef"/> field with an asset type): the file's name on a button that opens a picker over the game's files of that type, takes a file dragged from the
+    /// asset browser, and has <i>Clear</i> and <i>Show in assets</i>. A choice becomes the handle of this run through <see cref="World.AssetHandleOf"/>, so what the field holds is what a scene would
+    /// load; a file that gives no handle (it does not load) is said so under the field and the field stays as it was, never 0 by accident. A reference that is broken (the scene named a file that is not there,
+    /// or the file was deleted) is shown in red with its text.
+    /// </summary>
+    public static bool AssetReference(in FieldEdit edit)
     {
-        if (edit.Bytes.Length < sizeof(uint))
+        if (edit.Field.AssetType is not { } type || edit.Bytes.Length < sizeof(uint))
         {
-            return false;
+            return Numbers(in edit);
         }
 
-        uint model = MemoryMarshal.Read<uint>(edit.Bytes);
-        string path = edit.Project.Session.Models.PathOf(model) ?? "";
-        if (!edit.Ui.PathInput(edit.Label, ref path, s_modelExtensions))
+        AssetCatalog catalog = edit.Project.Catalog;
+        World world = edit.Project.World;
+        string key = $"{edit.Component.Name}.{edit.Field.Name}";
+        uint handle = MemoryMarshal.Read<uint>(edit.Bytes);
+        AssetFieldView view = ViewOf(in edit, type, handle, catalog, world, key);
+        AssetFieldResult result = edit.Ui.AssetReference(edit.Label, in view, catalog.PickerFor(type));
+        switch (result.Action)
         {
-            return false;
-        }
+            case AssetFieldAction.Show:
+                if (Shown(in edit, type, handle, catalog, world) is { } path)
+                {
+                    catalog.Reveal(path);
+                }
 
-        try
-        {
-            uint loaded = path.Length == 0 ? 0 : edit.Project.Session.Models.Load(path);
-            MemoryMarshal.Write(edit.Bytes, in loaded);
-            return true;
-        }
-        catch (System.IO.FileNotFoundException e)
-        {
-            Log.Warn("Editor", e.Message);
-            return false;
+                return false;
+
+            case AssetFieldAction.Clear:
+                catalog.ClearNotice(key);
+                MemoryMarshal.Write(edit.Bytes, 0u);
+                return true;
+
+            case AssetFieldAction.Pick:
+            case AssetFieldAction.Drop:
+                return Choose(in edit, type, result.Path!, catalog, world, key);
+
+            default:
+                return false;
         }
     }
+
+    // Turns the file the person chose into the handle of this run and writes it. False, with a notice under the field, when it cannot be used.
+    private static bool Choose(in FieldEdit edit, string type, string path, AssetCatalog catalog, World world, string key)
+    {
+        string label = AssetKinds.LabelOf(type).ToLowerInvariant();
+        if (AssetKinds.TypeOfPath(path) != type)
+        {
+            catalog.PostNotice(key, $"{VfsPath.FileName(path)} is not a {label}.");
+            return false;
+        }
+
+        AssetRef reference = catalog.RefOf(path);
+        uint handle = world.AssetHandleOf(type, reference);
+        if (handle == 0)
+        {
+            // The converter found no file or could not load it (it has said why in the console): 0 would pass for "cleared".
+            catalog.PostNotice(key, $"{path} could not be used as a {label}: it is not there or does not load (the console says why). The field was left as it was.");
+            return false;
+        }
+
+        catalog.ClearNotice(key);
+        if (MemoryMarshal.Read<uint>(edit.Bytes) == handle)
+        {
+            return false;
+        }
+
+        MemoryMarshal.Write(edit.Bytes, in handle);
+        return true;
+    }
+
+    private static AssetFieldView ViewOf(in FieldEdit edit, string type, uint handle, AssetCatalog catalog, World world, string key)
+    {
+        string? problem = catalog.NoticeFor(key);
+        if (edit.Mixed)
+        {
+            return new AssetFieldView("---", "The selected entities have different values.", false, true, false, problem);
+        }
+
+        if (handle == 0)
+        {
+            // A scene that named something that did not load leaves the field at 0 and remembers the text: it is shown, and a save would write it again.
+            if (edit.Entity.Id != 0 && world.UnresolvedAssetOf(edit.Entity, edit.Component.Name, edit.Field.Name) is { Length: > 0 } kept)
+            {
+                return new AssetFieldView(kept, $"{kept}\nThis could not be loaded, so the field is empty. The scene keeps the text and loads it again when the file is back; choose another file or Clear to replace it.", true, false, false, problem);
+            }
+
+            return new AssetFieldView("None", null, false, false, false, problem);
+        }
+
+        if (world.AssetRefOf(type, handle) is not { } reference)
+        {
+            return new AssetFieldView($"#{handle}", $"Handle {handle} names no file (it was made in code), so a scene cannot save it.", true, false, false, problem);
+        }
+
+        ReferenceStatus status = catalog.StatusOf(reference);
+        string where = status.Path ?? reference.Path;
+        string uid = reference.Uid.IsNone ? "no uid (not imported)" : reference.Uid.ToString();
+        switch (status.State)
+        {
+            case ReferenceState.Found:
+                return new AssetFieldView(VfsPath.FileName(where), $"{where}\n{uid}", false, false, true, problem);
+            case ReferenceState.Moved:
+                return new AssetFieldView(VfsPath.FileName(where), $"{where}\n{uid}\nMoved from {reference.Path}: save the scene to write the new path.", false, false, true, problem);
+            default:
+                return new AssetFieldView(reference.ToString(), $"{reference}\nThere is no file at this path, and no file has this uid.", true, false, false, problem);
+        }
+    }
+
+    // The file Show in assets goes to: the one the field names (or where its uid finds it).
+    private static string? Shown(in FieldEdit edit, string type, uint handle, AssetCatalog catalog, World world) =>
+        handle != 0 && world.AssetRefOf(type, handle) is { } reference ? catalog.StatusOf(reference).Path : null;
 
     internal static bool IsInteger(FieldKind kind) => kind is FieldKind.Int8 or FieldKind.UInt8 or FieldKind.Int16 or FieldKind.UInt16 or FieldKind.Int32 or FieldKind.UInt32 or FieldKind.Int64 or FieldKind.UInt64;
 

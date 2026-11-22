@@ -1,16 +1,17 @@
 using System;
 using System.Collections.Generic;
+using Apogee.Ecs;
 using Apogee.Reflection;
 
 namespace Apogee.Editor.Inspector;
 
 /// <summary>
 /// What a drawer of one field is given: the field, its bytes (a copy: the drawer writes the new value into <see cref="Bytes"/> and returns true), whether the selected entities disagree on it, the
-/// project and the widgets to draw with. A drawer that edits several fields at once (see <see cref="ComponentDrawer"/>) gets a <see cref="ComponentEdit"/> instead.
+/// project, the active entity and the widgets to draw with. A drawer that edits several fields at once (see <see cref="ComponentDrawer"/>) gets a <see cref="ComponentEdit"/> instead.
 /// </summary>
 public readonly ref struct FieldEdit
 {
-    public FieldEdit(ComponentInfo component, FieldDef field, Span<byte> bytes, bool mixed, EditorProject project, IInspectorUi ui, string label)
+    public FieldEdit(ComponentInfo component, FieldDef field, Span<byte> bytes, bool mixed, EditorProject project, IInspectorUi ui, string label, Entity entity = default)
     {
         Component = component;
         Field = field;
@@ -19,7 +20,11 @@ public readonly ref struct FieldEdit
         Project = project;
         Ui = ui;
         Label = label;
+        Entity = entity;
     }
+
+    /// <summary>The entity whose value <see cref="Bytes"/> holds (the active one when several are selected); the default entity when the caller does not say.</summary>
+    public Entity Entity { get; }
 
     /// <summary>The component the field belongs to.</summary>
     public ComponentInfo Component { get; }
@@ -92,7 +97,7 @@ public enum DrawerLevel
     /// <summary>The default for what the registry says about the field: an enum, a colour.</summary>
     Hint,
 
-    /// <summary>The default for the field's kind: an entity reference, or numbers.</summary>
+    /// <summary>The default for the field's kind: an entity reference, an asset picker, or numbers.</summary>
     Kind,
 }
 
@@ -110,12 +115,10 @@ public sealed class DrawerTable
     private readonly Dictionary<(string Component, string Field), FieldDrawer> _fields = [];
     private readonly Dictionary<string, FieldDrawer> _assetTypes = new(StringComparer.Ordinal);
 
-    /// <summary>A table with the built-in drawers: numbers for every kind, entity references, enum combos and flag checkboxes, colours, and the model path of <c>ModelRenderer.Model</c>.</summary>
+    /// <summary>A table with the built-in drawers: numbers for every kind, entity references, enum combos and flag checkboxes, colours, and a picker for every asset field.</summary>
     public static DrawerTable CreateDefault()
     {
-        var table = new DrawerTable();
-        table.RegisterField(nameof(Apogee.Rendering.ModelRenderer), nameof(Apogee.Rendering.ModelRenderer.Model), BuiltInDrawers.ModelPath);
-        return table;
+        return new DrawerTable();
     }
 
     /// <summary>Draws the whole component called <paramref name="componentName"/> with <paramref name="drawer"/> instead of one drawer for each field.</summary>
@@ -176,7 +179,13 @@ public sealed class DrawerTable
             return new DrawerChoice(DrawerLevel.Hint, BuiltInDrawers.Color, null);
         }
 
-        return new DrawerChoice(DrawerLevel.Kind, field.Kind == FieldKind.Entity ? BuiltInDrawers.EntityReference : BuiltInDrawers.Numbers, null);
+        FieldDrawer byKind = field.Kind switch
+        {
+            FieldKind.Entity => BuiltInDrawers.EntityReference,
+            FieldKind.AssetRef when field.AssetType is not null => BuiltInDrawers.AssetReference,   // whatever its type: kinds that packages register later get the picker too
+            _ => BuiltInDrawers.Numbers,
+        };
+        return new DrawerChoice(DrawerLevel.Kind, byKind, null);
     }
 }
 

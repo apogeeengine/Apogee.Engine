@@ -55,7 +55,7 @@ public sealed class InspectorView(EditorProject project, DrawerTable? drawers = 
 
             ui.PushId(field.Name);
             ui.BeginDisabled(!editable);
-            bool changed = choice.Field!(new FieldEdit(info, field, bytes.AsSpan(field.Offset, size), mixed[index], project, ui, field.Name));
+            bool changed = choice.Field!(new FieldEdit(info, field, bytes.AsSpan(field.Offset, size), mixed[index], project, ui, field.Name, active));
             bool done = ui.ItemDeactivatedAfterEdit || (changed && !ui.ItemActive);
             ui.EndDisabled();
 
