@@ -291,6 +291,47 @@ public sealed unsafe class ImGuiInspectorUi : IInspectorUi
     }
 
     /// <inheritdoc />
+    public bool TextInput(string label, ref string value, bool multiline)
+    {
+        // The buffer is sized to the text and a margin to type in: the inspector keeps what it shows under a size it can edit (see ObjectInspector.MaxEditableText).
+        int bytes = System.Text.Encoding.UTF8.GetByteCount(value);
+        int capacity = Math.Max(512, (bytes * 2) + 1024);
+        byte[] buffer = new byte[capacity];
+        System.Text.Encoding.UTF8.GetBytes(value, 0, value.Length, buffer, 0);
+        bool changed;
+        fixed (byte* text = Utf8.ToZeroTerminated(label))
+        fixed (byte* data = buffer)
+        {
+            changed = multiline
+                ? ImGui.InputTextMultiline(text, data, (nuint)capacity, new ImVec2 { X = -1, Y = ImGui.GetTextLineHeight() * 6 }, ImGuiInputTextFlags.None, null, null)
+                : ImGui.InputText(text, data, (nuint)capacity, ImGuiInputTextFlags.None, null, null);
+        }
+
+        if (changed)
+        {
+            int length = Array.IndexOf(buffer, (byte)0);
+            value = System.Text.Encoding.UTF8.GetString(buffer, 0, length < 0 ? capacity : length);
+        }
+
+        Remember(false);
+        return changed;
+    }
+
+    /// <inheritdoc />
+    public bool Button(string label)
+    {
+        bool pressed = Gui.SmallButton(label);
+        Remember(false);
+        return pressed;
+    }
+
+    /// <inheritdoc />
+    public void SameLine() => Gui.SameLine();
+
+    /// <inheritdoc />
+    public void ErrorText(string text) => Ui.TextColored(new System.Numerics.Vector4(1f, 0.35f, 0.3f, 1f), text);
+
+    /// <inheritdoc />
     public bool ContextMenuItem(string label)
     {
         if (!Gui.BeginContextMenu("context"))

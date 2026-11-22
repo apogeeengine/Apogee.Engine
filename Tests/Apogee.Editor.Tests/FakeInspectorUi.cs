@@ -58,6 +58,15 @@ internal sealed class FakeInspectorUi : IInspectorUi
     /// <summary>What an asset field's popup listed (the paths), by label, as of the last frame it was drawn.</summary>
     public Dictionary<string, string[]> PopupListed { get; } = [];
 
+    /// <summary>The text a text field is changed to, by label.</summary>
+    public Dictionary<string, string> TextTo { get; } = [];
+
+    /// <summary>The buttons the person presses, by their path: the ids around them joined by <c>/</c>, then the label (<c>tags/1/Remove</c>).</summary>
+    public HashSet<string> Pressed { get; } = [];
+
+    /// <summary>The error texts that were drawn.</summary>
+    public List<string> Errors { get; } = [];
+
     /// <summary>The fields (by name) on which the person right-clicks and chooses <i>Reset to default</i>.</summary>
     public HashSet<string> ResetOn { get; } = [];
 
@@ -189,6 +198,36 @@ internal sealed class FakeInspectorUi : IInspectorUi
         return AssetShow.Contains(label) ? new AssetFieldResult(AssetFieldAction.Show) : default;
     }
 
+    public bool TextInput(string label, ref string value, bool multiline)
+    {
+        _last = label;
+        Drawn.Add(new DrawnWidget("text", label, false, IsDisabled, Text: value, Format: multiline ? "multiline" : "line"));
+        if (!TextTo.TryGetValue(label, out string? to))
+        {
+            return false;
+        }
+
+        value = to;
+        return true;
+    }
+
+    /// <summary>The path of a button: the ids around it, outermost first, then its label.</summary>
+    public string PathOf(string label) => string.Join('/', _ids.Reverse().Append(label));
+
+    public bool Button(string label)
+    {
+        string path = PathOf(label);
+        _last = label;
+        Drawn.Add(new DrawnWidget("button", path, false, IsDisabled));
+        return !IsDisabled && Pressed.Contains(path);
+    }
+
+    public void SameLine()
+    {
+    }
+
+    public void ErrorText(string text) => Errors.Add(text);
+
     public bool ContextMenuItem(string label) => label == "Reset to default" && _ids.Count > 0 && ResetOn.Contains(_ids.Peek());
 
     /// <summary>Forgets what was drawn and what the person is doing, for the next frame.</summary>
@@ -207,6 +246,9 @@ internal sealed class FakeInspectorUi : IInspectorUi
         AssetDropTo.Clear();
         AssetClear.Clear();
         AssetShow.Clear();
+        TextTo.Clear();
+        Pressed.Clear();
+        Errors.Clear();
         ResetOn.Clear();
         HeldOn.Clear();
         ReleasedOn.Clear();

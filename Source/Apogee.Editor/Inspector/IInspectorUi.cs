@@ -72,6 +72,20 @@ public interface IInspectorUi
     /// </summary>
     AssetFieldResult AssetReference(string label, in AssetFieldView view, AssetPicker picker);
 
+    /// <summary>
+    /// A text field: one line, or with <paramref name="multiline"/> a box of several. Returns true when the person changed the text this frame (and has written it into <paramref name="value"/>).
+    /// </summary>
+    bool TextInput(string label, ref string value, bool multiline);
+
+    /// <summary>A small button; true when it was pressed this frame. Give buttons of the same label their own id scope (<see cref="PushId"/>).</summary>
+    bool Button(string label);
+
+    /// <summary>Puts the next widget on the same line as the last.</summary>
+    void SameLine();
+
+    /// <summary>A line of text in the colour of an error (a setter that refused a value).</summary>
+    void ErrorText(string text);
+
     /// <summary>The menu of a right click on the last widget, with one entry; true when it was chosen.</summary>
     bool ContextMenuItem(string label);
 }

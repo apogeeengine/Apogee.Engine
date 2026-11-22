@@ -76,6 +76,51 @@ public readonly ref struct ComponentEdit
     public IInspectorUi Ui { get; }
 }
 
+/// <summary>
+/// What a drawer of a whole <see cref="EngineObject"/> is given: the object, its class, the widgets, the inspector that is drawing it (for <see cref="DrawProperties"/>, the default look, to draw a
+/// custom header and then the rest) and where it is in the tree of nested objects.
+/// </summary>
+public readonly struct ObjectEdit
+{
+    public ObjectEdit(EngineObject target, ClassInfo @class, IInspectorUi ui, ObjectInspector inspector, string path, int depth, bool locked)
+    {
+        Target = target;
+        Class = @class;
+        Ui = ui;
+        Inspector = inspector;
+        Path = path;
+        Depth = depth;
+        Locked = locked;
+    }
+
+    /// <summary>The object (alive when the drawer is called).</summary>
+    public EngineObject Target { get; }
+
+    /// <summary>Its class.</summary>
+    public ClassInfo Class { get; }
+
+    /// <summary>The widgets to draw with.</summary>
+    public IInspectorUi Ui { get; }
+
+    /// <summary>The inspector that is drawing: write through it (<see cref="ObjectInspector.SetProperty"/>) so that an edit is one undo step and a refusing setter is reported.</summary>
+    public ObjectInspector Inspector { get; }
+
+    /// <summary>Where the object is, as a path of property names: empty for the root. It tells widgets of different objects apart.</summary>
+    public string Path { get; }
+
+    /// <summary>How many objects deep this one is (0 for the root).</summary>
+    public int Depth { get; }
+
+    /// <summary>The inspector is read-only: nothing may be written.</summary>
+    public bool Locked { get; }
+
+    /// <summary>Draws the object's properties the way the inspector does by default (a drawer of a class can add its own widgets around it). True when one was changed.</summary>
+    public bool DrawProperties() => Inspector.DrawProperties(in this);
+}
+
+/// <summary>Draws and edits a whole <see cref="EngineObject"/> in place of its properties (<see cref="InspectorDrawers.RegisterClass"/>). Returns true when it changed something.</summary>
+public delegate bool ObjectDrawer(in ObjectEdit edit);
+
 /// <summary>Draws and edits one field. Writes the new value into <see cref="FieldEdit.Bytes"/> and returns true when the person changed it.</summary>
 public delegate bool FieldDrawer(in FieldEdit edit);
 
@@ -114,6 +159,8 @@ public sealed class DrawerTable
     private readonly Dictionary<string, ComponentDrawer> _components = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Component, string Field), FieldDrawer> _fields = [];
     private readonly Dictionary<string, FieldDrawer> _assetTypes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ObjectDrawer> _classes = new(StringComparer.Ordinal);
+    private readonly HashSet<(string Class, string Property)> _multiline = [];
 
     /// <summary>A table with the built-in drawers: numbers for every kind, entity references, enum combos and flag checkboxes, colours, and a picker for every asset field.</summary>
     public static DrawerTable CreateDefault()
@@ -144,6 +191,62 @@ public sealed class DrawerTable
         ArgumentException.ThrowIfNullOrEmpty(assetType);
         ArgumentNullException.ThrowIfNull(drawer);
         _assetTypes[assetType] = drawer;
+    }
+
+    /// <summary>
+    /// Draws every object of the class <paramref name="className"/> (and of its subclasses, unless they have a drawer of their own) with <paramref name="drawer"/> instead of one widget for each property.
+    /// The drawer can call <see cref="ObjectEdit.DrawProperties"/> to keep the default look for the rest.
+    /// </summary>
+    public void RegisterClass(string className, ObjectDrawer drawer)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(className);
+        ArgumentNullException.ThrowIfNull(drawer);
+        _classes[className] = drawer;
+    }
+
+    /// <summary>Says that the string property <paramref name="propertyName"/> (its script name) of the class <paramref name="className"/> is text of several lines: it gets a box, not a line.</summary>
+    public void RegisterMultiline(string className, string propertyName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(className);
+        ArgumentException.ThrowIfNullOrEmpty(propertyName);
+        _multiline.Add((className, propertyName));
+    }
+
+    /// <summary>The drawer registered for <paramref name="info"/> or, failing that, for the nearest of its base classes; null when none is.</summary>
+    public ObjectDrawer? FindClass(ClassInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        int guard = 0;
+        for (ClassInfo? current = info; current is not null && guard++ < 64; current = current.Base)
+        {
+            if (_classes.TryGetValue(current.Name, out ObjectDrawer? drawer))
+            {
+                return drawer;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The string property of the class (or a base class of it) was registered with <see cref="RegisterMultiline"/>.</summary>
+    public bool IsMultiline(ClassInfo info, string propertyName)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        if (_multiline.Count == 0)
+        {
+            return false;
+        }
+
+        int guard = 0;
+        for (ClassInfo? current = info; current is not null && guard++ < 64; current = current.Base)
+        {
+            if (_multiline.Contains((current.Name, propertyName)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The drawer registered for the whole component called <paramref name="componentName"/>, or null.</summary>
@@ -206,4 +309,10 @@ public static class InspectorDrawers
 
     /// <summary>See <see cref="DrawerTable.RegisterAssetType"/>.</summary>
     public static void RegisterAssetType(string assetType, FieldDrawer drawer) => Shared.RegisterAssetType(assetType, drawer);
+
+    /// <summary>See <see cref="DrawerTable.RegisterClass"/>.</summary>
+    public static void RegisterClass(string className, ObjectDrawer drawer) => Shared.RegisterClass(className, drawer);
+
+    /// <summary>See <see cref="DrawerTable.RegisterMultiline"/>.</summary>
+    public static void RegisterMultiline(string className, string propertyName) => Shared.RegisterMultiline(className, propertyName);
 }
