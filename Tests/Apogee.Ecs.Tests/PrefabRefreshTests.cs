@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Apogee.Content.Xml;
+using Apogee.Core.Assets;
+using Apogee.Core.Numerics;
 using Apogee.Ecs;
 using Apogee.Reflection;
 using Xunit;
@@ -382,17 +384,24 @@ public sealed class PrefabRefreshTests : PrefabTestBase
     }
 
     [Fact]
-    public void AnInstanceMadeAfterTheChangeIsLeftAlone()
+    public void AnInstanceMadeWhileAChangeWaitsIsMadeFromTheOldFileAndFollowsIt()
     {
         World.LoadScene(TwoLamps());
         Write("prefabs/lamp.aprefab", Replace(Read("prefabs/lamp.aprefab"), BaseLamp, BaseLamp + "<Entity id=\"4\" name=\"Cord\"/>"));
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
 
-        Entity fresh = World.Instantiate(LampPath);                                              // made from the new file, before the update
+        // Everything is made from what the instances were made from until the update: a new lamp, a copy of one, one under a lamp's member.
+        Entity fresh = World.Instantiate(LampPath);
+        Entity copy = World.Clone(World.Lookup("Lamp"));
+        Entity under = World.Instantiate(LampPath, Child(World.Lookup("Lamp 2"), "Base"));
+        Assert.Equal(["Bulb", "Base"], NamesBelow(World, fresh));
         PrefabUpdate update = World.ApplyPrefabUpdates()!;
 
-        Assert.DoesNotContain(fresh, update.Updated);
+        Assert.Contains(fresh, update.Updated);
+        Assert.Contains(copy, update.Updated);
         Assert.Equal(["Bulb", "Base", "Cord"], NamesBelow(World, fresh));                       // one Cord, not two
+        Assert.Equal(["Bulb (copy)", "Base (copy)", "Cord"], NamesBelow(World, copy));              // the copy's own names are its changes, the new member is the prefab's
+        Assert.Equal(["Bulb", "Base", "Cord"], NamesBelow(World, under));
         Assert.Equal(["Bulb", "Base", "Cord"], NamesBelow(World, World.Lookup("Lamp")));
     }
 
@@ -577,5 +586,179 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         Assert.Equal(["Frame", "Glass"], NamesBelow(World, inner).Order(StringComparer.Ordinal));
         Assert.Equal(["Lamp", "Lamp 2", "Bench"], NamesBelow(World, corner));
         Assert.DoesNotContain("remove=\"true\"", World.SaveScene(), StringComparison.Ordinal); // the lamp was not taken away from the corner
+    }
+
+    [Fact]
+    public void AnInstanceSavedOverItsOwnPrefabIsNotUpdatedAgain()
+    {
+        Entity made = World.Instantiate(LampPath);
+        Entity cord = World.CreateEntity("Cord", made);
+        World.Set(cord, Transform.At(new Double3(0, 0, 1)));
+
+        World.SavePrefabFile(LampPath, made);                                                   // what was added to the instance is the prefab's now
+        PrefabUpdate? update = World.ApplyPrefabUpdates();
+
+        Assert.NotNull(update);
+        Assert.Empty(update.Updated);
+        Assert.Equal(["Bulb", "Base", "Cord"], NamesBelow(World, made));                          // once, not "Cord" and "Cord 2"
+        using World other = OtherWorld();
+        Assert.Equal(["Bulb", "Base", "Cord"], NamesBelow(other, other.Instantiate(LampPath)));
+    }
+
+    [Fact]
+    public void ARestoredSnapshotOfOlderInstancesIsUpdated()
+    {
+        World.LoadScene(TwoLamps());
+        WorldSnapshot before = World.Snapshot();
+        ChangeLamp(text => Replace(text, BulbHealth, "<Health Current=\"5\" Max=\"77\" Regen=\"0.5\"/>"));
+
+        // Into another world (a new session after Play), which reads the file as it is now.
+        using World other = OtherWorld();
+        other.Restore(before);
+        Assert.True(other.HasPendingPrefabUpdates);
+        Assert.Equal(9, other.Get<Health>(Child(other, other.Lookup("Lamp"), "Bulb")).Max);
+        other.ApplyPrefabUpdates();
+        Assert.Equal(77, other.Get<Health>(Child(other, other.Lookup("Lamp"), "Bulb")).Max);
+
+        // Into the world it came from, after the instances have followed the file: they are the old ones again, and follow it again.
+        Assert.False(World.HasPendingPrefabUpdates);
+        World.Restore(before);
+        Assert.True(World.HasPendingPrefabUpdates);
+        Assert.Equal(9, World.Get<Health>(Child(World.Lookup("Lamp"), "Bulb")).Max);
+        World.ApplyPrefabUpdates();
+        Assert.Equal(77, World.Get<Health>(Child(World.Lookup("Lamp"), "Bulb")).Max);
+
+        // A snapshot of what is up to date asks for nothing.
+        WorldSnapshot now = World.Snapshot();
+        World.Restore(now);
+        Assert.False(World.HasPendingPrefabUpdates);
+    }
+
+    [Fact]
+    public void AFieldThatWaitsForAMemberIsTiedWhenTheUpdateMakesIt()
+    {
+        World.LoadScene(TwoLamps());
+        Entity switchEntity = World.Lookup("Switch");
+        World.Set(switchEntity, World.Get<Marks>(switchEntity) with { Target = Child(World.Lookup("Lamp"), "Base") });
+        string mended = Read("prefabs/lamp.aprefab");
+        ChangeLamp(text => Replace(text, BaseLamp, ""));
+        Assert.Equal(default, World.Get<Marks>(switchEntity).Target);
+
+        Write("prefabs/lamp.aprefab", mended);
+        Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
+        World.ApplyPrefabUpdates();
+
+        Assert.Equal(Child(World.Lookup("Lamp"), "Base"), World.Get<Marks>(switchEntity).Target);   // the same as a load of the saved scene gives
+    }
+
+    [Fact]
+    public void AReferenceToAnEntityKeptAsideSurvivesAnUpdate()
+    {
+        string scene = $"""
+            <Scene version="2">
+              <Entity id="1" name="Lamp" prefab="{Lamp}"><Override entity="5"><Entity id="7" name="Sign"><Transform Position="0 1 0" Rotation="0 0 0 1" Scale="1 1 1"/></Entity></Override></Entity>
+              <Entity id="2" name="Switch"><Marks Target="7"/></Entity>
+            </Scene>
+            """;
+        World.LoadScene(scene);                                                                 // the lamp has no entity 5: the Sign is kept aside, and the Switch waits for it
+
+        ChangeLamp(text => Replace(text, BulbHealth, "<Health Current=\"5\" Max=\"31\" Regen=\"0.5\"/>"));
+        string saved = World.SaveScene();
+
+        Assert.Contains("name=\"Sign\"", saved, StringComparison.Ordinal);
+        Assert.NotEmpty(XmlNode.Parse(saved).Children.Single(c => c.Attribute("name") == "Switch").Child("Marks")!.Attribute("Target") ?? "");   // what it waited for is still written
+
+        // The lamp gets an entity 5 (a Hook): the Sign comes back under it, and what waited names it.
+        Write("prefabs/lamp.aprefab", Replace(Read("prefabs/lamp.aprefab"), BaseLamp, BaseLamp + "<Entity id=\"5\" name=\"Hook\"/>"));
+        using World again = OtherWorld();
+        again.LoadScene(saved);
+        Entity sign = Child(again, Child(again, again.Lookup("Lamp"), "Hook"), "Sign");
+        Assert.Equal(sign, again.Get<Marks>(again.Lookup("Switch")).Target);
+
+        // And the same in the world that had it, through an update.
+        Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
+        World.ApplyPrefabUpdates();
+        Assert.Equal(Child(Child(World.Lookup("Lamp"), "Hook"), "Sign"), World.Get<Marks>(World.Lookup("Switch")).Target);
+    }
+
+    [Fact]
+    public void AnInstanceThatThrowsWhileItIsChangedIsPutBackAndTheOthersAreUpdated()
+    {
+        uint next = 1;
+        var thrown = false;
+        World.RegisterAssetType("model", _ => AssetRef.FromPath("res://models/box.glb"), _ =>
+        {
+            if (!thrown)
+            {
+                thrown = true;
+                throw new DivideByZeroException("a converter that fails in a way nobody expected");
+            }
+
+            return next++;
+        });
+
+        World.LoadScene(TwoLamps());
+        Entity lamp = World.Lookup("Lamp");
+        Entity bulb = Child(lamp, "Bulb");
+        Entity oldBase = Child(lamp, "Base");
+
+        // The new lamp has no Base, has a Cord, and a model on the Bulb: the first instance is changed (the Base goes, the Cord is made) before the model throws.
+        PrefabUpdate update = ChangeLamp(text => Replace(Replace(text, BaseLamp, "<Entity id=\"4\" name=\"Cord\"/>"), "<Entity id=\"2\" name=\"Bulb\">", "<Entity id=\"2\" name=\"Bulb\"><Furnished Count=\"1\" Model=\"res://models/box.glb\"/>"));
+
+        Assert.Equal([lamp], update.Failed.Select(f => f.Instance));
+        Assert.Contains("nobody expected", update.Failed[0].Message, StringComparison.Ordinal);
+        Assert.Equal([World.Lookup("Lamp 2")], update.Updated);                                   // the other instance was updated
+        Assert.True(World.IsAlive(oldBase), "it is not back");                                                     // what was destroyed is back, with its id
+        Assert.Equal(["Bulb", "Base"], NamesBelow(World, lamp));
+        Assert.Equal(bulb, Child(lamp, "Bulb"));
+        Assert.Equal(oldBase, Child(lamp, "Base"));
+        Assert.False(World.Has<Furnished>(bulb));
+        Assert.Equal(["Bulb", "Cord"], NamesBelow(World, World.Lookup("Lamp 2")));
+        Assert.True(World.IsPrefabMember(oldBase));
+        Assert.Equal(lamp, World.InstanceOf(oldBase));
+    }
+
+    [Fact]
+    public void ManyInstancesAndReferrersAreUpdatedInOnePassOverTheWorld()
+    {
+        const int Count = 2000;
+        var lamps = new List<Entity>();
+        for (int i = 0; i < Count; i++)
+        {
+            lamps.Add(World.Instantiate(LampPath));
+        }
+
+        var referrers = new List<Entity>();
+        foreach (Entity lamp in lamps)
+        {
+            Entity referrer = World.CreateEntity();
+            World.Set(referrer, new Marks { Target = Child(lamp, "Base") });
+            referrers.Add(referrer);
+        }
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        PrefabUpdate update = ChangeLamp(text => Replace(text, BaseLamp, ""));
+        watch.Stop();
+
+        Assert.Equal(Count, update.Updated.Count);
+        Assert.Equal(Count, update.Destroyed.Count);
+        Assert.All(referrers, e => Assert.Equal(default, World.Get<Marks>(e).Target));           // every one let go of its Base
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60), $"the update took {watch.Elapsed}");
+    }
+
+    [Fact]
+    public void WhatASnapshotKeptAsideIsNotNumberedAgainByTheWorldItIsRestoredInto()
+    {
+        World.LoadScene(TwoLamps("<Override entity=\"3\"><Entity id=\"7\" name=\"Sign\"/></Override>"));
+        int start = World.CaptureCounter;
+        ChangeLamp(text => Replace(text, BaseLamp, ""));
+        Assert.True(World.CaptureCounter > start);
+        WorldSnapshot snapshot = World.Snapshot();
+
+        using World other = OtherWorld();
+        Assert.Equal(start, other.CaptureCounter);
+        other.Restore(snapshot);
+
+        Assert.True(other.CaptureCounter >= World.CaptureCounter);                               // what it keeps from the other world cannot meet a number of its own
     }
 }

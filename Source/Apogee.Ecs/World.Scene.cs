@@ -189,6 +189,12 @@ public sealed unsafe partial class World
         /// </summary>
         public Dictionary<string, Entity>? Externals { get; init; }
 
+        /// <summary>
+        /// For an update that has already destroyed entities (see <c>World.PrefabRefresh.cs</c>): what an entity that is gone was called, so that a field of another instance that still holds its id is written as
+        /// what it named, as it would be had the entity never been there.
+        /// </summary>
+        public Func<ulong, DanglingRef?>? Dropped { get; init; }
+
         /// <summary>Whether an entity is alive (for <see cref="Externals"/>).</summary>
         public Func<Entity, bool>? IsAlive { get; init; }
 
@@ -198,6 +204,23 @@ public sealed unsafe partial class World
             if (AddressOf.TryGetValue(target, out address))
             {
                 return true;
+            }
+
+            if (Externals is not null && target != 0 && Dropped?.Invoke(target) is { } gone)
+            {
+                if (gone.Root == 0)
+                {
+                    address = gone.Text;
+                    return true;
+                }
+
+                if (TryAddress(gone.Root, out string? root))
+                {
+                    address = root + "/" + gone.Text;
+                    return true;
+                }
+
+                return false;
             }
 
             if (Externals is null || target == 0 || IsAlive?.Invoke(new Entity(target)) != true)
@@ -244,7 +267,7 @@ public sealed unsafe partial class World
     // never an instance (the root of a prefab file being saved).
     private SavePlan PlanSave(IReadOnlyList<Entity> roots, Func<Entity, int> number, Entity fileRoot, Dictionary<string, Entity>? outside = null)
     {
-        var plan = new SavePlan(number, fileRoot, NewExpander(new ExpansionBudget(MaxLoadEntities))) { Externals = outside, IsAlive = outside is null ? null : IsAlive };
+        var plan = new SavePlan(number, fileRoot, NewExpander(new ExpansionBudget(MaxLoadEntities))) { Externals = outside, IsAlive = outside is null ? null : IsAlive, Dropped = outside is null ? null : DroppedBy };
         PruneKept();
         foreach (Entity root in roots)
         {
@@ -712,7 +735,8 @@ public sealed unsafe partial class World
 
         if (node.Name == "Entity" && node.Attribute("id") is { } old)
         {
-            string fresh = plan.Number(default).ToString(CultureInfo.InvariantCulture);
+            // An update in place keeps the numbers as they were written: what refers to these entities from outside the instance (an entity field that waits for one) is not in this document to be renumbered.
+            string fresh = plan.Externals is not null ? old : plan.Number(default).ToString(CultureInfo.InvariantCulture);
             plan.KeptIds.TryAdd(old, fresh);
             node.SetAttribute("id", fresh);
         }
@@ -1023,8 +1047,15 @@ public sealed unsafe partial class World
             if (isOld)
             {
                 RemoveComponentsThePlanLacks(entity, item);
-                Remove<PrefabInstance>(entity);
-                Remove<PrefabMember>(entity);
+                if (item.InstancePrefab is null)
+                {
+                    Remove<PrefabInstance>(entity);
+                }
+
+                if (item.MemberId is null && (item.InstancePrefab is null || item.InstanceRootId <= 0))
+                {
+                    Remove<PrefabMember>(entity);
+                }
             }
 
             notes.Clear();
@@ -1070,6 +1101,23 @@ public sealed unsafe partial class World
 
     // What ties an entity to the prefabs it came from: its id in the prefab file that holds it, the instance it is the root of, and what its instance element could not apply (kept as written, as copies:
     // the nodes belong to documents the library shares).
+    // Sets a link to a prefab the entity may have already: not when it has that value (an update in place leaves what it does not change alone, so that nothing is told of a change).
+    private void SetIfChanged(Entity entity, PrefabMember value)
+    {
+        if (!TryGet(entity, out PrefabMember current) || current.Id != value.Id || current.Prefab != value.Prefab)
+        {
+            Set(entity, value);
+        }
+    }
+
+    private void SetIfChanged(Entity entity, PrefabInstance value)
+    {
+        if (!TryGet(entity, out PrefabInstance current) || current.Prefab != value.Prefab)
+        {
+            Set(entity, value);
+        }
+    }
+
     private void LinkToPrefabs(Entity entity, PlannedEntity item, Dictionary<string, uint> handles, Dictionary<string, Entity> byAddress, LoadNotes notes)
     {
         uint HandleOf(string key)
@@ -1084,18 +1132,18 @@ public sealed unsafe partial class World
 
         if (item.MemberId is { } id && item.MemberPrefab is { } file)
         {
-            Set(entity, new PrefabMember { Id = (uint)id, Prefab = HandleOf(file) });
+            SetIfChanged(entity, new PrefabMember { Id = (uint)id, Prefab = HandleOf(file) });
         }
 
         if (item.InstancePrefab is { } prefab)
         {
             uint handle = HandleOf(prefab);
-            Set(entity, new PrefabInstance { Prefab = handle });
+            SetIfChanged(entity, new PrefabInstance { Prefab = handle });
 
             // The root of an instance that is not inside another prefab's file is the root entity of its own prefab, the one that file calls by its id (what saving the prefab keeps).
             if (item.MemberId is null && item.InstanceRootId > 0)
             {
-                Set(entity, new PrefabMember { Id = (uint)item.InstanceRootId, Prefab = handle });
+                SetIfChanged(entity, new PrefabMember { Id = (uint)item.InstanceRootId, Prefab = handle });
             }
         }
 

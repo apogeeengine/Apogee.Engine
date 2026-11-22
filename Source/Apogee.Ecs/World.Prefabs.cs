@@ -102,8 +102,8 @@ public sealed unsafe partial class World
         uint handle = library.Load(reference);
         string key = library.PathOf(handle) ?? library.RefOf(handle)?.ToString() ?? reference;
 
-        // An update in place reads the instances as they were made: from the documents the library had before the change.
-        if (_asOf is not null && _asOf.TryGetValue(handle, out XmlNode? before))
+        // What is made (or saved) while a change waits to be applied, and what an update in place reads, is the prefab as the entities were made: the document the library had before the change.
+        if (DocumentAsOf(handle, out XmlNode? before))
         {
             return before is null ? new ResolvedPrefab(key, null, "there was no such prefab yet") : new ResolvedPrefab(key, before);
         }
@@ -345,5 +345,11 @@ public sealed unsafe partial class World
         }
 
         library.Written(handle);
+
+        // The instance this was saved from has what the file has now (what was added to it is the file's), and an update from the file it had would make that again beside it.
+        if (TryGet(root, out PrefabInstance saved) && saved.Prefab == handle)
+        {
+            MarkUpToDate(root);
+        }
     }
 }

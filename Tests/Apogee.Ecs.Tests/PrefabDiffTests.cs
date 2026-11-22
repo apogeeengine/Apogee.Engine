@@ -665,6 +665,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
         // The file is replaced by one that holds an instance of itself, and the world is told it changed.
         Write("prefabs/lamp.aprefab", lamp.Replace("<Entity id=\"3\" name=\"Base\"><Transform Position=\"0 0 0\" Rotation=\"0 0 0 1\" Scale=\"1 1 1\"/></Entity>", $"<Entity id=\"4\" name=\"Again\" prefab=\"{LampPath}\"/>", StringComparison.Ordinal));
         World.Prefabs.Written(World.Prefabs.Load(LampPath));
+        World.ApplyPrefabUpdates();                                                                // (an update cannot make a prefab that contains itself: the instance stays as it was)
         string text = WithWarnings(() => World.SaveScene(), out List<string> warnings);
 
         Assert.Contains(warnings, w => w.Contains("contains itself", StringComparison.Ordinal));

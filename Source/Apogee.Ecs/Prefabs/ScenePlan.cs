@@ -90,7 +90,8 @@ internal sealed class ScenePlan
 
     /// <summary>Plans the loading of the <c>Entity</c> elements directly under <paramref name="document"/>.</summary>
     /// <exception cref="FormatException">The document would make more entities than the budget allows, or ask for more work, or nest entities too deep.</exception>
-    public static ScenePlan Build(XmlNode document, PrefabExpander expander)
+    /// <param name="startDepth">How many entities are above the document's top ones (an update of an instance deep in a scene plans it at its own depth, as a load of the whole scene would).</param>
+    public static ScenePlan Build(XmlNode document, PrefabExpander expander, int startDepth = 0)
     {
         var plan = new ScenePlan(expander, document.Child("Components"));
         if (plan._schemas is not null)
@@ -99,7 +100,7 @@ internal sealed class ScenePlan
         }
 
         plan.Reserve(document);
-        plan.Walk(document, -1, 0);
+        plan.Walk(document, -1, startDepth);
         return plan;
     }
 

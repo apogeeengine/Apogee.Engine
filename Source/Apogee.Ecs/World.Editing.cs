@@ -46,6 +46,12 @@ public sealed class WorldSnapshot
 
     internal List<EntityState> Entities { get; }
 
+    /// <summary>For each prefab the entities hold instances or members of (by its reference text), the document those entities were made from; null where there was none. What <see cref="World.Restore"/> compares with what the library has now.</summary>
+    internal IReadOnlyDictionary<string, XmlNode?>? Documents { get; init; }
+
+    /// <summary>The numbers that updates of prefab instances had used in the world this was taken from (see <c>World.CaptureCounter</c>): kept-aside data in it may hold them.</summary>
+    internal int Numbered { get; init; }
+
     /// <summary>Identifies the world the snapshot was taken from (see <c>World._origin</c>).</summary>
     internal object Origin { get; }
 
@@ -376,11 +382,15 @@ public sealed unsafe partial class World
             states.Add(Capture(entity));
         }
 
-        return new WorldSnapshot(states, _origin);
+        return new WorldSnapshot(states, _origin) { Documents = DocumentsOf(ids), Numbered = _numbered };
     }
 
     /// <summary>Takes one entity and everything below it, parents first.</summary>
-    public WorldSnapshot SnapshotTree(Entity root) => new([.. Subtree(root).Select(Capture)], _origin);
+    public WorldSnapshot SnapshotTree(Entity root)
+    {
+        List<Entity> tree = Subtree(root);
+        return new WorldSnapshot([.. tree.Select(Capture)], _origin) { Documents = DocumentsOf(tree), Numbered = _numbered };
+    }
 
     private EntityState Capture(Entity entity)
     {
@@ -452,6 +462,7 @@ public sealed unsafe partial class World
         }
 
         RestoreEntities(snapshot);
+        QueueUpdatesForRestored(snapshot);
     }
 
     // Sets each asset field of a component's bytes to this world's handle for the reference it named; 0 when there is none to name (said once per field) or this world cannot find it.

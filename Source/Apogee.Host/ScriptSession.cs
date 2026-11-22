@@ -249,7 +249,7 @@ public sealed class ScriptSession : IDisposable
 
             try
             {
-                PrefabReload result = world.Prefabs.Reload(path);
+                PrefabReload result = world.Prefabs.Reload(path, world.MaxLoadEntities);
                 if (result.Status == PrefabReloadStatus.Failed)
                 {
                     Log.Error("HotReload", $"prefab {path} not reloaded, the old version stays: {result.Error}");

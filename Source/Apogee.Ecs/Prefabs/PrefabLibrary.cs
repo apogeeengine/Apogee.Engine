@@ -208,8 +208,9 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
     /// not parse. A file nothing has asked for yet is looked at too, so that an instance that was missing becomes whole when its prefab appears. Call it from the thread that owns the worlds.
     /// </summary>
     /// <param name="pathOrRef">The prefab: a path, <c>uid://…</c>, or <c>path|uid://…</c>.</param>
+    /// <param name="maxEntities">The most entities the prefab may expand to (what a world's <see cref="World.MaxLoadEntities"/> allows), checked before the new file is adopted.</param>
     /// <exception cref="FormatException">The text is not an asset reference.</exception>
-    public PrefabReload Reload(string pathOrRef)
+    public PrefabReload Reload(string pathOrRef, int maxEntities = ExpansionBudget.DefaultLimit)
     {
         ArgumentException.ThrowIfNullOrEmpty(pathOrRef);
         AssetRef reference = AssetRef.Parse(pathOrRef);
@@ -221,7 +222,7 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
         PrefabReload result;
         lock (_lock)
         {
-            result = ReloadLocked(Load(reference));
+            result = ReloadLocked(Load(reference), maxEntities);
         }
 
         if (result.Status == PrefabReloadStatus.Reloaded)
@@ -233,7 +234,7 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
     }
 
     // Reads the file of a handle and, when it is usable and different, makes it the handle's document (the old one stays in Previous until Announce is done).
-    private PrefabReload ReloadLocked(uint handle)
+    private PrefabReload ReloadLocked(uint handle, int maxEntities)
     {
         Entry entry = Get(handle)!;
         if (Resolved(entry, handle) is not { } path)
@@ -246,7 +247,7 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
         {
             fresh = Read(path);
             PrefabDocument.Check(fresh, path);
-            if (NestingProblem(handle, fresh) is { } problem)
+            if (NestingProblem(handle, fresh, maxEntities) is { } problem)
             {
                 return new PrefabReload(handle, path, PrefabReloadStatus.Failed, problem);
             }
@@ -269,7 +270,7 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
 
     // Why a new document of a prefab cannot replace the old one even though it parses, or null: expanded on its own (with what the library holds of every other prefab) it holds an instance of itself, is
     // nested too deep, or is too big. A prefab that only names a prefab that does not exist is fine: that instance is empty, as it is wherever it is used.
-    private string? NestingProblem(uint handle, XmlNode fresh)
+    private string? NestingProblem(uint handle, XmlNode fresh, int maxEntities)
     {
         ResolvedPrefab Resolve(string reference)
         {
@@ -294,7 +295,7 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
         element.SetAttribute("prefab", RefOf(handle)!.Value.ToString());
         try
         {
-            Expansion expansion = new PrefabExpander(Resolve, static (_, _) => false, new ExpansionBudget()).Expand(element, "1");
+            Expansion expansion = new PrefabExpander(Resolve, static (_, _) => false, new ExpansionBudget(maxEntities)).Expand(element, "1");
             foreach (ExpandedEntity entity in expansion.Root.Subtree())
             {
                 if (entity.IsCut)
