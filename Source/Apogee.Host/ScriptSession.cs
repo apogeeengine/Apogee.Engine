@@ -237,8 +237,8 @@ public sealed class ScriptSession : IDisposable
     /// <summary>Reloads what changed on disk (a game started with watching), or null.</summary>
     public HotReloader? Reloader { get; private init; }
 
-    /// <summary>Applies the changes to files since the last frame, if the game is being watched.</summary>
-    public void Reload() => Reloader?.Poll();
+    /// <summary>Applies the changes to files since the last frame, if the game is being watched. What it reloaded, or null when the game is not watched.</summary>
+    public ReloadReport? Reload() => Reloader?.Poll();
 
     /// <summary>Runs the script at <paramref name="path"/> (a full path with forward slashes) in a new world, which it sees as the <c>world</c> global.</summary>
     public static ScriptSession Start(string path, bool realAudio = false)
