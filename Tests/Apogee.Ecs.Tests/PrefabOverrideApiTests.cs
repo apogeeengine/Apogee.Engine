@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Apogee.Content.Xml;
+using Apogee.Core.Assets;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
 using Apogee.Reflection;
@@ -733,5 +734,219 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         Assert.Equal(2, World.PrefabOverrides(lamp).Count);
         Assert.False(World.HasPendingPrefabUpdates);
         Assert.Equal(["Bulb", "Base"], NamesBelow(World, World.Lookup("Lamp 2")));
+    }
+
+    // ---- Breaking the link
+
+    private bool HasAnyLink(Entity root) => World.Subtree(root).Any(e => World.IsPrefabInstance(e) || World.Has<PrefabMember>(e));
+
+    [Fact]
+    public void BreakingTheLinkKeepsWhatIsSeenAndTheEntities()
+    {
+        Entity lamp = LoadLamp("<Transform Position=\"5 0 0\"/><Override entity=\"2\" name=\"Globe\"><Health Max=\"40\"/></Override><Entity id=\"9\" name=\"Cord\"/>");
+        List<Entity> before = World.Subtree(lamp);
+        string dump = PrefabFuzzBase.DumpTree(World, lamp).Replace(" [instance]", "", StringComparison.Ordinal);
+
+        PrefabLinkReport report = World.BreakPrefabLink(lamp);
+
+        Assert.Equal([lamp], report.Unlinked);
+        Assert.Empty(report.Dropped);
+        Assert.Equal(before, World.Subtree(lamp));
+        Assert.Equal(dump, PrefabFuzzBase.DumpTree(World, lamp));
+        Assert.False(HasAnyLink(lamp));
+        Assert.True(World.IsPrefabInstance(World.Lookup("Lamp 2")));
+        Assert.Throws<ArgumentException>(() => World.PrefabOverrides(lamp));
+        string scene = World.SaveScene();
+        Assert.Contains("name=\"Globe\"", scene, StringComparison.Ordinal);
+        Assert.Single(scene.Split('\n'), line => line.Contains("prefab=", StringComparison.Ordinal));      // only Lamp 2 is still an instance
+    }
+
+    [Fact]
+    public void BreakingTheLinkStopsTheInstanceFollowingItsPrefab()
+    {
+        Entity lamp = LoadLamp();
+        World.BreakPrefabLink(lamp);
+
+        Write(LampFile, Read(LampFile).Replace("Max=\"9\"", "Max=\"90\"", StringComparison.Ordinal));
+        World.Prefabs.Reload(LampPath);
+        World.ApplyPrefabUpdates();
+
+        Assert.Equal(9, World.Get<Health>(Child(lamp, "Bulb")).Max);
+        Assert.Equal(90, World.Get<Health>(Child(World.Lookup("Lamp 2"), "Bulb")).Max);
+    }
+
+    [Fact]
+    public void BreakingTheLinkDropsWhatWasKeptAsideAndSaysSo()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"7\"><Health Max=\"40\"/></Override>");
+
+        PrefabLinkReport report = World.BreakPrefabLink(lamp);
+
+        XmlNode dropped = Assert.Single(report.Dropped);
+        Assert.Equal("7", dropped.Attribute("entity"));
+        Assert.DoesNotContain("<Override", World.SaveScene(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BreakingTheLinkLeavesNestedInstancesInstancesUnlessCompletely()
+    {
+        Entity corner = LoadCorner();
+        Entity nested = Child(corner, "Lamp");
+        Entity bulb = Child(nested, "Bulb");
+
+        PrefabLinkReport report = World.BreakPrefabLink(corner);
+
+        Assert.Equal([corner], report.Unlinked);
+        Assert.False(World.IsPrefabInstance(corner));
+        Assert.False(World.Has<PrefabMember>(corner));
+        Assert.True(World.IsPrefabInstance(nested));
+        Assert.True(World.IsPrefabInstance(Child(corner, "Lamp 2")));
+        Assert.True(World.IsPrefabMember(bulb));
+        Assert.False(World.Has<PrefabMember>(Child(corner, "Bench")));
+        Assert.Equal(["Field 2|Health|Current"], Listed(World, nested).Where(x => x.Contains("Health", StringComparison.Ordinal)).ToArray()); // the corner's own change is the scene's now
+        string saved = World.SaveScene();
+        Assert.Contains("prefab=\"" + LampPath, saved, StringComparison.Ordinal);
+        using World loaded = OtherWorld();
+        loaded.LoadScene(saved);
+        Assert.Equal(PrefabFuzzBase.DumpTree(World, corner), PrefabFuzzBase.DumpTree(loaded, loaded.Lookup("Corner")));
+        Assert.Equal(saved, loaded.SaveScene());
+    }
+
+    [Fact]
+    public void BreakingTheLinkCompletelyUnpacksTheNestedInstances()
+    {
+        Entity corner = LoadCorner();
+        string dump = PrefabFuzzBase.DumpTree(World, corner).Replace(" [instance]", "", StringComparison.Ordinal);
+
+        PrefabLinkReport report = World.BreakPrefabLink(corner, completely: true);
+
+        Assert.Equal(3, report.Unlinked.Count);
+        Assert.False(HasAnyLink(corner));
+        Assert.Equal(dump, PrefabFuzzBase.DumpTree(World, corner));
+        Assert.DoesNotContain("prefab=", World.SaveScene(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnInstanceInsideAnotherCannotBeUnlinkedAlone()
+    {
+        Entity corner = LoadCorner();
+
+        Assert.Throws<InvalidOperationException>(() => World.BreakPrefabLink(Child(corner, "Lamp")));
+        Assert.True(World.IsPrefabInstance(Child(corner, "Lamp")));
+    }
+
+    // ---- Making a prefab
+
+    private Entity Crate()
+    {
+        Entity crate = World.CreateEntity("Crate");
+        World.Set(crate, Transform.At(new Double3(1, 2, 3)));
+        Entity lid = World.CreateEntity("Lid", crate);
+        World.Set(lid, new Health { Current = 3, Max = 4, Regen = 0.25f });
+        World.Set(lid, new Marks { Target = crate, Level = 5 });
+        World.CreateEntity("Latch", lid);
+        return crate;
+    }
+
+    [Fact]
+    public void CreatingAPrefabMakesAnInstanceThatSavesAsOneElement()
+    {
+        Entity crate = Crate();
+        Entity lid = Child(crate, "Lid");
+        string dump = PrefabFuzzBase.DumpTree(World, crate).Replace("Crate", "Crate [instance]", StringComparison.Ordinal);
+
+        Entity made = World.CreatePrefab(crate, "res://prefabs/crate.aprefab");
+
+        Assert.Equal(crate, made);
+        Assert.True(World.IsPrefabInstance(crate));
+        Assert.True(World.IsPrefabMember(lid));
+        Assert.Equal(["Lid"], NamesBelow(World, crate));
+        Assert.Empty(World.PrefabOverrides(crate));
+        Assert.False(World.HasPendingPrefabUpdates);
+        string scene = World.SaveScene();
+        Assert.Equal(1, scene.Split('\n').Count(line => line.Contains("prefab=\"res://prefabs/crate.aprefab|uid://", StringComparison.Ordinal)));
+        Assert.DoesNotContain("<Health", scene, StringComparison.Ordinal);
+        XmlNode file = XmlNode.Parse(Read("prefabs/crate.aprefab"));
+        Assert.Equal("4", file.Attribute("nextId"));
+        Assert.Equal("Crate", EntityElement(file, 1).Attribute("name"));
+        Assert.Equal("1", EntityElement(file, 2).Child("Marks")!.Attribute("Target"));
+        Assert.Equal(dump.Replace(" [instance]", "", StringComparison.Ordinal), PrefabFuzzBase.DumpTree(World, crate).Replace(" [instance]", "", StringComparison.Ordinal));
+        using World loaded = OtherWorld();
+        Entity again = loaded.Instantiate("res://prefabs/crate.aprefab");
+        Assert.Equal(PrefabFuzzBase.DumpTree(World, crate), PrefabFuzzBase.DumpTree(loaded, again));
+    }
+
+    [Fact]
+    public void ACreatedPrefabIsFollowedLikeAnyOther()
+    {
+        Entity crate = Crate();
+        World.CreatePrefab(crate, "res://prefabs/crate.aprefab");
+        Entity second = World.Instantiate("res://prefabs/crate.aprefab");
+
+        Write("prefabs/crate.aprefab", Read("prefabs/crate.aprefab").Replace("Max=\"4\"", "Max=\"44\"", StringComparison.Ordinal));
+        World.Prefabs.Reload("res://prefabs/crate.aprefab");
+        World.ApplyPrefabUpdates();
+
+        Assert.Equal(44, World.Get<Health>(Child(crate, "Lid")).Max);
+        Assert.Equal(44, World.Get<Health>(Child(second, "Lid")).Max);
+    }
+
+    [Fact]
+    public void CreatingAPrefabKeepsWhatCouldNotBeWrittenAsOverrides()
+    {
+        Entity crate = Crate();
+        World.Set(Child(crate, "Lid"), new Marks { Target = World.CreateEntity("Elsewhere"), Level = 5 });
+
+        World.CreatePrefab(crate, "res://prefabs/crate.aprefab");
+
+        Assert.Equal(["Field 2|Marks|Target"], Listed(World, crate));
+        Assert.Equal(World.Lookup("Elsewhere"), World.Get<Marks>(Child(crate, "Lid")).Target);
+    }
+
+    [Fact]
+    public void CreatingAPrefabRefusesWhatWouldNotMakeOne()
+    {
+        Entity lamp = LoadLamp();
+        Entity crate = Crate();
+        World.CreatePrefab(crate, "res://prefabs/crate.aprefab");
+        string crateText = Read("prefabs/crate.aprefab");
+
+        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(lamp, "res://prefabs/other.aprefab"));                       // an instance already
+        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(Child(lamp, "Bulb"), "res://prefabs/other.aprefab"));         // part of one
+        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(World.CreateEntity("Another"), "res://prefabs/crate.aprefab")); // a file that is there
+        Assert.Throws<ArgumentException>(() => World.CreatePrefab(World.CreateEntity("Wrong"), "res://prefabs/wrong.txt"));
+
+        Assert.Equal(crateText, Read("prefabs/crate.aprefab"));
+        Assert.False(System.IO.File.Exists(System.IO.Path.Combine(Folder, "prefabs/other.aprefab")));
+    }
+
+    [Fact]
+    public void CreatingAPrefabRefusesALoop()
+    {
+        // The tree holds a prefab that already names the file to be made (a prefab of a file that is not there yet): writing it would make a prefab that contains itself.
+        Write("prefabs/holder.aprefab", $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <Prefab version="1" uid="{AssetUid.New()}" nextId="3">
+              <Entity id="1" name="Holder"><Entity id="2" name="Inner" prefab="res://prefabs/crate.aprefab"/></Entity>
+            </Prefab>
+            """);
+        Entity crate = World.CreateEntity("Crate");
+        World.Instantiate("res://prefabs/holder.aprefab", crate);
+
+        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(crate, "res://prefabs/crate.aprefab"));
+
+        Assert.False(System.IO.File.Exists(System.IO.Path.Combine(Folder, "prefabs/crate.aprefab")));
+        Assert.False(World.IsPrefabInstance(crate));
+    }
+
+    [Fact]
+    public void CreatingAPrefabInASourceThatCannotBeWrittenIsRefused()
+    {
+        using World reader = new() { Files = ReadOnlyFiles(), Assets = null };
+        Entity crate = reader.CreateEntity("Crate");
+
+        Assert.Throws<UnauthorizedAccessException>(() => reader.CreatePrefab(crate, "res://prefabs/crate.aprefab"));
+
+        Assert.False(reader.IsPrefabInstance(crate));
     }
 }

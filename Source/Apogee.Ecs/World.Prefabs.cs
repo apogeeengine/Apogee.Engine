@@ -288,15 +288,14 @@ public sealed unsafe partial class World
             },
             root);
 
-        // A prefab that holds an instance of itself, or of one that holds it, could not be read back as anything but missing instances.
-        if (library.PathOf(handle) is { } target)
+        // A prefab that holds an instance of itself, or of one that holds it, could not be read back as anything but missing instances. A file that is not there yet is named by the path it will have:
+        // an instance of it (or of a prefab that already names it) is a missing instance until it is written, and would be a loop after.
+        string target = library.PathOf(handle) ?? resolved;
+        foreach (InstanceSave instance in plan.Instances.Values)
         {
-            foreach (InstanceSave instance in plan.Instances.Values)
+            if (instance.Expansion.Prefabs.Any(key => key == target || (AssetRef.TryParse(key, out AssetRef named) && named.HasPath && string.Equals(named.Path, target, StringComparison.OrdinalIgnoreCase))))
             {
-                if (instance.Expansion.Prefabs.Contains(target))
-                {
-                    throw new InvalidOperationException($"{target} cannot hold an instance of itself (directly or through another prefab): saving it would make a prefab that contains itself");
-                }
+                throw new InvalidOperationException($"{target} cannot hold an instance of itself (directly or through another prefab): saving it would make a prefab that contains itself");
             }
         }
 
