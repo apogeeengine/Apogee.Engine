@@ -173,6 +173,36 @@ public sealed class InstantiatePrefabCommand(WorldRef worldRef, string reference
     public bool TryMerge(IEditCommand following) => false;
 }
 
+/// <summary>
+/// Turns an instance into plain entities as one step (<see cref="World.BreakPrefabLink"/>): undoing brings the link back with what the instance kept aside, redoing breaks it again.
+/// </summary>
+public sealed class UnpackPrefabCommand : IEditCommand
+{
+    private readonly SubtreeEditCommand _inner;
+    private PrefabLinkReport? _report;
+
+    /// <summary>Makes the command; nothing happens until it is run (<see cref="EditHistory.Execute"/>).</summary>
+    public UnpackPrefabCommand(WorldRef worldRef, Entity root, bool completely = false)
+    {
+        _inner = new SubtreeEditCommand(worldRef, completely ? "Unpack Completely" : "Unpack Prefab", root, world => _report = world.BreakPrefabLink(root, completely));
+    }
+
+    /// <inheritdoc/>
+    public string Name => _inner.Name;
+
+    /// <summary>What the unlink did (set by the first <see cref="Apply"/>): the instances that are plain entities now, and the changes the instance kept aside that had nothing left to apply to, which a tool can show.</summary>
+    public PrefabLinkReport? Report => _report;
+
+    /// <inheritdoc/>
+    public void Apply() => _inner.Apply();
+
+    /// <inheritdoc/>
+    public void Undo() => _inner.Undo();
+
+    /// <inheritdoc/>
+    public bool TryMerge(IEditCommand following) => false;
+}
+
 /// <summary>The edits of the overrides API (<c>World.PrefabOverrides</c> and what follows it) as commands of an <see cref="EditHistory"/>.</summary>
 public static class PrefabCommands
 {
@@ -188,8 +218,7 @@ public static class PrefabCommands
         new SubtreeEditCommand(worldRef, "Revert All Overrides", root, world => world.RevertAllOverrides(root));
 
     /// <summary>Turns an instance into plain entities (<see cref="World.BreakPrefabLink"/>).</summary>
-    public static IEditCommand BreakLink(WorldRef worldRef, Entity root, bool completely = false) =>
-        new SubtreeEditCommand(worldRef, completely ? "Unpack Completely" : "Unpack Prefab", root, world => world.BreakPrefabLink(root, completely));
+    public static UnpackPrefabCommand BreakLink(WorldRef worldRef, Entity root, bool completely = false) => new(worldRef, root, completely);
 
     /// <summary>Makes a new prefab file of the entities and an instance of it (<see cref="World.CreatePrefab"/>). Undoing makes them plain entities again and leaves the file.</summary>
     public static IEditCommand CreatePrefab(WorldRef worldRef, Entity root, string path) =>

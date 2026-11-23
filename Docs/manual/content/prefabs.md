@@ -365,7 +365,9 @@ own position for its lamps, or the Health it pins, are not changes of the lamp, 
 
 **Breaking the link** (`BreakPrefabLink`, "Unpack") turns an instance into plain entities: the two components come off, the entities, ids, names and values stay, and a scene saves them as the entities they
 are. An instance inside it stays an instance (of its own prefab, with what the outer prefab said about it now a change against that prefab, as the scene holds it) unless `completely`. What the instance kept
-aside is dropped and returned in the `PrefabLinkReport` (and logged): it named parts of a prefab the instance is no longer made from. An instance that is part of another cannot be unpacked alone.
+aside that names a place inside an instance that stays one goes with that instance (`entity="5/7"` of the unpacked one is `entity="7"` of instance 5, and what it said of 5's root is 5's now); the
+rest is dropped and returned in the `PrefabLinkReport` (and logged): it named parts of a prefab nothing is made from now. The command `UnpackPrefabCommand` keeps the report (`Report`) for a tool to show.
+An instance that is part of another cannot be unpacked alone.
 
 **Making a prefab** (`CreatePrefab(root, path)`) writes the entity and everything below it as a new prefab file (`SavePrefabFile`) and makes the entities an instance of it, with no overrides except what a
 prefab cannot hold (an Entity field that names an entity outside the tree stays as it is, and is an override of the new instance). It is refused for an entity that is an instance (unpack it first: a

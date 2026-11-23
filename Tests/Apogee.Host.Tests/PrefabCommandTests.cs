@@ -169,6 +169,33 @@ public sealed class PrefabCommandTests : IDisposable
     }
 
     [Fact]
+    public void UnpackingGivesTheReportOfWhatWasLeftWithNothingToApplyTo()
+    {
+        File.WriteAllText(Path.Combine(_folder, "prefabs/corner.aprefab"), $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <Prefab version="1" uid="uid://m3m5n7p9q1r3s" nextId="3">
+              <Entity id="1" name="Corner"><Entity id="2" name="Lamp" prefab="{LampPath}"/></Entity>
+            </Prefab>
+            """);
+        _world.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Corner\" prefab=\"res://prefabs/corner.aprefab\"><Override entity=\"2/7\"><Hp Value=\"3\"/></Override><Override entity=\"9\"><Hp Value=\"4\"/></Override></Entity></Scene>");
+        Entity corner = _world.Lookup("Corner");
+        Entity lamp = Child(corner, "Lamp");
+        UnpackPrefabCommand command = PrefabCommands.BreakLink(_world, corner);
+
+        _history.Execute(command);
+
+        Assert.NotNull(command.Report);
+        Assert.Equal([corner], command.Report.Unlinked);
+        Assert.Equal("9", Assert.Single(command.Report.Dropped).Attribute("entity"));          // the one with no home; the one for the lamp went with it
+        Assert.True(_world.IsPrefabInstance(lamp));
+        Assert.Contains("<Override entity=\"7\">", _world.SaveScene(), StringComparison.Ordinal);
+
+        _history.Undo();
+        Assert.True(_world.IsPrefabInstance(corner));
+        Assert.Contains("entity=\"9\"", _world.SaveScene(), StringComparison.Ordinal);       // what was dropped is back with the link
+    }
+
+    [Fact]
     public void MakingAPrefabIsUndoneAndRedoneAndTheFileStays()
     {
         Entity crate = _world.CreateEntity("Crate");

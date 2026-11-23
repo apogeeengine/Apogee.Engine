@@ -1148,6 +1148,28 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     }
 
     [Fact]
+    public void WhatWasKeptAsideForAPlaceInAnInstanceThatStaysIsKeptByIt()
+    {
+        // The lamp has no entity 7 and no Frozen: the corner keeps both aside. Unpacking the corner leaves the first lamp an instance, which is where they belong; the one for entity 9 belongs to nothing.
+        Entity corner = LoadCorner("<Override entity=\"2/7\"><Health Max=\"40\"/></Override><Override entity=\"2\"><Frozen remove=\"true\"/></Override><Override entity=\"9\"><Health Max=\"1\"/></Override>");
+        Entity nested = Child(corner, "Lamp");
+
+        PrefabLinkReport report = World.BreakPrefabLink(corner);
+
+        XmlNode dropped = Assert.Single(report.Dropped);
+        Assert.Equal("9", dropped.Attribute("entity"));
+        Assert.Equal(["Unapplied 7||", "Unapplied |Frozen|"], Listed(World, nested).Where(x => x.StartsWith("Unapplied", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray());
+        string saved = World.SaveScene();
+        Assert.Contains("<Override entity=\"7\">", saved, StringComparison.Ordinal);
+        Assert.Contains("<Frozen remove=\"true\"/>", saved, StringComparison.Ordinal);
+        Assert.DoesNotContain("entity=\"2/7\"", saved, StringComparison.Ordinal);
+        Assert.DoesNotContain("entity=\"9\"", saved, StringComparison.Ordinal);
+        using World loaded = OtherWorld();
+        loaded.LoadScene(saved);
+        Assert.Equal(saved, loaded.SaveScene());
+    }
+
+    [Fact]
     public void BreakingTheLinkCompletelyUnpacksTheNestedInstances()
     {
         Entity corner = LoadCorner();

@@ -964,16 +964,47 @@ public sealed unsafe partial class World
             roots.AddRange(tree.Where(entity => entity != root && Has<PrefabInstance>(entity)));
         }
 
+        // The instances inside that stay instances, by their id in the prefab of the one that is unpacked: what the unpacked instance kept aside for a place inside one of them still has a home there.
+        var staying = new Dictionary<int, Entity>();
+        if (!completely && TryGet(root, out PrefabInstance own))
+        {
+            foreach (Entity entity in tree)
+            {
+                if (entity != root && Has<PrefabInstance>(entity) && TryGet(entity, out PrefabMember tag) && tag.Prefab == own.Prefab && tag.Id <= int.MaxValue)
+                {
+                    staying[(int)tag.Id] = entity;
+                }
+            }
+        }
+
         var dropped = new List<XmlNode>();
+        var rehomed = new Dictionary<Entity, List<XmlNode>>();
         foreach (Entity unlink in roots)
         {
             if (_kept.TryGetValue(unlink.Id, out KeptData? kept))
             {
-                dropped.AddRange(kept.Unapplied);
+                foreach (XmlNode element in kept.Unapplied)
+                {
+                    if (unlink == root && Rebase(element, staying) is { } moved)
+                    {
+                        (rehomed.TryGetValue(moved.Instance, out List<XmlNode>? list) ? list : rehomed[moved.Instance] = []).AddRange(moved.Elements);
+                    }
+                    else
+                    {
+                        dropped.Add(element);
+                    }
+                }
+
                 SetKept(unlink, new KeptData { Assets = kept.Assets, Refs = kept.Refs });
             }
 
             Remove<PrefabInstance>(unlink);
+        }
+
+        foreach ((Entity instance, List<XmlNode> elements) in rehomed)
+        {
+            KeptData? held = _kept.GetValueOrDefault(instance.Id);
+            _kept[instance.Id] = new KeptData { Unapplied = [.. held?.Unapplied ?? [], .. elements], RawPrefab = held?.RawPrefab, Assets = held?.Assets, Refs = held?.Refs };
         }
 
         // What named a place in an instance that is not one any more names nothing: a member is tagged only while the instance it belongs to (below the root) is there.
@@ -1000,6 +1031,31 @@ public sealed unsafe partial class World
         }
 
         return new PrefabLinkReport(roots, [.. dropped.Select(static node => node.Clone())]);
+    }
+
+    // An element an unpacked instance kept aside, as the element of an instance inside it that stays one: an <Override> of a place below that instance (entity="5/7" is entity="7" of instance 5), or
+    // of the instance's own root (its components and entities are the instance's own now). Null for what names nothing that stays. The element is copied: what is kept is shared with snapshots.
+    private static (Entity Instance, List<XmlNode> Elements)? Rebase(XmlNode element, Dictionary<int, Entity> staying)
+    {
+        if (element.Name != "Override" || !EntityAddress.TryParse(element.Attribute("entity"), out int[] segments) || !staying.TryGetValue(segments[0], out Entity instance))
+        {
+            return null;
+        }
+
+        XmlNode copy = element.Clone();
+        if (segments.Length > 1)
+        {
+            copy.SetAttribute("entity", EntityAddress.Format(segments.AsSpan(1)));
+            return (instance, [copy]);
+        }
+
+        // What is said of the root of the instance is said by the instance's own element: components as patches of it, entities as entities added to it. Its name is the scene's.
+        if (copy.Attribute("remove") == "true" || copy.Children.Count == 0)
+        {
+            return null;
+        }
+
+        return (instance, copy.Children);
     }
 
     private bool HasOwnerWithin(Entity entity, uint prefab, Entity top)
