@@ -68,7 +68,7 @@ public sealed unsafe class SubtreeEditCommand(WorldRef worldRef, string name, En
             }
         }
 
-        world.RestoreEntities(_after!);
+        world.RestoreBranch(_after!);
         Write(world, _outside, static entry => entry.After);
     }
 
@@ -84,7 +84,7 @@ public sealed unsafe class SubtreeEditCommand(WorldRef worldRef, string name, En
             }
         }
 
-        world.RestoreEntities(_before!);
+        world.RestoreBranch(_before!);
         Write(world, _outside, static entry => entry.Before);
     }
 

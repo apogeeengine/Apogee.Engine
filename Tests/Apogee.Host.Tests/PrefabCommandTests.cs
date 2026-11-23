@@ -196,6 +196,49 @@ public sealed class PrefabCommandTests : IDisposable
     }
 
     [Fact]
+    public void RedoingAnInstanceWhosePrefabChangedInBetweenFollowsThePrefab()
+    {
+        Entity crate = _world.CreateEntity("Crate");
+        Entity lid = _world.CreateEntity("Lid", crate);
+        _world.Set(lid, new Hp { Value = 4 });
+        _history.Execute(PrefabCommands.CreatePrefab(_world, crate, "res://prefabs/crate.aprefab"));
+        _history.Undo();
+
+        // The file is edited while the entities are plain: nothing follows it.
+        string path = Path.Combine(_folder, "prefabs/crate.aprefab");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("Value=\"4\"", "Value=\"40\"", StringComparison.Ordinal));
+        Assert.Equal(PrefabReloadStatus.Reloaded, _world.Prefabs.Reload("res://prefabs/crate.aprefab").Status);
+        _world.ApplyPrefabUpdates();
+        Assert.False(_world.HasPendingPrefabUpdates);
+
+        _history.Redo();
+
+        Assert.True(_world.HasPendingPrefabUpdates);           // the instance that came back was made from the file as it was
+        _world.ApplyPrefabUpdates();
+        Assert.Equal(40, _world.Get<Hp>(lid).Value);
+    }
+
+    [Fact]
+    public void UndoingAnUnpackOfAnInstanceWhosePrefabChangedInBetweenFollowsThePrefab()
+    {
+        Entity lamp = LoadLamp();
+        Entity bulb = Child(lamp, "Bulb");
+        _history.Execute(PrefabCommands.BreakLink(_world, lamp));
+
+        string path = Path.Combine(_folder, "prefabs/lamp.aprefab");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("Value=\"1\"", "Value=\"11\"", StringComparison.Ordinal));
+        Assert.Equal(PrefabReloadStatus.Reloaded, _world.Prefabs.Reload(LampPath).Status);
+        _world.ApplyPrefabUpdates();
+        Assert.Equal(1, _world.Get<Hp>(bulb).Value);            // plain entities do not follow
+
+        _history.Undo();
+
+        Assert.True(_world.HasPendingPrefabUpdates);
+        _world.ApplyPrefabUpdates();
+        Assert.Equal(11, _world.Get<Hp>(bulb).Value);
+    }
+
+    [Fact]
     public void InstantiatingIsUndoneAndRedoneUnderTheSameIds()
     {
         Entity parent = _world.CreateEntity("Room");

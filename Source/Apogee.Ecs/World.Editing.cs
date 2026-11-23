@@ -500,7 +500,19 @@ public sealed unsafe partial class World
     /// Brings back the entities of the snapshot under their ids, overwriting what is there, and destroys nothing: what an undo of a deletion does. A snapshot of another world comes back with
     /// this world's handles for the assets it named.
     /// </summary>
-    public void RestoreEntities(WorldSnapshot snapshot)
+    public void RestoreEntities(WorldSnapshot snapshot) => RestoreEntitiesCore(snapshot);
+
+    /// <summary>
+    /// <see cref="RestoreEntities"/> for a branch that is brought back after prefabs may have changed (an undo or a redo of an edit of an instance): the instances in it were made from the documents the
+    /// snapshot recorded, and when a prefab is not the same now, <see cref="ApplyPrefabUpdates"/> has an update to make for them, as after <see cref="Restore"/>.
+    /// </summary>
+    public void RestoreBranch(WorldSnapshot snapshot)
+    {
+        RestoreEntitiesCore(snapshot);
+        QueueUpdatesForRestored(snapshot);
+    }
+
+    private void RestoreEntitiesCore(WorldSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
