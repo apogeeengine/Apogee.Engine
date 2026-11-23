@@ -337,7 +337,7 @@ included; revert the ones you want by `RevertOverrides` to keep the others.
   entities of the file, each with the next id of its `nextId` (an id is never used twice): the entities stay the same entities and are the prefab's members now.
 - **What is written must stand on its own.** An Entity field has to name an entity of the same instance (it is written with the file's id for it); one that names something outside (a scene entity, an entity
   the instance added that is not applied with it) is refused, because the prefab cannot name it. Applying something that would make a prefab hold itself (an added entity that is an instance of the file, directly
-  or through another) is refused too.
+  or through another) is refused too: the references of the files written and of the ones they name are followed, together, so a loop is found even when an override of the instance removes what would repeat.
 - **Refused before anything is written:** the instance's prefab is missing or unreadable; a file is not in a source that can be written (a mod's, a pack's), or is read-only; the file is not what the library
   read (it changed on disk: `Reload` it and apply again; nothing is written over what someone else saved); an update is waiting (`ApplyPrefabUpdates` first, so that the file is written from entities made
   from it); what would be written is not a prefab that loads. All of this is checked in memory first, and for every file of the call.
