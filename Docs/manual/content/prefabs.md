@@ -84,7 +84,7 @@ world.SavePrefabFile("res://prefabs/crate.aprefab", crate);   // one entity and 
 - **`SavePrefabFile(path, root)`** writes the entity and everything below it. The path must end in `.aprefab`. The file keeps its UID (a new one gets a new UID), the ids are kept as above, and an Entity
   field that points at something outside what is saved is left out. An instance of another prefab inside the tree is written as one element with its [overrides](#how-overrides-are-stored), numbered in this
   file; the root is written as an ordinary entity even when it is an instance (a prefab saved from an instance of itself holds its entities). A tree that holds an instance of the file being written, directly or
-  through another prefab, is an `InvalidOperationException`, and nothing is written. A path that is not in a writable source is an `UnauthorizedAccessException`.
+  through another prefab (a file that is not there yet counts by the path it will have), is an `InvalidOperationException`, and nothing is written. A path that is not in a writable source is an `UnauthorizedAccessException`.
 
 ### The library
 
@@ -294,6 +294,74 @@ cannot describe, a name that was cleared, `PrefabInstance` and `PrefabMember` (t
 
 A scene that holds an instance is [version 2](scenes.md#the-format); one without is written as version 1, as before. The schemas (`scene.xsd`, `prefab.xsd`) describe `prefab` and `<Override>`, but
 leave what is inside an `<Override>` open: the rules above are what check it when a scene is read.
+
+## From an editor or a tool
+
+An editor that shows an instance (bold fields, an "Overrides" menu, "Apply", "Revert", "Unpack", "Create Prefab") needs to know what the instance changed, and to put it back or write it into the prefab. These
+are library functions of `World`, with no interface of their own; `Apogee.Host.Editing` has them as steps of an undo history.
+
+```csharp
+IReadOnlyList<PrefabOverride> changes = world.PrefabOverrides(root);       // what the instance changed, worked out now
+world.IsOverridden(bulb, "Health", "Max");                               // the inspector's mark, for one field of one entity
+
+world.RevertOverride(root, changes[0]);                                  // or RevertOverrides / RevertComponentOverrides / RevertEntityOverrides / RevertAllOverrides
+PrefabUpdate? update = world.ApplyOverrides(root, changes, PrefabApplyTarget.InstancePrefab);   // or ApplyOverride / ApplyAllOverrides
+PrefabLinkReport report = world.BreakPrefabLink(root, completely: false);
+world.CreatePrefab(crate, "res://prefabs/crate.aprefab");                // root of the new prefab, and now an instance of it
+world.DropUnappliedOverrides(root);
+```
+
+**Listing.** `PrefabOverrides(root)` is what a scene would hold for the instance (the same comparison, [see above](#how-overrides-are-stored)), read as a list: a `PrefabOverride` has a `Kind`
+(`Field`, `Name`, `AddedComponent`, `RemovedComponent`, `AddedEntity`, `RemovedEntity`, `Unapplied`), a `Target` (the address of the entity in the instance, empty for its root; for an added entity, the
+entity it is below), the `Component` and `Field` it is about, the live `Entity` (empty for a removed entity and for `Unapplied`), and the `Element` as the instance would write it. A field is one override
+for each attribute that differs, so an inspector marks exactly the fields that are changed; an added component or entity is one override for the whole. `Unapplied` is what the instance keeps aside because
+its prefab no longer has what it names. The name of the root is the scene's own, not an override. Nothing is recorded: the list is worked out from the entities each time (a field set back to the prefab's
+value is not in it). The root of an instance that is inside another instance has a list too, against its own prefab (what the prefab it is in says about it is a change there). `IsOverridden` works the whole
+instance out for each call: to ask about many fields list once and use `PrefabOverride.Concerns(entity, component, field)`.
+
+**Reverting** gives the prefab's value back to a field or a name, takes an added component or entity off and puts a removed one back, and drops what is kept aside. The instance is updated *in place* the way
+[a changed prefab](#when-the-prefab-changes) updates it, so the entities that stay keep their ids (the selection stays valid), what is destroyed takes what is below it, and entity fields elsewhere that named
+a destroyed entity are emptied. It is all or nothing: an instance that cannot be updated (it would be over `MaxLoadEntities`, an observer throws) is as it was and the call throws
+`InvalidOperationException`. A list that is out of date (an override that is not one any more) is an `ArgumentException`. The root of an instance inside another cannot be reverted alone (its changes
+are the outer instance's: revert them there, where they have a longer address). `RevertAllOverrides` reverts everything except what is kept aside, the root's own position and the entities added to it
+included; revert the ones you want by `RevertOverrides` to keep the others.
+
+**Applying** writes an override into a prefab *file*, so that it is the prefab's and every instance of it follows:
+
+- `ApplyOverrides(root, overrides, target)` takes some overrides of one instance. With `PrefabApplyTarget.InstancePrefab` they go to the prefab the instance names: what is the prefab's own is written into its
+  entities, and what is inside a prefab it nests is written as an override in that nested instance's element of the file. With `SourcePrefab` they go to the file that defines each entity (the nested prefab's
+  own), which may be several files. For anything the instance's own prefab defines the two are the same. A change a file between the instance and the one written pins (the corner's own override of the
+  field of a lamp) keeps overriding it: the override is still in the list afterwards.
+- A field or a name is set in the file, a component is added to or taken off the entity (a script's component brings its definition into the file), an entity that was removed is taken out of the prefab (for
+  everyone: what other prefabs and scenes say about it is kept aside, as for any entity a prefab loses, and applies again if it comes back), and an entity that was added is written with everything below it as
+  entities of the file, each with the next id of its `nextId` (an id is never used twice): the entities stay the same entities and are the prefab's members now.
+- **What is written must stand on its own.** An Entity field has to name an entity of the same instance (it is written with the file's id for it); one that names something outside (a scene entity, an entity
+  the instance added that is not applied with it) is refused, because the prefab cannot name it. Applying something that would make a prefab hold itself (an added entity that is an instance of the file, directly
+  or through another) is refused too.
+- **Refused before anything is written:** the instance's prefab is missing or unreadable; a file is not in a source that can be written (a mod's, a pack's), or is read-only; the file is not what the library
+  read (it changed on disk: `Reload` it and apply again; nothing is written over what someone else saved); an update is waiting (`ApplyPrefabUpdates` first, so that the file is written from entities made
+  from it); what would be written is not a prefab that loads. All of this is checked in memory first, and for every file of the call.
+- **All or nothing.** The files are written by a write that leaves the old file whole when it is interrupted, read back and checked by the library (`PrefabLibrary.Reload`); when anything fails, or an instance
+  that holds one of the overrides cannot follow the new file, every file written is put back byte for byte and the instances are as they were. No backup file is made (the previous text is in memory
+  until the call ends). The other instances of the prefab (and the ones of prefabs that nest it) follow through the usual update, in this world and in every world that shares its library; the
+  returned `PrefabUpdate` says which entities that made and destroyed (an editor with an undo history clears or seals it, as it does for any change that came from a file).
+- **The file is written as the engine writes prefabs:** comments and layout of a hand-written file are not kept (the content is), as with `SavePrefabFile`. Keep a prefab you edit by hand in version control.
+- **What undo does:** nothing. An apply writes a file, which a step of the world's history does not take back, so `Apogee.Host.Editing` has no command for it: the tool offers "Apply" as an action, and
+  clears its history afterwards, since the update may have made and destroyed entities that older steps name. To take an apply back, the tool writes the earlier text of the file and reloads it.
+
+**Breaking the link** (`BreakPrefabLink`, "Unpack") turns an instance into plain entities: the two components come off, the entities, ids, names and values stay, and a scene saves them as the entities they
+are. An instance inside it stays an instance (of its own prefab, with what the outer prefab said about it now a change against that prefab, as the scene holds it) unless `completely`. What the instance kept
+aside is dropped and returned in the `PrefabLinkReport` (and logged): it named parts of a prefab the instance is no longer made from. An instance that is part of another cannot be unpacked alone.
+
+**Making a prefab** (`CreatePrefab(root, path)`) writes the entity and everything below it as a new prefab file (`SavePrefabFile`) and makes the entities an instance of it, with no overrides except what a
+prefab cannot hold (an Entity field that names an entity outside the tree stays as it is, and is an override of the new instance). It is refused for an entity that is an instance (unpack it first: a
+prefab of an instance would hold another prefab's entities) or part of one, for a file that already exists (it never writes over one), for a path that cannot be written, and for a tree that holds an instance
+of a prefab that names the new file (it would contain itself, even though the file is not there yet).
+
+**As steps of a history.** `PrefabCommands` (in `Apogee.Host.Editing`) makes `IEditCommand`s: `Revert`, `RevertAll`, `BreakLink`, `CreatePrefab` (each a `SubtreeEditCommand`) and `Instantiate`
+(`InstantiatePrefabCommand`). A `SubtreeEditCommand` takes the branch as it was and as it is, so undoing destroys what the change made and brings back what it destroyed under the ids they had, and redoing
+does it again; entity fields outside the branch that named an entity the change destroyed are put back with it. The file `CreatePrefab` wrote stays after an undo (it is an asset of the game): the entities are plain
+again, and redoing makes them its instance. A change that is refused throws before it is a step.
 
 ## Files
 
