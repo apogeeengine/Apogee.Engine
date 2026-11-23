@@ -179,6 +179,20 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     }
 
     [Fact]
+    public void WhatNamedARevertedEntityNamesNothingAfterIt()
+    {
+        Entity lamp = LoadLamp("<Entity id=\"9\" name=\"Cord\"/>");
+        Entity cord = Child(lamp, "Cord");
+        Entity watcher = World.CreateEntity("Watcher");
+        World.Set(watcher, new Marks { Target = cord });
+
+        World.RevertAllOverrides(lamp);
+
+        Assert.False(World.IsAlive(cord));
+        Assert.True(World.Get<Marks>(watcher).Target.IsNull);
+    }
+
+    [Fact]
     public void RevertingARemovedEntityMakesItAgain()
     {
         Entity lamp = LoadLamp("<Override entity=\"3\" remove=\"true\"/>");
