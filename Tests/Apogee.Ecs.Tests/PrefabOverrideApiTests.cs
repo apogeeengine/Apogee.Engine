@@ -771,13 +771,46 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         marks.Level = 7;
         World.Set(bulb, marks);
 
-        Assert.Equal(["Field 2|Marks|Level"], Listed(World, nested).Where(x => x.Contains("Marks", StringComparison.Ordinal)).ToArray());
-        World.ApplyOverride(nested, World.PrefabOverrides(nested).Single(o => o.Component == "Marks"));
+        Assert.Equal(["Field 2|Marks|Level"], Listed(World, nested));
+        World.ApplyOverride(nested, World.PrefabOverrides(nested).Single());
 
         Assert.Equal("7", EntityElement(LampDocument(), 2).Child("Marks")!.Attribute("Level"));
         Assert.Equal(7, World.Get<Marks>(Child(Child(corner, "Lamp 2"), "Bulb")).Level);
         Assert.Equal(bulb, Child(nested, "Bulb"));
         Assert.Empty(World.PrefabOverrides(corner));
+    }
+
+    [Fact]
+    public void ANestedInstanceDoesNotListWhatThePrefabItIsInSaysAsItsOwnChanges()
+    {
+        // The corner's file moves its first lamp, pins the Health of its bulb and removes the Base of the second lamp: the scene changed none of it.
+        Entity corner = LoadCorner();
+        Entity first = Child(corner, "Lamp");
+        Entity second = Child(corner, "Lamp 2");
+
+        Assert.Empty(World.PrefabOverrides(first));
+        Assert.Empty(World.PrefabOverrides(second));
+        Assert.False(World.IsOverridden(Child(first, "Bulb"), "Health", "Current"));
+        Assert.False(World.IsOverridden(first, "Transform", "Position"));
+        string lamp = Read(LampFile);
+
+        Assert.Null(World.ApplyAllOverrides(first));
+        Assert.Null(World.ApplyAllOverrides(second));
+
+        Assert.Equal(lamp, Read(LampFile));
+    }
+
+    [Fact]
+    public void ANestedInstanceListsWhatTheSceneChangedInItRelativeToIt()
+    {
+        Entity corner = LoadCorner("<Override entity=\"2/2\"><Health Max=\"77\"/></Override><Override entity=\"2/3\"><Frozen append=\"true\"/></Override><Override entity=\"3/2\"><Health Max=\"5\"/></Override>");
+        Entity first = Child(corner, "Lamp");
+
+        Assert.Equal(["Field 2|Health|Max", "AddedComponent 3|Frozen|"], Listed(World, first));
+        Assert.Equal(["Field 2|Health|Max"], Listed(World, Child(corner, "Lamp 2")));
+        Assert.Equal(Child(first, "Bulb"), World.PrefabOverrides(first)[0].Entity);
+        Assert.True(World.IsOverridden(Child(first, "Bulb"), "Health", "Max"));
+        Assert.False(World.IsOverridden(Child(Child(corner, "Lamp 2"), "Bulb"), "Marks"));
     }
 
     [Fact]

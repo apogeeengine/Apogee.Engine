@@ -45,25 +45,48 @@ internal sealed class CaptureEdit(Entity root, World.SavePlan saved, XmlNode doc
 // prefab's file and then does the same, with the override taken out of the instance's form because the file says it now.
 public sealed unsafe partial class World
 {
-    /// <summary>What listing an instance's overrides saw.</summary>
-    private sealed record OverrideCapture(SavePlan Saved, InstanceSave Instance, XmlNode Element, List<FoundOverride> Found);
+    /// <summary>What listing an instance's overrides saw: the address of the root in the saved form, the prefab it names, why that cannot be used (null when it can), and the overrides found.</summary>
+    private sealed record OverrideCapture(SavePlan Saved, string Address, string Reference, string? Missing, XmlNode Element, List<FoundOverride> Found);
 
-    // The instance as it would be saved, with its overrides read from the element. Nothing changes in the world.
+    // The instance as it would be saved, with its overrides read from the element. Nothing changes in the world. The root of an instance that is part of another is saved with the one that holds it, and
+    // what is listed is what is written about it there: what the scene changed in it, not what the prefab it is in says (which the scene did not change).
     private OverrideCapture CaptureOverrides(Entity root)
     {
         RequireInstance(root);
+        Entity top = root;
+        while (IsPrefabMember(top) && InstanceOf(GetParent(top)) is { IsNull: false } above)
+        {
+            top = above;
+        }
+
         var outside = new Dictionary<string, Entity>(StringComparer.Ordinal);
         int number = _numbered; // numbers nothing else has; the world's counter is not advanced: nothing is kept of this
-        SavePlan saved = PlanSave([root], _ => checked(++number), default, outside);
-        if (!saved.Instances.TryGetValue(root.Id, out InstanceSave? instance))
+        SavePlan saved = PlanSave([top], _ => checked(++number), default, outside);
+        if (!saved.Instances.TryGetValue(top.Id, out InstanceSave? instance) || !saved.AddressOf.TryGetValue(root.Id, out string? address))
         {
             throw new InvalidOperationException("the instance's prefab cannot be named by this world's library, so its changes cannot be told");
         }
 
-        XmlNode element = WriteScene(saved, [root]).Children.Find(static child => child.Name == SceneEntity)!;
+        XmlNode element = WriteScene(saved, [top]).Children.Find(static child => child.Name == SceneEntity)!;
         Dictionary<string, Entity> byAddress = AddressesOf(saved);
-        int kept = saved.KeptNodes.TryGetValue(root.Id, out List<XmlNode>? nodes) ? nodes.Count : 0;
-        return new OverrideCapture(saved, instance, element, OverrideReader.Read(element, instance.Address, kept, address => byAddress.GetValueOrDefault(address)));
+        int kept = saved.KeptNodes.TryGetValue(top.Id, out List<XmlNode>? nodes) ? nodes.Count : 0;
+        List<FoundOverride> found = OverrideReader.Read(element, instance.Address, kept, name => byAddress.GetValueOrDefault(name));
+        if (top == root)
+        {
+            return new OverrideCapture(saved, address, instance.Reference, instance.Expansion.Root.IsMissing ? instance.Expansion.Root.MissingReason ?? "it is missing" : null, element, found);
+        }
+
+        // Only what is below the root's address, with addresses relative to it.
+        string prefix = address + "/";
+        found =
+        [
+            .. found
+                .Where(change => change.Override.Kind != PrefabOverrideKind.Unapplied && (change.Absolute == address || change.Absolute.StartsWith(prefix, StringComparison.Ordinal)))
+                .Select(change => change with { Override = change.Override with { Target = change.Absolute == address ? "" : change.Absolute[prefix.Length..] } }),
+        ];
+        string reference = ExistingLibrary?.RefOf(Get<PrefabInstance>(root).Prefab)?.ToString() ?? throw new InvalidOperationException("the instance's prefab cannot be named by this world's library");
+        bool missing = instance.Expansion.Index.TryGetValue(address, out ExpandedEntity? expanded) && expanded.IsMissing;
+        return new OverrideCapture(saved, address, reference, missing ? expanded!.MissingReason ?? "it is missing" : null, element, found);
     }
 
     private static Dictionary<string, Entity> AddressesOf(SavePlan saved)
@@ -113,7 +136,7 @@ public sealed unsafe partial class World
         foreach (PrefabOverride o in wanted)
         {
             ArgumentNullException.ThrowIfNull(o);
-            FoundOverride? found = capture.Found.Find(candidate => OverrideReader.Is(o, AbsoluteOf(capture.Instance.Address, o), candidate));
+            FoundOverride? found = capture.Found.Find(candidate => OverrideReader.Is(o, AbsoluteOf(capture.Address, o), candidate));
             if (found is null)
             {
                 throw new ArgumentException($"{o.Kind} {o.Component}{(o.Field is null ? "" : "." + o.Field)} at '{o.Target}' is not a change of this instance (it was reverted or applied, or the entities changed since it was listed)", nameof(wanted));
@@ -358,9 +381,9 @@ public sealed unsafe partial class World
         VirtualFileSystem files = Files ?? throw new InvalidOperationException("this world has no files to write a prefab to");
         PrefabLibrary library = Prefabs;
         OverrideCapture capture = CaptureOverrides(root);
-        if (capture.Instance.Expansion.Root.IsMissing)
+        if (capture.Missing is not null)
         {
-            throw new InvalidOperationException($"the prefab of this instance cannot be read ({capture.Instance.Expansion.Root.MissingReason}): there is no file to write");
+            throw new InvalidOperationException($"the prefab of this instance cannot be read ({capture.Missing}): there is no file to write");
         }
 
         List<FoundOverride> chosen = Resolve(capture, overrides);
@@ -377,7 +400,7 @@ public sealed unsafe partial class World
         // 1. The files, as the disk has them now.
         var edits = new Dictionary<string, PrefabEditFile>(StringComparer.Ordinal);
         PrefabEditFile Open(string reference) => OpenForEdit(files, library, edits, reference);
-        PrefabEditFile first = Open(capture.Instance.Reference);
+        PrefabEditFile first = Open(capture.Reference);
         var edit = new PrefabFileEdit(Open);
 
         // 2. The changes, in memory: every refusal comes before anything is written.
@@ -570,7 +593,7 @@ public sealed unsafe partial class World
     // One override into the files.
     private void EditOne(PrefabFileEdit edit, PrefabEditFile first, OverrideCapture capture, PrefabOverride o, PrefabApplyTarget target, List<(Entity Entity, string Hops, string Local)> placed)
     {
-        string instance = capture.Instance.Address;
+        string instance = capture.Address;
         if (!EntityAddress.TryParse(o.Target, out int[] segments) && o.Target.Length > 0)
         {
             throw new InvalidOperationException($"'{o.Target}' is not an address of the instance");
@@ -693,7 +716,7 @@ public sealed unsafe partial class World
         PrefabFileEdit.AddSchemas(file, schemas);
 
         var inside = new HashSet<ulong>(subtree.Select(static entity => entity.Id));
-        string hops = site.FileInstance[capture.Instance.Address.Length..];
+        string hops = site.FileInstance[capture.Address.Length..];
         foreach ((ulong id, string local) in plan.AddressOf)
         {
             if (inside.Contains(id))
