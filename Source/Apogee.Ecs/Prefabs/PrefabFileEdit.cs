@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Apogee.Content.Xml;
 
 namespace Apogee.Ecs;
@@ -337,6 +338,10 @@ internal sealed class PrefabFileEdit(Func<string, PrefabEditFile> open)
         }
     }
 
+    // What a component's definition says, whatever the order of its fields: the world keeps them in an order of its own.
+    private static string Signature(XmlNode schema) =>
+        string.Join(';', schema.Children.Where(static field => field.Name == "Field").Select(static field => $"{field.Attribute("name")}:{field.Attribute("kind")}:{field.Attribute("assetType")}").Order(StringComparer.Ordinal));
+
     // Defines a script's component in the file: the file holds what its entities use.
     private static void AddSchema(PrefabEditFile file, XmlNode? schema)
     {
@@ -358,7 +363,7 @@ internal sealed class PrefabFileEdit(Func<string, PrefabEditFile> open)
         {
             components.Children.Add(schema.Clone());
         }
-        else if (existing.ToXml() != schema.ToXml())
+        else if (Signature(existing) != Signature(schema))
         {
             throw new InvalidOperationException($"{file.Path} defines the component {name} differently from this world: it would not be read as the component the entities have");
         }

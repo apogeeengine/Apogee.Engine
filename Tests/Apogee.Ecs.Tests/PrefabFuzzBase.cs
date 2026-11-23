@@ -205,11 +205,27 @@ public abstract class PrefabFuzzBase : PrefabTestBase
     public static string DumpTree(World world, Entity root)
     {
         var text = new StringBuilder();
-        WriteTree(world, text, root, 0);
+        WriteTree(world, text, root, 0, relative: true);
         return text.ToString();
     }
 
-    private static unsafe void WriteTree(World world, StringBuilder text, Entity top, int topDepth)
+    // The place of an entity below `top`, as names; "outside" when it is not below it.
+    private static string PathBelow(World world, Entity top, Entity target)
+    {
+        var names = new Stack<string>();
+        for (Entity current = target; !current.IsNull; current = world.GetParent(current))
+        {
+            names.Push(world.GetName(current) ?? "?");
+            if (current == top)
+            {
+                return string.Join('/', names);
+            }
+        }
+
+        return "outside";
+    }
+
+    private static unsafe void WriteTree(World world, StringBuilder text, Entity top, int topDepth, bool relative = false)
     {
         void Write(Entity entity, int depth)
         {
@@ -230,7 +246,7 @@ public abstract class PrefabFuzzBase : PrefabTestBase
                     {
                         string value = field.Kind switch
                         {
-                            FieldKind.Entity => *(ulong*)(data + field.Offset) is var target && target != 0 && world.IsAlive(new Entity(target)) ? PathOf(world, new Entity(target)) : "-",
+                            FieldKind.Entity => *(ulong*)(data + field.Offset) is var target && target != 0 && world.IsAlive(new Entity(target)) ? (relative ? PathBelow(world, top, new Entity(target)) : PathOf(world, new Entity(target))) : "-",
                             FieldKind.AssetRef => (*(uint*)(data + field.Offset)).ToString(System.Globalization.CultureInfo.InvariantCulture),
                             _ => FieldText.Format(field, data + field.Offset),
                         };

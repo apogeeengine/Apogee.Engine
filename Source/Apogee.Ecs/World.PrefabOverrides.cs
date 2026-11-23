@@ -249,17 +249,24 @@ public sealed unsafe partial class World
         }
     }
 
-    // Takes the given overrides (of `applied`'s instance) out of the saved form of the instance that is being updated, which may be the one that holds it.
+    // Takes the given overrides (of `applied`'s instance) out of the saved form of the instance that is being updated, which may be the one that holds it (an instance in another's prefab, or one added
+    // to another: the element of the one is below the element of the other).
     private static void RemoveFromCapture(CaptureEdit edit, Entity applied, IReadOnlyList<PrefabOverride> overrides)
     {
-        if (!edit.Saved.AddressOf.TryGetValue(applied.Id, out string? address) || edit.InstanceElement is not { } element || !edit.Saved.AddressOf.TryGetValue(edit.Root.Id, out string? top))
+        if (!edit.Saved.AddressOf.TryGetValue(applied.Id, out string? address) || edit.InstanceElement is not { } top)
         {
             return; // another instance of the update
         }
 
+        XmlNode? element = edit.Root == applied ? top : FindInstanceElement(top, address);
+        if (element is null)
+        {
+            return; // an instance that is part of the one being updated: nothing of it is written on its own
+        }
+
         Dictionary<string, Entity> byAddress = AddressesOf(edit.Saved);
-        int kept = edit.Saved.KeptNodes.TryGetValue(edit.Root.Id, out List<XmlNode>? nodes) ? nodes.Count : 0;
-        List<FoundOverride> found = OverrideReader.Read(element, top, kept, name => byAddress.GetValueOrDefault(name));
+        int kept = edit.Saved.KeptNodes.TryGetValue(applied.Id, out List<XmlNode>? nodes) ? nodes.Count : 0;
+        List<FoundOverride> found = OverrideReader.Read(element, address, kept, name => byAddress.GetValueOrDefault(name));
         foreach (PrefabOverride o in overrides)
         {
             if (found.Find(candidate => candidate.Override.Kind != PrefabOverrideKind.Unapplied && OverrideReader.Is(o, AbsoluteOf(address, o), candidate)) is { } match)
@@ -267,6 +274,28 @@ public sealed unsafe partial class World
                 OverrideReader.Remove(element, match);
             }
         }
+    }
+
+    // The element of the instance with this address anywhere below an element of the saved form: an instance an instance added is written inside it.
+    private static XmlNode? FindInstanceElement(XmlNode container, string address)
+    {
+        foreach (XmlNode child in container.Children)
+        {
+            if (child.Name is SceneEntity or "Override")
+            {
+                if (child.Name == SceneEntity && child.Attribute("id") == address && child.HasAttribute("prefab"))
+                {
+                    return child;
+                }
+
+                if (FindInstanceElement(child, address) is { } below)
+                {
+                    return below;
+                }
+            }
+        }
+
+        return null;
     }
 
     // ---- Applying

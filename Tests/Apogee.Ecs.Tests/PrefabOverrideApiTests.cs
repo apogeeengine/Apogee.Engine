@@ -441,6 +441,23 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     }
 
     [Fact]
+    public void AnEntityAddedBelowAMemberKeepsItsIdWhenApplied()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\"><Entity id=\"9\" name=\"Cord\"><Transform Position=\"1 0 0\"/></Entity></Override>");
+        Entity cord = Child(Child(lamp, "Bulb"), "Cord");
+
+        World.ApplyAllOverrides(lamp);
+
+        Assert.Equal(["Cord"], NamesBelow(World, Child(lamp, "Bulb")));
+        Assert.Equal(cord, Child(Child(lamp, "Bulb"), "Cord"));
+        Assert.Equal(4u, World.Get<PrefabMember>(cord).Id);
+        Assert.Equal(cord, Child(Child(lamp, "Bulb"), "Cord"));
+        XmlNode bulb = EntityElement(LampDocument(), 2);
+        Assert.Equal("Cord", bulb.Children.Single(c => c.Name == "Entity").Attribute("name"));
+        Assert.Empty(World.PrefabOverrides(lamp));
+    }
+
+    [Fact]
     public void AnEntityRemovedFromTheInstanceIsRemovedFromThePrefabForEveryone()
     {
         Entity lamp = LoadLamp("<Override entity=\"3\" remove=\"true\"/>");
@@ -600,6 +617,25 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         Assert.Equal("3", EntityElement(LampDocument(), 2).Child("Marks")!.Attribute("Target"));
         Entity otherBulb = Child(World.Lookup("Lamp 2"), "Bulb");
         Assert.Equal(Child(World.Lookup("Lamp 2"), "Base"), World.Get<Marks>(otherBulb).Target);
+    }
+
+    [Theory]
+    [InlineData("corner")]
+    [InlineData("lamp")]
+    public void AnAddedEntityThatHoldsAnInstanceOfThePrefabItselfCannotBeApplied(string which)
+    {
+        // The corner holds lamps: a corner added to a corner would be a prefab that contains itself, and a corner added to a lamp too (the corner holds the lamp).
+        Entity corner = LoadCorner();
+        Entity target = which == "corner" ? corner : Child(corner, "Lamp");
+        World.Instantiate(CornerPath, target);
+        string files = Read(CornerFile) + Read(LampFile);
+        string dump = PrefabFuzzBase.DumpTree(World, corner);
+
+        Assert.Throws<InvalidOperationException>(() => World.ApplyAllOverrides(target));
+
+        Assert.Equal(files, Read(CornerFile) + Read(LampFile));
+        Assert.Equal(dump, PrefabFuzzBase.DumpTree(World, corner));
+        Assert.False(World.HasPendingPrefabUpdates);
     }
 
     [Fact]
