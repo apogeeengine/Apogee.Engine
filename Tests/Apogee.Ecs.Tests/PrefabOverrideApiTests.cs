@@ -234,6 +234,11 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
 
         World.RevertAllOverrides(lamp);
 
+        // Where the instance is placed is not reverted by "all": it stays where it is.
+        Assert.Equal(new Double3(5, 0, 0), World.Get<Transform>(lamp).Position);
+        Assert.Equal(["Field |Transform|Position"], Listed(World, lamp));
+        World.RevertOverride(lamp, World.PrefabOverrides(lamp).Single());
+
         using World fresh = OtherWorld();
         Entity expected = fresh.Instantiate(LampPath);
         fresh.SetName(expected, "Lamp");
@@ -687,10 +692,32 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
 
         World.ApplyAllOverrides(lamp);
 
+        // Where the instance is placed is the scene's: "all" leaves it out, and so the other lamps stay where they are.
         XmlNode root = EntityElement(LampDocument(), 1);
-        Assert.Equal("5 0 0", root.Child("Transform")!.Attribute("Position"));
+        Assert.Equal("0 0 0", root.Child("Transform")!.Attribute("Position"));
         Assert.Equal("3", root.Child("Marks")!.Attribute("Level"));
+        Assert.Equal(new Double3(0, 0, 0), World.Get<Transform>(World.Lookup("Lamp 2")).Position);
+        Assert.Equal(new Double3(5, 0, 0), World.Get<Transform>(lamp).Position);
+        Assert.Equal(["Field |Transform|Position"], Listed(World, lamp));
+
+        // One override at a time may still make it the prefab's.
+        World.ApplyOverride(lamp, World.PrefabOverrides(lamp).Single());
+
+        Assert.Equal("5 0 0", EntityElement(LampDocument(), 1).Child("Transform")!.Attribute("Position"));
         Assert.Equal(new Double3(5, 0, 0), World.Get<Transform>(World.Lookup("Lamp 2")).Position);
+        Assert.Empty(World.PrefabOverrides(lamp));
+    }
+
+    [Fact]
+    public void TheRotationOfTheRootIsPlacementToo()
+    {
+        Entity lamp = LoadLamp("<Transform Rotation=\"0 1 0 0\" Scale=\"2 2 2\"/>");
+
+        World.ApplyAllOverrides(lamp);
+
+        Assert.Equal("2 2 2", EntityElement(LampDocument(), 1).Child("Transform")!.Attribute("Scale"));
+        Assert.Equal("0 0 0 1", EntityElement(LampDocument(), 1).Child("Transform")!.Attribute("Rotation"));
+        Assert.Equal(["Field |Transform|Rotation"], Listed(World, lamp));
     }
 
     [Fact]

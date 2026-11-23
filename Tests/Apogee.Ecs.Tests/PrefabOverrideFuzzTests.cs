@@ -42,6 +42,9 @@ public sealed class PrefabOverrideFuzzTests : PrefabFuzzBase
             string prefab = World.PrefabOf(root)!;
             World.RevertAllOverrides(root);
 
+            // Where the instance is placed is what "all" leaves: that and nothing else.
+            Assert.All(World.PrefabOverrides(root), o => Assert.True(o.Kind == PrefabOverrideKind.Unapplied || (o.Kind == PrefabOverrideKind.Field && o is { Target: "", Component: "Transform", Field: "Position" or "Rotation" }), $"{o.Kind} {o.Target} {o.Component} {o.Field} is left"));
+            World.RevertOverrides(root, World.PrefabOverrides(root).Where(static o => o.Kind != PrefabOverrideKind.Unapplied));
             Assert.All(World.PrefabOverrides(root), o => Assert.Equal(PrefabOverrideKind.Unapplied, o.Kind));
             using World fresh = OtherWorld();
             Entity expected = fresh.Instantiate(prefab);

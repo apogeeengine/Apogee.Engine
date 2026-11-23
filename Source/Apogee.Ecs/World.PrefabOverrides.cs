@@ -210,9 +210,13 @@ public sealed unsafe partial class World
 
     /// <summary>
     /// Reverts everything the instance changed, the entities it added and removed included, so that it is its prefab again (the name of its root, which a scene gives it, stays). What the element keeps
-    /// aside (<see cref="PrefabOverrideKind.Unapplied"/>) is not touched: see <see cref="DropUnappliedOverrides"/>.
+    /// aside (<see cref="PrefabOverrideKind.Unapplied"/>) is not touched: see <see cref="DropUnappliedOverrides"/>. Neither is where the instance is placed (the position and the rotation of its root):
+    /// putting an instance back to its prefab does not move it to the prefab's origin. Revert those with <see cref="RevertOverride"/> when that is what is wanted.
     /// </summary>
-    public void RevertAllOverrides(Entity root) => RevertOverrides(root, PrefabOverrides(root).Where(static o => o.Kind != PrefabOverrideKind.Unapplied));
+    public void RevertAllOverrides(Entity root) => RevertOverrides(root, PrefabOverrides(root).Where(static o => o.Kind != PrefabOverrideKind.Unapplied && !IsPlacement(o)));
+
+    /// <summary>Whether an override is where the root of the instance is placed (its position or rotation): what is the scene's, whatever the prefab says, and not taken by the "all" calls.</summary>
+    private static bool IsPlacement(PrefabOverride o) => o is { Kind: PrefabOverrideKind.Field, Target: "", Component: "Transform", Field: "Position" or "Rotation" };
 
     /// <summary>Drops what the instance's element keeps aside because its prefab no longer has what it names (it would apply again if the entity or component came back).</summary>
     public void DropUnappliedOverrides(Entity root)
@@ -338,9 +342,12 @@ public sealed unsafe partial class World
     /// <summary>Writes one override into the prefab file. See <see cref="ApplyOverrides"/>.</summary>
     public PrefabUpdate? ApplyOverride(Entity root, PrefabOverride change, PrefabApplyTarget target = PrefabApplyTarget.InstancePrefab) => ApplyOverrides(root, [change], target);
 
-    /// <summary>Applies every override of the instance (not what is kept aside). See <see cref="ApplyOverrides"/>.</summary>
+    /// <summary>
+    /// Applies every override of the instance, except what is kept aside and where the instance is placed (the position and rotation of its root, which are the scene's: apply them with
+    /// <see cref="ApplyOverride"/> to make them the prefab's). See <see cref="ApplyOverrides"/>.
+    /// </summary>
     public PrefabUpdate? ApplyAllOverrides(Entity root, PrefabApplyTarget target = PrefabApplyTarget.InstancePrefab) =>
-        ApplyOverrides(root, PrefabOverrides(root).Where(static o => o.Kind != PrefabOverrideKind.Unapplied), target);
+        ApplyOverrides(root, PrefabOverrides(root).Where(static o => o.Kind != PrefabOverrideKind.Unapplied && !IsPlacement(o)), target);
 
     /// <summary>
     /// Makes what an instance changed part of its prefab: the overrides are written into the prefab's file (the ids of the file stay, an added entity takes the next id and a removed one is taken out), the

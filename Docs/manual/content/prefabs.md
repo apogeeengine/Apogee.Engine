@@ -323,8 +323,13 @@ instance out for each call: to ask about many fields list once and use `PrefabOv
 [a changed prefab](#when-the-prefab-changes) updates it, so the entities that stay keep their ids (the selection stays valid), what is destroyed takes what is below it, and entity fields elsewhere that named
 a destroyed entity are emptied. It is all or nothing: an instance that cannot be updated (it would be over `MaxLoadEntities`, an observer throws) is as it was and the call throws
 `InvalidOperationException`. A list that is out of date (an override that is not one any more) is an `ArgumentException`. The root of an instance inside another cannot be reverted alone (its changes
-are the outer instance's: revert them there, where they have a longer address). `RevertAllOverrides` reverts everything except what is kept aside, the root's own position and the entities added to it
-included; revert the ones you want by `RevertOverrides` to keep the others.
+are the outer instance's: revert them there, where they have a longer address). `RevertAllOverrides` reverts everything except what is kept aside and
+**where the instance is placed** (the position and rotation of its root: putting an instance back to its prefab does not move it to the prefab's origin); the entities it added are destroyed. Revert the
+placement with `RevertOverride`, and any one change by `RevertOverrides`. `ApplyAllOverrides` leaves the placement out the same way, so that placing a lamp does not move every lamp of the game; apply it with
+`ApplyOverride` when that is what is meant.
+
+**An instance inside another** lists what the scene changed in it (what is written about it in the instance that holds it), with addresses relative to it, and not what the prefab it is in says: a corner's
+own position for its lamps, or the Health it pins, are not changes of the lamp, are not marked by `IsOverridden`, and `ApplyAllOverrides` does not write them into the lamp's file.
 
 **Applying** writes an override into a prefab *file*, so that it is the prefab's and every instance of it follows:
 
