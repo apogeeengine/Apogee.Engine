@@ -653,6 +653,19 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     }
 
     [Fact]
+    public void ACornerAddedToALampCannotBeAppliedToTheLamp()
+    {
+        Entity lamp = LoadLamp();
+        World.Instantiate(CornerPath, lamp);
+        string files = Read(CornerFile) + Read(LampFile);
+
+        Assert.Throws<InvalidOperationException>(() => World.ApplyAllOverrides(lamp));
+
+        Assert.Equal(files, Read(CornerFile) + Read(LampFile));
+        Assert.False(World.HasPendingPrefabUpdates);
+    }
+
+    [Fact]
     public void AnAddedEntityWhoseFieldsNameSomethingOutsideCannotBeApplied()
     {
         Entity lamp = LoadLamp("<Entity id=\"9\" name=\"Cord\"><Marks Target=\"1\"/></Entity>");
@@ -765,6 +778,29 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         Assert.Equal(7, World.Get<Marks>(Child(Child(corner, "Lamp 2"), "Bulb")).Level);
         Assert.Equal(bulb, Child(nested, "Bulb"));
         Assert.Empty(World.PrefabOverrides(corner));
+    }
+
+    [Fact]
+    public void ANestedInstanceCanApplyAnEntityItAddedAndOneItRemoved()
+    {
+        Entity corner = LoadCorner();
+        Entity nested = Child(corner, "Lamp");
+        Entity bulb = Child(nested, "Bulb");
+        Entity cord = World.CreateEntity("Cord", bulb);
+        World.Destroy(Child(nested, "Base"));
+        Assert.Equal(["AddedEntity 2||", "RemovedEntity 3||"], Listed(World, nested).Where(x => !x.Contains("Field", StringComparison.Ordinal)).ToArray());
+
+        World.ApplyOverrides(nested, World.PrefabOverrides(nested).Where(o => o.Kind is PrefabOverrideKind.RemovedEntity or PrefabOverrideKind.AddedEntity), PrefabApplyTarget.InstancePrefab);
+
+        XmlNode lamp = LampDocument();
+        Assert.DoesNotContain("name=\"Base\"", Read(LampFile), StringComparison.Ordinal);
+        Assert.Equal("Cord", EntityElement(lamp, 2).Children.Single(c => c.Name == "Entity").Attribute("name"));
+        Assert.Equal(cord, Child(Child(Child(corner, "Lamp"), "Bulb"), "Cord"));               // the same entity, the lamp's now
+        Assert.Equal(["Cord"], NamesBelow(World, Child(Child(corner, "Lamp 2"), "Bulb")));       // and the other lamp of the corner has it
+        Assert.DoesNotContain(World.PrefabOverrides(corner), o => o.Kind is not PrefabOverrideKind.Field);
+        string scene = World.SaveScene();
+        Assert.DoesNotContain("Cord", scene, StringComparison.Ordinal);
+        Assert.DoesNotContain("remove=\"true\"", scene.Replace("<Override entity=\"3\" remove=\"true\"/>", "", StringComparison.Ordinal), StringComparison.Ordinal);
     }
 
     [Fact]

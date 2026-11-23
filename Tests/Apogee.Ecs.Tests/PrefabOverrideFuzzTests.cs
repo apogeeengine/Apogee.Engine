@@ -19,6 +19,8 @@ public sealed class PrefabOverrideFuzzTests : PrefabFuzzBase
 
     private List<Entity> Outermost() => [.. World.UserEntities().Where(e => World.IsPrefabInstance(e) && !World.IsPrefabMember(e)).OrderBy(e => e.Id)];
 
+    private List<Entity> AllInstances() => [.. World.UserEntities().Where(e => World.IsPrefabInstance(e)).OrderBy(e => e.Id)];
+
     private string Files2() => Read("prefabs/lamp.aprefab") + Read("prefabs/corner.aprefab");
 
     [Theory]
@@ -122,7 +124,65 @@ public sealed class PrefabOverrideFuzzTests : PrefabFuzzBase
             string scene = World.SaveScene();
             try
             {
-                World.ApplyOverrides(root, chosen, target);
+                PrefabUpdate? update = World.ApplyOverrides(root, chosen, target);
+                Assert.True(update is null || update.Failed.Count == 0, update is null ? "" : string.Join("; ", update.Failed.Select(f => f.Message)));
+            }
+            catch (InvalidOperationException)
+            {
+                // Refused (an Entity field that names something outside the prefab, the file the instance cannot follow…): nothing is different.
+                Assert.Equal(files, Files2());
+                Assert.Equal(world, Dump(World));
+                Assert.Equal(scene, World.SaveScene());
+                Assert.False(World.HasPendingPrefabUpdates);
+                continue;
+            }
+
+            Assert.False(World.HasPendingPrefabUpdates);
+            AssertNamesAreUnique(World);
+            string saved = World.SaveScene();
+            using World loaded = OtherWorld();
+            loaded.LoadScene(saved);
+            Assert.Equal(Dump(World), Dump(loaded));
+            Assert.Equal(saved, loaded.SaveScene());
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void ApplyingFromInstancesInsideInstancesLeavesTheSameWorld(int seed)
+    {
+        var random = new Random(seed * 37 + 11);
+        World.LoadScene(Base());
+        Edits(World, new Random(seed), EditCount(seed));
+        AssertNamesAreUnique(World);
+
+        foreach (Entity root in AllInstances())
+        {
+            if (!World.IsAlive(root))
+            {
+                continue;
+            }
+
+            List<PrefabOverride> applicable = [.. World.PrefabOverrides(root).Where(static o => o.Kind != PrefabOverrideKind.Unapplied)];
+            if (applicable.Count == 0 || random.Next(4) == 0)
+            {
+                continue;
+            }
+
+            List<PrefabOverride> chosen = [.. applicable.Where(_ => random.Next(2) == 0)];
+            if (chosen.Count == 0)
+            {
+                chosen.Add(applicable[random.Next(applicable.Count)]);
+            }
+
+            PrefabApplyTarget target = random.Next(2) == 0 ? PrefabApplyTarget.InstancePrefab : PrefabApplyTarget.SourcePrefab;
+            string files = Files2();
+            string world = Dump(World);
+            string scene = World.SaveScene();
+            try
+            {
+                PrefabUpdate? update = World.ApplyOverrides(root, chosen, target);
+                Assert.True(update is null || update.Failed.Count == 0, update is null ? "" : string.Join("; ", update.Failed.Select(f => f.Message)));
             }
             catch (InvalidOperationException)
             {

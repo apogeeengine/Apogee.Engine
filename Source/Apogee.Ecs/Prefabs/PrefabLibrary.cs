@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using Apogee.Content;
 using Apogee.Content.Assets;
@@ -270,7 +271,7 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
 
     // Why a new document of a prefab cannot replace the old one even though it parses, or null: expanded on its own (with what the library holds of every other prefab) it holds an instance of itself, is
     // nested too deep, or is too big. A prefab that only names a prefab that does not exist is fine: that instance is empty, as it is wherever it is used.
-    private string? NestingProblem(uint handle, XmlNode fresh, int maxEntities)
+    private string? NestingProblem(uint handle, XmlNode fresh, int maxEntities, IReadOnlyDictionary<uint, XmlNode>? alsoNew = null)
     {
         ResolvedPrefab Resolve(string reference)
         {
@@ -279,6 +280,11 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
             if (other == handle)
             {
                 return new ResolvedPrefab(key, fresh);
+            }
+
+            if (alsoNew is not null && alsoNew.TryGetValue(other, out XmlNode? replaced))
+            {
+                return new ResolvedPrefab(key, replaced);
             }
 
             try
@@ -312,8 +318,11 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
         return null;
     }
 
-    /// <summary>Why a document could replace the one the library has for this prefab (it parses as one, holds no instance of itself, is not nested too deep or too big), or null. Nothing changes.</summary>
-    internal string? Problem(uint handle, XmlNode document, string origin, int maxEntities)
+    /// <summary>
+    /// Why a document could replace the one the library has for this prefab (it parses as one, holds no instance of itself, is not nested too deep or too big), or null. Nothing changes.
+    /// <paramref name="alsoNew"/> are other prefabs that change with it, which it is checked with.
+    /// </summary>
+    internal string? Problem(uint handle, XmlNode document, string origin, int maxEntities, IReadOnlyDictionary<uint, XmlNode>? alsoNew = null)
     {
         try
         {
@@ -326,8 +335,93 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
 
         lock (_lock)
         {
-            return NestingProblem(handle, document, maxEntities);
+            // An instance a prefab holds is never followed twice, so a loop that an override cuts again (a nested instance removed by the prefab above it) is not seen by expanding: the references are followed.
+            return NestingProblem(handle, document, maxEntities, alsoNew) ?? LoopThrough(handle, document, alsoNew);
         }
+    }
+
+    // The prefabs a document names by `prefab="…"` anywhere in it (an entity an override adds included).
+    private static IEnumerable<string> ReferencesIn(XmlNode node)
+    {
+        foreach (XmlNode child in node.Children)
+        {
+            if (child.Name is "Entity" or "Override")
+            {
+                if (child.Name == "Entity" && child.Attribute("prefab") is { Length: > 0 } reference)
+                {
+                    yield return reference;
+                }
+
+                foreach (string below in ReferencesIn(child))
+                {
+                    yield return below;
+                }
+            }
+        }
+    }
+
+    // A chain of prefabs that names one of them again, by following the references of the documents as they will be (`alsoNew` replaces the library's); null when there is none.
+    private string? LoopThrough(uint start, XmlNode startDocument, IReadOnlyDictionary<uint, XmlNode>? alsoNew)
+    {
+        var chain = new List<uint>();
+        var cleared = new HashSet<uint>();
+
+        string Name(uint handle) => PathOf(handle) ?? RefOf(handle)?.ToString() ?? $"prefab {handle}";
+
+        string? Visit(uint handle, XmlNode document)
+        {
+            int at = chain.IndexOf(handle);
+            if (at >= 0)
+            {
+                return $"{Name(handle)} contains itself ({string.Join(" > ", chain.Skip(at).Append(handle).Select(Name))})";
+            }
+
+            if (!cleared.Add(handle))
+            {
+                return null;
+            }
+
+            chain.Add(handle);
+            foreach (string reference in ReferencesIn(document))
+            {
+                if (!AssetRef.TryParse(reference, out AssetRef named) || named.IsEmpty)
+                {
+                    continue;
+                }
+
+                uint other = Load(named);
+                XmlNode? otherDocument;
+                if (alsoNew is not null && alsoNew.TryGetValue(other, out XmlNode? replaced))
+                {
+                    otherDocument = replaced;
+                }
+                else if (other == start)
+                {
+                    otherDocument = startDocument;
+                }
+                else
+                {
+                    try
+                    {
+                        otherDocument = Document(other);
+                    }
+                    catch (FormatException)
+                    {
+                        otherDocument = null;
+                    }
+                }
+
+                if (otherDocument is not null && Visit(other, otherDocument) is { } loop)
+                {
+                    return loop;
+                }
+            }
+
+            chain.RemoveAt(chain.Count - 1);
+            return null;
+        }
+
+        return Visit(start, startDocument);
     }
 
     // Tells the handlers (outside the lock), and lets go of the old document once they have all seen it.

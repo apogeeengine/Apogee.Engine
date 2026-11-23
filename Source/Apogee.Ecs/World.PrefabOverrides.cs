@@ -258,15 +258,27 @@ public sealed unsafe partial class World
             return; // another instance of the update
         }
 
-        XmlNode? element = edit.Root == applied ? top : FindInstanceElement(top, address);
-        if (element is null)
+        // The instance's own element: the top one, or one an instance added inside another. An instance that is part of the one being updated has no element of its own: what it changed is written in the
+        // element of the instance that holds it, at longer addresses (the absolute addresses of its changes are the same, so that they are found there).
+        XmlNode element;
+        string elementAddress;
+        ulong owner;
+        if (edit.Root == applied)
         {
-            return; // an instance that is part of the one being updated: nothing of it is written on its own
+            (element, elementAddress, owner) = (top, address, applied.Id);
+        }
+        else if (FindInstanceElement(top, address) is { } nested)
+        {
+            (element, elementAddress, owner) = (nested, address, applied.Id);
+        }
+        else
+        {
+            (element, elementAddress, owner) = (top, edit.Saved.AddressOf[edit.Root.Id], edit.Root.Id);
         }
 
         Dictionary<string, Entity> byAddress = AddressesOf(edit.Saved);
-        int kept = edit.Saved.KeptNodes.TryGetValue(applied.Id, out List<XmlNode>? nodes) ? nodes.Count : 0;
-        List<FoundOverride> found = OverrideReader.Read(element, address, kept, name => byAddress.GetValueOrDefault(name));
+        int kept = edit.Saved.KeptNodes.TryGetValue(owner, out List<XmlNode>? nodes) ? nodes.Count : 0;
+        List<FoundOverride> found = OverrideReader.Read(element, elementAddress, kept, name => byAddress.GetValueOrDefault(name));
         foreach (PrefabOverride o in overrides)
         {
             if (found.Find(candidate => candidate.Override.Kind != PrefabOverrideKind.Unapplied && OverrideReader.Is(o, AbsoluteOf(address, o), candidate)) is { } match)
@@ -384,7 +396,13 @@ public sealed unsafe partial class World
         foreach (PrefabEditFile file in changed)
         {
             file.Finish();
-            if (library.Problem(file.Handle, file.Document, file.Path, MaxLoadEntities) is { } problem)
+        }
+
+        // Each file is checked with the others as they will be: two files that are fine alone may make a loop together.
+        Dictionary<uint, XmlNode> documents = changed.ToDictionary(static file => file.Handle, static file => file.Document);
+        foreach (PrefabEditFile file in changed)
+        {
+            if (library.Problem(file.Handle, file.Document, file.Path, MaxLoadEntities, documents) is { } problem)
             {
                 throw new InvalidOperationException($"{file.Path} would not be a prefab that loads, so nothing was written: {problem}");
             }
@@ -427,6 +445,11 @@ public sealed unsafe partial class World
                 {
                     throw new InvalidOperationException($"{file.Path} was written but cannot be read back as a prefab ({result.Error}): it was put back");
                 }
+
+                if (library.Document(file.Handle)?.ToXml() != file.Document.ToXml())
+                {
+                    throw new InvalidOperationException($"{file.Path} was written but reads back as something else than what was written: it was put back");
+                }
             }
 
             // 4. The instances follow the files, this one with the overrides taken out of its saved form: the files say them now.
@@ -444,10 +467,11 @@ public sealed unsafe partial class World
         }
         catch
         {
+            // No instance was told to follow (the update never started, so what it was told is still waiting): the change the files announced is not one any more.
+            bool waiting = !following || HasPendingPrefabUpdates;
             PutFilesBack(files, library, written);
-            if (!following)
+            if (waiting)
             {
-                // No instance was told to follow: the change the files announced is not one any more.
                 DiscardPending(written);
             }
 
