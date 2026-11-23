@@ -358,13 +358,25 @@ public sealed unsafe partial class World
             Log.Info("Prefab", $"{update.Updated.Count} instance(s) brought up to date with {string.Join(", ", keys)}" + (update.Failed.Count > 0 ? $"; {update.Failed.Count} left as they were" : ""));
         }
 
-        PrefabsChanged?.Invoke(update);
-        foreach (string key in keys)
+        if (!_quietUpdates)
         {
-            PrefabChanged.Emit(key);
+            RaiseUpdated(update);
         }
 
         return update;
+    }
+
+    // Set while a call that may put its change back (an apply) runs its updates: it says what it came to when it is done, and an apply that was put back changed nothing to tell about.
+    private bool _quietUpdates;
+
+    // Tells what an update did: the event, and the signal of each prefab.
+    private void RaiseUpdated(PrefabUpdate update)
+    {
+        PrefabsChanged?.Invoke(update);
+        foreach (string key in update.Prefabs)
+        {
+            PrefabChanged.Emit(key);
+        }
     }
 
     /// <summary>What the updates of all instances leave to be done to the rest of the world, collected so that it is done once.</summary>

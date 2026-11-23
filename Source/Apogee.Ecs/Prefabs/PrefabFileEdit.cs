@@ -14,13 +14,14 @@ internal sealed class PrefabEditFile
 {
     private long _next;
 
-    public PrefabEditFile(uint handle, string key, string path, XmlNode document, byte[] original)
+    public PrefabEditFile(uint handle, string key, string path, XmlNode document, byte[] original, bool reformats)
     {
         Handle = handle;
         Key = key;
         Path = path;
         Document = document;
         Original = original;
+        Reformats = reformats;
         RootId = int.Parse(PrefabDocument.RootEntity(document).Attribute("id")!, CultureInfo.InvariantCulture);
         _next = PrefabDocument.NextIdOf(document);
     }
@@ -36,6 +37,9 @@ internal sealed class PrefabEditFile
 
     /// <summary>The document to edit: a copy read from the disk.</summary>
     public XmlNode Document { get; }
+
+    /// <summary>Whether the file is not laid out the way the engine writes a prefab (comments, indentation, attribute order…): writing it changes more than what was applied.</summary>
+    public bool Reformats { get; }
 
     /// <summary>The bytes the file had when it was read.</summary>
     public byte[] Original { get; }
@@ -204,8 +208,12 @@ internal sealed class PrefabFileEdit(Func<string, PrefabEditFile> open)
             throw new InvalidOperationException($"{site.File.Path} removes {component} from that entity");
         }
 
-        patch.SetAttribute(field, text);
-        site.File.Changed = true;
+        // What the file says already is not written again: an apply of it changes nothing, not even the layout.
+        if (patch.Attribute(field) != text)
+        {
+            patch.SetAttribute(field, text);
+            site.File.Changed = true;
+        }
     }
 
     /// <summary>Gives the entity a component (written whole, in the scope of the file). Script-defined components bring their schema.</summary>
@@ -259,8 +267,12 @@ internal sealed class PrefabFileEdit(Func<string, PrefabEditFile> open)
     /// <summary>Renames the entity.</summary>
     public static void SetName(EditSite site, string name)
     {
-        Holder(site).SetAttribute("name", name);
-        site.File.Changed = true;
+        XmlNode holder = Holder(site);
+        if (holder.Attribute("name") != name)
+        {
+            holder.SetAttribute("name", name);
+            site.File.Changed = true;
+        }
     }
 
     /// <summary>Takes the entity (with everything below it) out of the prefab: its element goes, or an override that removes it is written.</summary>

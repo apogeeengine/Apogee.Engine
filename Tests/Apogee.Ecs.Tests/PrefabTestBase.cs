@@ -43,7 +43,8 @@ public abstract class PrefabTestBase : IDisposable
     {
         NativeRequirements.Require(typeof(Flecs).Assembly, "flecs");
         Files = new VirtualFileSystem();
-        Files.Mount("res://", new DirectorySource(_folder, writable: true));
+        Faults = new FaultySource(new DirectorySource(_folder, writable: true));
+        Files.Mount("res://", Faults);
         Assets = new AssetDatabase(Files);
         World = new World { Files = Files, Assets = Assets };
         Write("prefabs/lamp.aprefab", $"""
@@ -84,6 +85,9 @@ public abstract class PrefabTestBase : IDisposable
     }
 
     protected VirtualFileSystem Files { get; }
+
+    /// <summary>The source of <c>res://</c>: writes through it can be made to fail, to see what a failing disk leaves.</summary>
+    protected FaultySource Faults { get; }
 
     /// <summary>The folder <c>res://</c> is.</summary>
     protected string Folder => _folder;

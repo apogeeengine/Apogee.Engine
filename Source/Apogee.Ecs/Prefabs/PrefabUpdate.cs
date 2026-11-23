@@ -36,6 +36,9 @@ public sealed class PrefabUpdate
     /// <summary>The entities the update destroyed: what the prefabs lost, with what the instances had added below it (that is kept aside in the instance, and comes back with the entity).</summary>
     public List<Entity> Destroyed { get; } = [];
 
+    /// <summary>The prefab files an <see cref="World.ApplyOverrides"/> wrote, with what each held before (empty for a change that came from a file).</summary>
+    public List<PrefabFileWrite> Written { get; } = [];
+
     /// <summary>The instances that were left as they were, and why.</summary>
     public List<PrefabUpdateFailure> Failed { get; } = [];
 

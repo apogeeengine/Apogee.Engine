@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Apogee.Content.Xml;
 using Apogee.Core.Assets;
@@ -841,6 +842,20 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     }
 
     [Fact]
+    public void TheNameOfANestedInstanceIsItsOwnAndAllLeavesItOut()
+    {
+        Entity corner = LoadCorner("<Override entity=\"2\" name=\"Left\"/>");
+        Entity first = Child(corner, "Left");
+        string lamp = Read(LampFile);
+
+        Assert.Equal(["Name ||"], Listed(World, first));
+        Assert.Null(World.ApplyAllOverrides(first));
+
+        Assert.Equal(lamp, Read(LampFile));
+        Assert.Single(World.PrefabOverrides(first));
+    }
+
+    [Fact]
     public void ANestedInstanceCanApplyAnEntityItAddedAndOneItRemoved()
     {
         Entity corner = LoadCorner();
@@ -862,6 +877,180 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         Assert.DoesNotContain("Cord", scene, StringComparison.Ordinal);
         Assert.DoesNotContain("remove=\"true\"", scene.Replace("<Override entity=\"3\" remove=\"true\"/>", "", StringComparison.Ordinal), StringComparison.Ordinal);
     }
+
+    // A corner whose first lamp has a changed Health (the lamp's file) and whose Bench has a Frozen (the corner's file): applying both to the files that define them writes two files.
+    private Entity LoadCornerWithTwoFiles() => LoadCorner("<Override entity=\"2/2\"><Health Max=\"77\"/></Override><Override entity=\"4\"><Frozen append=\"true\"/></Override>");
+
+    [Fact]
+    public void AFailingWriteInTheSecondFileLeavesBothFilesAndTheWorldAsTheyWere()
+    {
+        Entity corner = LoadCornerWithTwoFiles();
+        string files = Read(CornerFile) + Read(LampFile);
+        string dump = Dump(World);
+        int changes = 0;
+        World.PrefabsChanged += _ => changes++;
+        Faults.FailOn(2);
+
+        IOException error = Assert.Throws<IOException>(() => World.ApplyAllOverrides(corner, PrefabApplyTarget.SourcePrefab));
+
+        Assert.Contains("injected", error.Message, StringComparison.Ordinal);
+        Assert.Equal(files, Read(CornerFile) + Read(LampFile));       // the first file was written, and put back
+        Assert.Equal(dump, Dump(World));
+        Assert.False(World.HasPendingPrefabUpdates);
+        Assert.Equal(0, changes);                                    // nothing came of it: nothing to tell a tool that keeps a history
+        Assert.Equal(2, World.PrefabOverrides(corner).Count);
+    }
+
+    [Fact]
+    public void AFileThatCannotBePutBackIsNamedAndTheInstancesFollowIt()
+    {
+        Entity corner = LoadCornerWithTwoFiles();
+        string lampBefore = Read(LampFile);
+        Faults.FailOn(2, 3);     // the lamp's file cannot be written, and the corner's, written first, cannot be put back
+
+        IOException error = Assert.Throws<IOException>(() => World.ApplyAllOverrides(corner, PrefabApplyTarget.SourcePrefab));
+
+        Assert.Contains("prefabs/corner.aprefab", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("prefabs/lamp.aprefab could not", error.Message, StringComparison.Ordinal);
+        Assert.Contains("<Frozen", Read(CornerFile), StringComparison.Ordinal);           // the corner holds what was applied
+        Assert.Equal(lampBefore, Read(LampFile));
+        Assert.False(World.HasPendingPrefabUpdates);
+
+        // The world is what the disk says: the Bench has its Frozen from the file, so the scene holds no override of it, and the lamp's change is still the scene's.
+        Assert.Equal(["Field 2/2|Health|Max"], Listed(World, corner));
+        string saved = World.SaveScene();
+        using World loaded = OtherWorld();
+        loaded.LoadScene(saved);
+        Assert.Equal(Dump(World), Dump(loaded));
+        Assert.Equal(saved, loaded.SaveScene());
+    }
+
+    [Fact]
+    public void ARollbackPinsNothingOnTheOtherInstancesThatCouldNotFollow()
+    {
+        // The lamp grows to four entities (the Cord is applied), and the budget is four. The first lamp has a Plug as well and cannot follow; the second has a Mast and cannot follow either, but could
+        // be made from the old file: after the file is put back it must be exactly what it was, with no change pinned by having been compared with the new file.
+        LoadLamp("<Entity id=\"9\" name=\"Cord\"/><Entity id=\"10\" name=\"Plug\"/>");
+        Entity first = World.Lookup("Lamp");
+        Entity second = World.Lookup("Lamp 2");
+        World.CreateEntity("Mast", second);
+        World.MaxLoadEntities = 4;
+        string files = Read(LampFile);
+        string dump = Dump(World);
+        Assert.Equal(["AddedEntity ||", "AddedEntity ||"], Listed(World, first));
+        Assert.Equal(["AddedEntity ||"], Listed(World, second));
+        int changes = 0;
+        World.PrefabsChanged += _ => changes++;
+
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => World.ApplyOverride(first, World.PrefabOverrides(first).First(o => o.Entity == Child(first, "Cord"))));
+
+        Assert.Contains("put back", error.Message, StringComparison.Ordinal);
+        Assert.Equal(files, Read(LampFile));
+        Assert.Equal(dump, Dump(World));
+        Assert.Equal(["AddedEntity ||"], Listed(World, second));       // not "the new member removed" kept aside
+        Assert.Equal(["AddedEntity ||", "AddedEntity ||"], Listed(World, first));
+        Assert.False(World.HasPendingPrefabUpdates);
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
+    public void ApplyReturnsWhatTheFilesHeldAndWhetherWritingThemReformatsThem()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\"><Health Max=\"40\"/></Override>");
+        byte[] before = System.IO.File.ReadAllBytes(System.IO.Path.Combine(Folder, LampFile));
+        PrefabOverride max = World.PrefabOverrides(lamp).Single();
+
+        PrefabFileWrite planned = Assert.Single(World.PreviewApply(lamp, [max]));
+        Assert.Equal(before, planned.Original.ToArray());
+        Assert.True(planned.Reformatted);                                                       // the file was written by hand, in a layout of its own
+        Assert.Equal(System.Text.Encoding.UTF8.GetString(before), Read(LampFile));                // and the preview wrote nothing
+
+        PrefabUpdate? update = World.ApplyOverride(lamp, max);
+
+        PrefabFileWrite written = Assert.Single(update!.Written);
+        Assert.Equal(before, written.Original.ToArray());
+        Assert.True(written.Reformatted);
+        Assert.NotEqual(before, System.IO.File.ReadAllBytes(System.IO.Path.Combine(Folder, LampFile)));
+
+        // Written by the engine now, it is in the engine's layout: the next apply changes only what it says.
+        Entity bulb = Child(lamp, "Bulb");
+        Health health = World.Get<Health>(bulb);
+        health.Regen = 3;
+        World.Set(bulb, health);
+        PrefabFileWrite next = Assert.Single(World.PreviewApply(lamp, World.PrefabOverrides(lamp)));
+        Assert.False(next.Reformatted);
+    }
+
+    [Fact]
+    public void AnOverrideThatSaysWhatTheFileAlreadySaysWritesNothing()
+    {
+        // The corner pins the first lamp's Current at 9; the lamp's file says 5, and the scene sets 5: a change from the corner, and nothing to write into the lamp.
+        Entity corner = LoadCorner("<Override entity=\"2/2\"><Health Current=\"5\"/></Override>");
+        string lamp = Read(LampFile);
+        PrefabOverride current = World.PrefabOverrides(corner).Single();
+
+        Assert.Empty(World.PreviewApply(corner, [current], PrefabApplyTarget.SourcePrefab));
+        Assert.Null(World.ApplyOverride(corner, current, PrefabApplyTarget.SourcePrefab));
+
+        Assert.Equal(lamp, Read(LampFile));
+        Assert.Single(World.PrefabOverrides(corner));
+    }
+
+    [Fact]
+    public void ApplyingToALinkOfAReadOnlyFileIsRefused()
+    {
+        string real = System.IO.Path.Combine(Folder, "prefabs/real_lamp.aprefab");
+        string link = System.IO.Path.Combine(Folder, LampFile);
+        System.IO.File.Move(link, real);
+        try
+        {
+            System.IO.File.CreateSymbolicLink(link, real);
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            System.IO.File.Move(real, link);
+            return; // this system does not let this user make a link
+        }
+
+        var target = new System.IO.FileInfo(real) { IsReadOnly = true };
+        try
+        {
+            if (!new System.IO.FileInfo(real).IsReadOnly)
+            {
+                return; // nor make a file read-only
+            }
+
+            Entity lamp = LoadLamp("<Override entity=\"2\"><Health Max=\"40\"/></Override>");
+            string before = System.IO.File.ReadAllText(real);
+
+            Assert.Throws<UnauthorizedAccessException>(() => World.ApplyAllOverrides(lamp));
+
+            Assert.Equal(before, System.IO.File.ReadAllText(real));
+            Assert.True(new System.IO.FileInfo(link).LinkTarget is not null);        // and the link is still a link
+        }
+        finally
+        {
+            target.IsReadOnly = false;
+        }
+    }
+
+    [Fact]
+    public void RevertingAllOnAnInstanceWhosePrefabIsMissingIsRefused()
+    {
+        World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Ghost\" prefab=\"res://prefabs/nothing.aprefab\"><Frozen append=\"true\"/><Override entity=\"2\"><Health Max=\"1\"/></Override></Entity></Scene>");
+        Entity ghost = World.Lookup("Ghost");
+        Entity child = World.CreateEntity("Child", ghost);
+        World.Add<Frozen>(ghost);
+
+        Assert.Throws<InvalidOperationException>(() => World.RevertAllOverrides(ghost));
+
+        Assert.True(World.Has<Frozen>(ghost));
+        Assert.True(World.IsAlive(child));
+        World.DropUnappliedOverrides(ghost);          // what is kept aside can still be let go of
+        Assert.DoesNotContain("Health", World.SaveScene(), StringComparison.Ordinal);
+    }
+
+    private static string Dump(World world) => string.Join("\n", world.Roots().Select(root => PrefabFuzzBase.DumpTree(world, root)).Order(StringComparer.Ordinal));
 
     [Fact]
     public void AnInstanceThatCannotFollowTheFileLeavesBothAsTheyWere()

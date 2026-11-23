@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Apogee.Content;
 using Apogee.Content.FileSystem;
 using Apogee.Content.Xml;
@@ -179,6 +180,11 @@ public sealed unsafe partial class World
         List<FoundOverride> chosen = Resolve(capture, overrides);
         List<PrefabOverride> live = [.. chosen.Select(static found => found.Override).Where(static o => o.Kind != PrefabOverrideKind.Unapplied)];
         HashSet<int> unapplied = [.. chosen.Select(static found => found.Override).Where(static o => o.Kind == PrefabOverrideKind.Unapplied).Select(static o => o.Index)];
+        if (live.Count > 0 && capture.Missing is not null)
+        {
+            // Nothing says what the instance should be: putting it back would take everything off its root and destroy what is below.
+            throw new InvalidOperationException($"the prefab of this instance cannot be read ({capture.Missing}): there is nothing to put it back to");
+        }
 
         _kept.TryGetValue(root.Id, out KeptData? before);
         if (unapplied.Count > 0 && before is not null)
@@ -215,8 +221,12 @@ public sealed unsafe partial class World
     /// </summary>
     public void RevertAllOverrides(Entity root) => RevertOverrides(root, PrefabOverrides(root).Where(static o => o.Kind != PrefabOverrideKind.Unapplied && !IsPlacement(o)));
 
-    /// <summary>Whether an override is where the root of the instance is placed (its position or rotation): what is the scene's, whatever the prefab says, and not taken by the "all" calls.</summary>
-    private static bool IsPlacement(PrefabOverride o) => o is { Kind: PrefabOverrideKind.Field, Target: "", Component: "Transform", Field: "Position" or "Rotation" };
+    /// <summary>
+    /// Whether an override is about the instance itself and not its prefab: where its root is placed (position, rotation) or what it is called (the name of the root of an instance inside another is its
+    /// own). That is the scene's, whatever the prefab says, and the "all" calls leave it out.
+    /// </summary>
+    private static bool IsPlacement(PrefabOverride o) =>
+        o is { Kind: PrefabOverrideKind.Field, Target: "", Component: "Transform", Field: "Position" or "Rotation" } or { Kind: PrefabOverrideKind.Name, Target: "" };
 
     /// <summary>Drops what the instance's element keeps aside because its prefab no longer has what it names (it would apply again if the entity or component came back).</summary>
     public void DropUnappliedOverrides(Entity root)
@@ -373,6 +383,29 @@ public sealed unsafe partial class World
     /// <exception cref="UnauthorizedAccessException">A file to write is read-only or in a source that cannot be written.</exception>
     public PrefabUpdate? ApplyOverrides(Entity root, IEnumerable<PrefabOverride> overrides, PrefabApplyTarget target = PrefabApplyTarget.InstancePrefab)
     {
+        PreparedApply? prepared = PrepareApply(root, overrides, target);
+        return prepared is null ? null : CommitApply(root, prepared);
+    }
+
+    /// <summary>
+    /// What <see cref="ApplyOverrides"/> would write, without writing anything: for each file, what it holds now (to put back, or to keep a copy of) and whether writing it changes how it is laid out
+    /// (a file with comments or a layout of its own is written the way the engine writes prefabs, so a tool warns before it does). It refuses what an apply refuses. Empty when there is nothing to write.
+    /// </summary>
+    public IReadOnlyList<PrefabFileWrite> PreviewApply(Entity root, IEnumerable<PrefabOverride> overrides, PrefabApplyTarget target = PrefabApplyTarget.InstancePrefab) =>
+        PrepareApply(root, overrides, target)?.Writes ?? [];
+
+    /// <summary>The files an apply is going to write, with the entities' changes it is going to take out of the instance, all of it checked.</summary>
+    private sealed record PreparedApply(
+        VirtualFileSystem Files,
+        PrefabLibrary Library,
+        List<PrefabEditFile> Changed,
+        List<PrefabOverride> Applied,
+        List<(Entity Entity, string Hops, string Local)> Placed,
+        List<PrefabFileWrite> Writes);
+
+    // Steps 1 and 2 of an apply: the files as the disk has them, the changes in memory, and every check. Nothing is written, and nothing in the world changes.
+    private PreparedApply? PrepareApply(Entity root, IEnumerable<PrefabOverride> overrides, PrefabApplyTarget target)
+    {
         ArgumentNullException.ThrowIfNull(overrides);
         RequireInstance(root);
         if (_applying)
@@ -442,90 +475,179 @@ public sealed unsafe partial class World
                 throw new UnauthorizedAccessException($"{file.Path} is not in a source that can be written");
             }
 
-            if (files.TryGetPhysicalPath(file.Path) is { } physical && new FileInfo(physical).IsReadOnly)
+            if (IsReadOnlyOnDisk(files, file.Path))
             {
                 throw new UnauthorizedAccessException($"{file.Path} is read-only");
             }
         }
 
-        // 3. Written, read back and checked; the library takes the new documents. Anything that goes wrong puts the files back.
-        var written = new List<PrefabEditFile>();
-        PrefabUpdate? update;
-        bool following = false;
+        return new PreparedApply(files, library, changed, [.. chosen.Select(static found => found.Override)], placed, [.. changed.Select(static file => new PrefabFileWrite(file.Path, file.Original, file.Reformats))]);
+    }
+
+    // Whether the file a path is on disk cannot be written: the file a link leads to when it is a link (the write goes there).
+    private static bool IsReadOnlyOnDisk(VirtualFileSystem files, string path)
+    {
+        if (files.TryGetPhysicalPath(path) is not { } physical)
+        {
+            return false;
+        }
+
+        var info = new FileInfo(physical);
         try
         {
-            foreach (PrefabEditFile file in changed)
+            if (info.ResolveLinkTarget(returnFinalTarget: true) is FileInfo target)
             {
-                if (!files.ReadAllBytes(file.Path).AsSpan().SequenceEqual(file.Original))
-                {
-                    throw new InvalidOperationException($"{file.Path} changed on the disk while the change was being made: nothing was written");
-                }
+                info = target;
             }
+        }
+        catch (IOException)
+        {
+            // a loop of links, or one that cannot be followed: the write will say so
+        }
 
-            foreach (PrefabEditFile file in changed)
-            {
-                files.WriteAllText(file.Path, SceneText(file.Document));
-                written.Add(file);
-            }
+        return info.Exists && info.IsReadOnly;
+    }
 
-            foreach (PrefabEditFile file in changed)
-            {
-                PrefabReload result = library.Reload(file.Path, MaxLoadEntities);
-                if (result.Status == PrefabReloadStatus.Failed)
-                {
-                    throw new InvalidOperationException($"{file.Path} was written but cannot be read back as a prefab ({result.Error}): it was put back");
-                }
-
-                if (library.Document(file.Handle)?.ToXml() != file.Document.ToXml())
-                {
-                    throw new InvalidOperationException($"{file.Path} was written but reads back as something else than what was written: it was put back");
-                }
-            }
-
-            // 4. The instances follow the files, this one with the overrides taken out of its saved form: the files say them now.
-            var applied = new List<PrefabOverride>(chosen.Select(static found => found.Override));
-            _captureEdit = capture2 => AfterApply(capture2, root, applied, placed);
-            following = true;
+    // Steps 3 and 4 of an apply: the files are written, read back and checked, and the instances follow them. Anything that goes wrong puts the files back, and says so when it cannot.
+    private PrefabUpdate? CommitApply(Entity root, PreparedApply prepared)
+    {
+        VirtualFileSystem files = prepared.Files;
+        PrefabLibrary library = prepared.Library;
+        var written = new List<PrefabEditFile>();
+        Action<CaptureEdit> hook = capture => AfterApply(capture, root, prepared.Applied, prepared.Placed);
+        PrefabUpdate? update = null;
+        bool following = false;
+        bool announce = false;
+        _quietUpdates = true; // what is announced is what this call comes to: an apply that is put back changed nothing
+        try
+        {
             try
             {
-                update = ApplyPrefabUpdates();
-            }
-            finally
-            {
-                _captureEdit = null;
-            }
-        }
-        catch
-        {
-            // No instance was told to follow (the update never started, so what it was told is still waiting): the change the files announced is not one any more.
-            bool waiting = !following || HasPendingPrefabUpdates;
-            PutFilesBack(files, library, written);
-            if (waiting)
-            {
-                DiscardPending(written);
-            }
-
-            throw;
-        }
-
-        if (update is not null)
-        {
-            // The instance that holds this one could not follow: the files go back, and the instances that did follow go back with them. That one is as it was, which is what the file says again.
-            PrefabUpdateFailure[] stuck = [.. update.Failed.Where(failure => failure.Instance == root || HasAncestorIn(root, [failure.Instance.Id]))];
-            if (stuck.Length > 0)
-            {
-                foreach (PrefabUpdateFailure failure in stuck)
+                foreach (PrefabEditFile file in prepared.Changed)
                 {
-                    MarkUpToDate(failure.Instance);
+                    if (!files.ReadAllBytes(file.Path).AsSpan().SequenceEqual(file.Original))
+                    {
+                        throw new InvalidOperationException($"{file.Path} changed on the disk while the change was being made: nothing was written");
+                    }
                 }
 
-                PutFilesBack(files, library, written);
-                ApplyPrefabUpdates();
-                throw new InvalidOperationException($"the instance could not follow the prefab and the file was put back: {stuck[0].Message}");
+                foreach (PrefabEditFile file in prepared.Changed)
+                {
+                    files.WriteAllText(file.Path, SceneText(file.Document));
+                    written.Add(file);
+                }
+
+                foreach (PrefabEditFile file in prepared.Changed)
+                {
+                    PrefabReload result = library.Reload(file.Path, MaxLoadEntities);
+                    if (result.Status == PrefabReloadStatus.Failed)
+                    {
+                        throw new InvalidOperationException($"{file.Path} was written but cannot be read back as a prefab ({result.Error}): it was put back");
+                    }
+
+                    if (library.Document(file.Handle)?.ToXml() != file.Document.ToXml())
+                    {
+                        throw new InvalidOperationException($"{file.Path} was written but reads back as something else than what was written: it was put back");
+                    }
+                }
+
+                // The instances follow the files, this one with the overrides taken out of its saved form: the files say them now.
+                _captureEdit = hook;
+                following = true;
+                try
+                {
+                    update = ApplyPrefabUpdates();
+                }
+                finally
+                {
+                    _captureEdit = null;
+                }
+            }
+            catch (Exception failure)
+            {
+                // Before the instances were told (the update never started, so what it was told is still waiting): the change the files announced is not one any more.
+                bool waiting = !following || HasPendingPrefabUpdates;
+                List<PrefabEditFile> stuck = PutFilesBack(files, library, written);
+                List<PrefabEditFile> restored = [.. written.Where(file => !stuck.Contains(file))];
+                if (waiting)
+                {
+                    DiscardPending(restored);
+                }
+
+                if (stuck.Count == 0)
+                {
+                    if (!waiting && HasPendingPrefabUpdates)
+                    {
+                        ApplyPrefabUpdates(); // the update had started: what followed goes back
+                    }
+
+                    throw;
+                }
+
+                // A file that could not be put back holds what was applied: the instances follow it, so that the world is what the disk says, and the caller is told which files they are.
+                update = FollowDisk(hook) ?? update;
+                announce = update is not null;
+                throw new IOException($"the change could not be made ({failure.Message}) and {NamesOf(stuck)} could not be put back: {(stuck.Count == 1 ? "it holds" : "they hold")} the applied text, and the instances follow {(stuck.Count == 1 ? "it" : "them")}", failure);
+            }
+
+            if (update is not null)
+            {
+                // An instance could not follow the new file (it would be over the budget, something threw): the files go back, and the instances that did follow go back with them. Every instance that
+                // could not follow is as it was, which is what the files say again, so none of them is brought up to date from the new file when it is back.
+                PrefabUpdateFailure[] stuck = [.. update.Failed.Where(failure => failure.Instance == root || HasAncestorIn(root, [failure.Instance.Id]))];
+                if (stuck.Length > 0)
+                {
+                    foreach (PrefabUpdateFailure failure in update.Failed)
+                    {
+                        MarkUpToDate(failure.Instance);
+                    }
+
+                    List<PrefabEditFile> notBack = PutFilesBack(files, library, written);
+                    if (notBack.Count == 0)
+                    {
+                        ApplyPrefabUpdates();
+                        throw new InvalidOperationException($"the instance could not follow the prefab and the file was put back: {stuck[0].Message}");
+                    }
+
+                    announce = true;
+                    throw new IOException($"the instance could not follow the prefab ({stuck[0].Message}) and {NamesOf(notBack)} could not be put back: {(notBack.Count == 1 ? "it holds" : "they hold")} the applied text", null);
+                }
+            }
+
+            announce = update is not null;
+        }
+        finally
+        {
+            _quietUpdates = false;
+            if (announce && update is not null)
+            {
+                RaiseUpdated(update);
             }
         }
 
+        update?.Written.AddRange(prepared.Writes);
         return update;
+    }
+
+    private static string NamesOf(List<PrefabEditFile> files) => string.Join(", ", files.Select(static file => file.Path));
+
+    // The instances follow what the files on the disk say now (a file could not be put back): the pending changes are applied, with what the apply took out of the instance.
+    private PrefabUpdate? FollowDisk(Action<CaptureEdit> hook)
+    {
+        if (!HasPendingPrefabUpdates)
+        {
+            return null;
+        }
+
+        _captureEdit = hook;
+        try
+        {
+            return ApplyPrefabUpdates();
+        }
+        finally
+        {
+            _captureEdit = null;
+        }
     }
 
     private void DiscardPending(List<PrefabEditFile> files)
@@ -571,30 +693,47 @@ public sealed unsafe partial class World
             throw new InvalidOperationException($"{path} changed on the disk since this world read it: reload it (PrefabLibrary.Reload) and apply again");
         }
 
-        var file = new PrefabEditFile(handle, path, path, fresh, bytes);
+        // What the engine writes is not what a person wrote when the text differs from it: comments and layout are not kept.
+        bool reformats = SceneText(fresh) != new UTF8Encoding(false).GetString(bytes);
+        var file = new PrefabEditFile(handle, path, path, fresh, bytes, reformats);
         edits[path] = file;
         return file;
     }
 
-    // Puts the files back as they were read, and the library with them; the instances were not told anything that has to be undone (a pending update that came of it is dropped).
-    private void PutFilesBack(VirtualFileSystem files, PrefabLibrary library, List<PrefabEditFile> written)
+    // Puts the files back as they were read, and the library with them; returns the files that could not be put back (they hold the applied text, and the library follows them).
+    private List<PrefabEditFile> PutFilesBack(VirtualFileSystem files, PrefabLibrary library, List<PrefabEditFile> written)
     {
+        var notBack = new List<PrefabEditFile>();
         foreach (PrefabEditFile file in written)
         {
             try
             {
                 files.WriteAllBytes(file.Path, file.Original);
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+#pragma warning disable CA1031 // Whatever a write throws, the other files are still put back: the files that were not are told.
+            catch (Exception e) when (e is not OutOfMemoryException)
+#pragma warning restore CA1031
             {
                 Log.Error("Prefab", $"{file.Path} could not be put back as it was: {e.Message}");
+                notBack.Add(file);
             }
         }
 
         foreach (PrefabEditFile file in written)
         {
-            library.Reload(file.Path, MaxLoadEntities);
+            try
+            {
+                library.Reload(file.Path, MaxLoadEntities);
+            }
+#pragma warning disable CA1031 // The library follows what the disk says; one that cannot be read keeps its document.
+            catch (Exception e) when (e is not OutOfMemoryException)
+#pragma warning restore CA1031
+            {
+                Log.Error("Prefab", $"{file.Path} could not be read again: {e.Message}");
+            }
         }
+
+        return notBack;
     }
 
     // One override into the files.

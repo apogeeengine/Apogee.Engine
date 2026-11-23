@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Apogee.Ecs;
 using Apogee.Reflection;
@@ -263,6 +264,12 @@ public sealed class PrefabOverrideFuzzTests : PrefabFuzzBase
             var now = new HashSet<string>(World.PrefabOverrides(root).Select(Key));
             foreach (PrefabOverride applied in chosen)
             {
+                // (The name of an instance that an apply made part of another is the other's to say: it is still there, and is the instance's own.)
+                if (applied is { Kind: PrefabOverrideKind.Name, Target: "" })
+                {
+                    continue;
+                }
+
                 Assert.DoesNotContain(Key(applied), now);
             }
         }
@@ -270,6 +277,74 @@ public sealed class PrefabOverrideFuzzTests : PrefabFuzzBase
 
     // What an override is about, whichever listing it is in (the address of the instance is not part of it).
     private static string Key(PrefabOverride o) => $"{o.Kind}|{o.Target}|{o.Component}|{o.Field}|{(o.Kind == PrefabOverrideKind.AddedEntity ? o.Entity.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) : "")}";
+
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void AWriteThatFailsLeavesTheFilesAndTheWorldAsTheyWereOrTheWorldFollowingTheDisk(int seed)
+    {
+        var random = new Random(seed * 41 + 7);
+        World.LoadScene(Base());
+        Edits(World, new Random(seed), EditCount(seed));
+        AssertNamesAreUnique(World);
+
+        foreach (Entity root in AllInstances())
+        {
+            if (!World.IsAlive(root))
+            {
+                continue;
+            }
+
+            List<PrefabOverride> applicable = [.. World.PrefabOverrides(root).Where(static o => o.Kind != PrefabOverrideKind.Unapplied)];
+            if (applicable.Count == 0)
+            {
+                continue;
+            }
+
+            List<PrefabOverride> chosen = [.. applicable.Where(_ => random.Next(2) == 0)];
+            if (chosen.Count == 0)
+            {
+                chosen.Add(applicable[0]);
+            }
+
+            // Some of the first four writes fail: the ones of the files, the put-backs of what was written.
+            Faults.FailOn([.. Enumerable.Range(1, 4).Where(_ => random.Next(2) == 0)]);
+            string files = Files2();
+            string world = Dump(World);
+            int changes = 0;
+            void Count(PrefabUpdate _) => changes++;
+            World.PrefabsChanged += Count;
+            bool failed = false;
+            try
+            {
+                World.ApplyOverrides(root, chosen, random.Next(2) == 0 ? PrefabApplyTarget.InstancePrefab : PrefabApplyTarget.SourcePrefab);
+            }
+            catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                failed = true;
+            }
+            finally
+            {
+                World.PrefabsChanged -= Count;
+                Faults.FailOn();
+            }
+
+            Assert.False(World.HasPendingPrefabUpdates);
+            if (failed && files == Files2())
+            {
+                // Nothing is on the disk that was not: the world is as it was, and nobody is told that it changed.
+                Assert.Equal(world, Dump(World));
+                Assert.Equal(0, changes);
+            }
+
+            // Whatever came of it, the world is what the disk says: its scene loads over the files into the same world.
+            AssertNamesAreUnique(World);
+            string saved = World.SaveScene();
+            using World loaded = OtherWorld();
+            loaded.LoadScene(saved);
+            Assert.Equal(Dump(World), Dump(loaded));
+            Assert.Equal(saved, loaded.SaveScene());
+        }
+    }
 
     private IEnumerable<Entity> Ancestors(Entity entity)
     {

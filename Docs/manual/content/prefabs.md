@@ -323,7 +323,8 @@ instance out for each call: to ask about many fields list once and use `PrefabOv
 [a changed prefab](#when-the-prefab-changes) updates it, so the entities that stay keep their ids (the selection stays valid), what is destroyed takes what is below it, and entity fields elsewhere that named
 a destroyed entity are emptied. It is all or nothing: an instance that cannot be updated (it would be over `MaxLoadEntities`, an observer throws) is as it was and the call throws
 `InvalidOperationException`. A list that is out of date (an override that is not one any more) is an `ArgumentException`. The root of an instance inside another cannot be reverted alone (its changes
-are the outer instance's: revert them there, where they have a longer address). `RevertAllOverrides` reverts everything except what is kept aside and
+are the outer instance's: revert them there, where they have a longer address). An instance whose prefab is missing cannot be reverted either, as it cannot have an override applied: nothing says what it should be
+(`DropUnappliedOverrides` still lets go of what it keeps aside). `RevertAllOverrides` reverts everything except what is kept aside and
 **where the instance is placed** (the position and rotation of its root: putting an instance back to its prefab does not move it to the prefab's origin); the entities it added are destroyed. Revert the
 placement with `RevertOverride`, and any one change by `RevertOverrides`. `ApplyAllOverrides` leaves the placement out the same way, so that placing a lamp does not move every lamp of the game; apply it with
 `ApplyOverride` when that is what is meant.
@@ -343,16 +344,24 @@ own position for its lamps, or the Health it pins, are not changes of the lamp, 
 - **What is written must stand on its own.** An Entity field has to name an entity of the same instance (it is written with the file's id for it); one that names something outside (a scene entity, an entity
   the instance added that is not applied with it) is refused, because the prefab cannot name it. Applying something that would make a prefab hold itself (an added entity that is an instance of the file, directly
   or through another) is refused too: the references of the files written and of the ones they name are followed, together, so a loop is found even when an override of the instance removes what would repeat.
-- **Refused before anything is written:** the instance's prefab is missing or unreadable; a file is not in a source that can be written (a mod's, a pack's), or is read-only; the file is not what the library
-  read (it changed on disk: `Reload` it and apply again; nothing is written over what someone else saved); an update is waiting (`ApplyPrefabUpdates` first, so that the file is written from entities made
-  from it); what would be written is not a prefab that loads. All of this is checked in memory first, and for every file of the call.
+- **Refused before anything is written:** the instance's prefab is missing or unreadable; a file is not in a source that can be written (a mod's, a pack's), or is read-only (for a link, the file it
+  leads to: that is where the write goes); the file is not what the library read (it changed on disk: `Reload` it and apply again; nothing is written over what someone else saved); an update is waiting
+  (`ApplyPrefabUpdates` first, so that the file is written from entities made from it); what would be written is not a prefab that loads. All of this is checked in memory first, and for every file of the
+  call. A value that the file says already is not written: an apply that changes no file returns null.
 - **All or nothing.** The files are written by a write that leaves the old file whole when it is interrupted, read back and checked by the library (`PrefabLibrary.Reload`); when anything fails, or an instance
-  that holds one of the overrides cannot follow the new file, every file written is put back byte for byte and the instances are as they were. No backup file is made (the previous text is in memory
-  until the call ends). The other instances of the prefab (and the ones of prefabs that nest it) follow through the usual update, in this world and in every world that shares its library; the
-  returned `PrefabUpdate` says which entities that made and destroyed (an editor with an undo history clears or seals it, as it does for any change that came from a file).
-- **The file is written as the engine writes prefabs:** comments and layout of a hand-written file are not kept (the content is), as with `SavePrefabFile`. Keep a prefab you edit by hand in version control.
+  that holds one of the overrides cannot follow the new file, every file written is put back byte for byte, the instances are as they were, and nobody is told anything changed (`PrefabsChanged` does not
+  run for an apply that came to nothing). The other instances of the prefab (and the ones of prefabs that nest it) follow through the usual update, in this world and in every world that shares its library;
+  the returned `PrefabUpdate` says which entities that made and destroyed (an editor with an undo history clears or seals it, as it does for any change that came from a file).
+- **When a file cannot be put back** (the disk is full, the file was locked), the call throws an `IOException` that names the files that now hold the applied text. The instances then follow the disk, as
+  they do a file that changed: the world is what the files say, with the overrides that were applied taken off it, and `PrefabsChanged` tells what that did. Nothing is left that is neither.
+- **The file is written as the engine writes prefabs:** comments and layout of a hand-written file are not kept (the content is), as with `SavePrefabFile`. No backup file is made: `PreviewApply` (and
+  `PrefabUpdate.Written` for what was written) gives, for each file, what it held byte for byte and `Reformatted`, whether writing it changes more than the change (it holds comments or a layout of its own),
+  so that a tool can warn before it does, keep the text, and offer to write it back. Keep a prefab you edit by hand in version control.
+- **A race that is not closed.** Between the check that a file is what the library read and the write there are a few milliseconds (the write itself is made to a temporary file, flushed, and renamed over
+  the old one). The bytes are compared once more just before the first write, so a save by someone else in that window is the only thing that is lost, and an editor that holds the file open in a buffer and
+  saves it afterwards puts the old text back: the instance's override is gone and the file says the old value again. A tool that applies keeps the file out of the way of other editors while it does.
 - **What undo does:** nothing. An apply writes a file, which a step of the world's history does not take back, so `Apogee.Host.Editing` has no command for it: the tool offers "Apply" as an action, and
-  clears its history afterwards, since the update may have made and destroyed entities that older steps name. To take an apply back, the tool writes the earlier text of the file and reloads it.
+  clears its history afterwards, since the update may have made and destroyed entities that older steps name. To take an apply back, the tool writes the earlier text of the file (`Original`) and reloads it.
 
 **Breaking the link** (`BreakPrefabLink`, "Unpack") turns an instance into plain entities: the two components come off, the entities, ids, names and values stay, and a scene saves them as the entities they
 are. An instance inside it stays an instance (of its own prefab, with what the outer prefab said about it now a change against that prefab, as the scene holds it) unless `completely`. What the instance kept

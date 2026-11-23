@@ -90,6 +90,15 @@ public sealed record PrefabOverride(PrefabOverrideKind Kind, string Target, stri
     }
 }
 
+/// <summary>A prefab file an apply writes (<see cref="World.PreviewApply"/>) or wrote (<see cref="PrefabUpdate.Written"/>).</summary>
+/// <param name="Path">The file.</param>
+/// <param name="Original">What the file held before, byte for byte: what a tool keeps to offer an undo (writing it back and reading the prefab again).</param>
+/// <param name="Reformatted">
+/// Whether the file is laid out in a way the engine does not write (comments, its own indentation or attribute order): the apply writes it in the engine's layout, so more than the change differs, and a tool
+/// warns before it does that to a file a person wrote.
+/// </param>
+public sealed record PrefabFileWrite(string Path, ReadOnlyMemory<byte> Original, bool Reformatted);
+
 /// <summary>An override found in the element of an instance as written, and where it is in that element (for taking it out again).</summary>
 internal sealed record FoundOverride(PrefabOverride Override, XmlNode Owner, string Absolute);
 
