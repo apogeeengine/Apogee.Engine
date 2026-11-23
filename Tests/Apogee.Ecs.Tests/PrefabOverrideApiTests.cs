@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Apogee.Content.Xml;
 using Apogee.Core.Numerics;
 using Apogee.Ecs;
 using Apogee.Reflection;
@@ -299,5 +300,438 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         World.MaxLoadEntities = 262144;
         Assert.Equal(before, PrefabFuzzBase.DumpTree(World, lamp));
         Assert.Equal(saved, World.SaveScene());
+    }
+
+    // ---- Applying
+
+    private const string LampFile = "prefabs/lamp.aprefab";
+    private const string CornerFile = "prefabs/corner.aprefab";
+
+    private Entity LoadCorner(string body = "")
+    {
+        World.LoadScene($"""
+            <Scene version="2">
+              <Entity id="1" name="Player"><Transform Position="1 2 3" Rotation="0 0 0 1" Scale="1 1 1"/></Entity>
+              <Entity id="2" name="Corner" prefab="{Corner}">{body}</Entity>
+            </Scene>
+            """);
+        return World.Lookup("Corner");
+    }
+
+    private XmlNode LampDocument() => XmlNode.Parse(Read(LampFile));
+
+    private static XmlNode EntityElement(XmlNode document, int id)
+    {
+        XmlNode? Find(XmlNode node) =>
+            node.Name == "Entity" && node.Attribute("id") == id.ToString(System.Globalization.CultureInfo.InvariantCulture) ? node : node.Children.Select(Find).FirstOrDefault(found => found is not null);
+
+        return Find(document) ?? throw new InvalidOperationException($"no entity {id}");
+    }
+
+    [Fact]
+    public void ApplyingAFieldWritesItToTheFileAndTheOtherInstancesFollow()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\"><Health Max=\"40\"/></Override>");
+        Entity other = World.Lookup("Lamp 2");
+        Entity bulb = Child(lamp, "Bulb");
+        string uid = LampDocument().Attribute("uid")!;
+
+        PrefabUpdate? update = World.ApplyOverride(lamp, World.PrefabOverrides(lamp).Single());
+
+        XmlNode document = LampDocument();
+        Assert.Equal("40", EntityElement(document, 2).Child("Health")!.Attribute("Max"));
+        Assert.Equal("5", EntityElement(document, 2).Child("Health")!.Attribute("Current"));
+        Assert.Equal(uid, document.Attribute("uid"));
+        Assert.Equal("4", document.Attribute("nextId"));
+        Assert.Equal(40, World.Get<Health>(Child(other, "Bulb")).Max);          // the other instance follows
+        Assert.Equal(bulb, Child(lamp, "Bulb"));                                // and the entity is the same
+        Assert.Equal(40, World.Get<Health>(bulb).Max);
+        Assert.Empty(World.PrefabOverrides(lamp));
+        Assert.DoesNotContain("<Override", World.SaveScene(), StringComparison.Ordinal);
+        Assert.Contains(lamp, update!.Updated);
+        Assert.Contains(other, update.Updated);
+        Assert.False(World.HasPendingPrefabUpdates);
+    }
+
+    [Fact]
+    public void TheFileIsWrittenAsAPrefabThatLoadsInAnotherWorld()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\" name=\"Globe\"><Health Max=\"40\"/></Override><Entity id=\"9\" name=\"Cord\"/>");
+
+        World.ApplyAllOverrides(lamp);
+
+        using World another = OtherWorld();
+        Entity made = another.Instantiate(LampPath);
+        Assert.Equal(["Globe", "Base", "Cord"], NamesBelow(another, made));
+        Assert.Equal(40, another.Get<Health>(Child(another, made, "Globe")).Max);
+    }
+
+    [Fact]
+    public void ApplyingANameRenamesTheEntityInTheFile()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\" name=\"Globe\"/>");
+
+        World.ApplyAllOverrides(lamp);
+
+        Assert.Equal("Globe", EntityElement(LampDocument(), 2).Attribute("name"));
+        Assert.Equal(["Globe", "Base"], NamesBelow(World, World.Lookup("Lamp 2")));
+        Assert.Empty(World.PrefabOverrides(lamp));
+    }
+
+    [Fact]
+    public void ApplyingAComponentAddedOrRemovedChangesTheFile()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\"><Frozen append=\"true\"/><Flicker remove=\"true\"/></Override><Override entity=\"3\"><Marks Level=\"4\" append=\"true\"/></Override>");
+
+        World.ApplyAllOverrides(lamp);
+
+        XmlNode bulb = EntityElement(LampDocument(), 2);
+        Assert.NotNull(bulb.Child("Frozen"));
+        Assert.Null(bulb.Child("Flicker"));
+        Assert.Equal("4", EntityElement(LampDocument(), 3).Child("Marks")!.Attribute("Level"));
+        Entity otherBulb = Child(World.Lookup("Lamp 2"), "Bulb");
+        Assert.True(World.Has<Frozen>(otherBulb));
+        Assert.False(World.Has(otherBulb, World.FindComponent("Flicker")));
+        Assert.Empty(World.PrefabOverrides(lamp));
+    }
+
+    [Fact]
+    public void ApplyingAScriptsComponentDefinesItInTheFile()
+    {
+        Entity glow = World.DefineComponent("Glow", [("power", FieldKind.Float32), ("who", FieldKind.Entity)]);
+        Entity lamp = LoadLamp();
+        Entity bulb = Child(lamp, "Bulb");
+        World.Add(bulb, glow);
+
+        World.ApplyAllOverrides(lamp);
+
+        XmlNode document = LampDocument();
+        Assert.Contains(document.Child("Components")!.Children, c => c.Attribute("name") == "Glow");
+        Assert.NotNull(EntityElement(document, 2).Child("Glow"));
+        Assert.True(World.Has(Child(World.Lookup("Lamp 2"), "Bulb"), glow));
+    }
+
+    [Fact]
+    public void ApplyingAnAddedEntityGivesItAStableIdInTheFile()
+    {
+        Entity lamp = LoadLamp("<Entity id=\"9\" name=\"Cord\"><Marks Target=\"2/3\"/><Entity id=\"10\" name=\"Plug\"/></Entity>");
+        Entity cord = Child(lamp, "Cord");
+        Entity plug = Child(cord, "Plug");
+        Assert.Equal(Child(lamp, "Base"), World.Get<Marks>(cord).Target);
+
+        World.ApplyAllOverrides(lamp);
+
+        XmlNode document = LampDocument();
+        XmlNode written = EntityElement(document, 4);
+        Assert.Equal("Cord", written.Attribute("name"));
+        Assert.Equal("3", written.Child("Marks")!.Attribute("Target"));       // the Base of the file
+        Assert.Equal("Plug", EntityElement(document, 5).Attribute("name"));
+        Assert.Equal("6", document.Attribute("nextId"));
+        Assert.Equal(cord, Child(lamp, "Cord"));
+        Assert.Equal(plug, Child(cord, "Plug"));
+        Assert.Equal(4u, World.Get<PrefabMember>(cord).Id);
+        Assert.Equal(5u, World.Get<PrefabMember>(plug).Id);
+        Assert.Equal(Child(lamp, "Base"), World.Get<Marks>(cord).Target);
+        Entity otherCord = Child(World.Lookup("Lamp 2"), "Cord");
+        Assert.Equal(Child(World.Lookup("Lamp 2"), "Base"), World.Get<Marks>(otherCord).Target);     // another instance's own Base
+        Assert.Empty(World.PrefabOverrides(lamp));
+        Assert.Equal(["Bulb", "Base", "Cord"], NamesBelow(World, lamp));
+        Assert.DoesNotContain("<Override", World.SaveScene(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnEntityRemovedFromTheInstanceIsRemovedFromThePrefabForEveryone()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"3\" remove=\"true\"/>");
+
+        World.ApplyAllOverrides(lamp);
+
+        Assert.DoesNotContain("name=\"Base\"", Read(LampFile), StringComparison.Ordinal);
+        Assert.Equal(["Bulb"], NamesBelow(World, World.Lookup("Lamp 2")));
+        Assert.Empty(World.PrefabOverrides(lamp));
+        string scene = World.SaveScene();
+        Assert.DoesNotContain("<Override", scene, StringComparison.Ordinal);      // not kept aside either
+    }
+
+    [Fact]
+    public void ApplyingToAReadOnlyFileWritesNothing()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\"><Health Max=\"40\"/></Override>");
+        string path = System.IO.Path.Combine(Folder, LampFile);
+        string before = Read(LampFile);
+        var info = new System.IO.FileInfo(path) { IsReadOnly = true };
+        try
+        {
+            if (!new System.IO.FileInfo(path).IsReadOnly)
+            {
+                return; // this system cannot make a file read-only for this user
+            }
+
+            Assert.Throws<UnauthorizedAccessException>(() => World.ApplyAllOverrides(lamp));
+
+            Assert.Equal(before, Read(LampFile));
+            Assert.Equal(40, World.Get<Health>(Child(lamp, "Bulb")).Max);
+            Assert.Single(World.PrefabOverrides(lamp));
+            Assert.False(World.HasPendingPrefabUpdates);
+        }
+        finally
+        {
+            info.IsReadOnly = false;
+        }
+    }
+
+    [Fact]
+    public void ApplyingToAPrefabInASourceThatCannotBeWrittenWritesNothing()
+    {
+        using World reader = new() { Files = ReadOnlyFiles(), Assets = null };
+        reader.LoadScene(LampScene("<Override entity=\"2\"><Health Max=\"40\"/></Override>"));
+        Entity lamp = reader.Lookup("Lamp");
+        string before = Read(LampFile);
+
+        Assert.Throws<UnauthorizedAccessException>(() => reader.ApplyAllOverrides(lamp));
+
+        Assert.Equal(before, Read(LampFile));
+        Assert.Single(reader.PrefabOverrides(lamp));
+    }
+
+    private Apogee.Content.FileSystem.VirtualFileSystem ReadOnlyFiles()
+    {
+        var files = new Apogee.Content.FileSystem.VirtualFileSystem();
+        files.Mount("res://", new Apogee.Content.FileSystem.DirectorySource(Folder, writable: false));
+        return files;
+    }
+
+    [Fact]
+    public void ApplyingToAFileThatChangedOnTheDiskIsRefused()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\"><Health Max=\"40\"/></Override>");
+        string edited = Read(LampFile).Replace("Regen=\"0.5\"", "Regen=\"0.75\"", StringComparison.Ordinal);
+        Write(LampFile, edited);
+
+        Assert.Throws<InvalidOperationException>(() => World.ApplyAllOverrides(lamp));
+
+        Assert.Equal(edited, Read(LampFile));
+        Assert.Equal(40, World.Get<Health>(Child(lamp, "Bulb")).Max);
+        Assert.Single(World.PrefabOverrides(lamp));
+        Assert.False(World.HasPendingPrefabUpdates);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("broken")]
+    public void ApplyingWhenThePrefabFileIsMissingOrBrokenIsRefused(string what)
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\"><Health Max=\"40\"/></Override>");
+        if (what == "missing")
+        {
+            Delete(LampFile);
+        }
+        else
+        {
+            Write(LampFile, "<Prefab><Entity");
+        }
+
+        Assert.Throws<InvalidOperationException>(() => World.ApplyAllOverrides(lamp));
+
+        Assert.Equal(what == "missing", !System.IO.File.Exists(System.IO.Path.Combine(Folder, LampFile)));
+        Assert.Equal(40, World.Get<Health>(Child(lamp, "Bulb")).Max);
+        Assert.False(World.HasPendingPrefabUpdates);
+    }
+
+    [Fact]
+    public void ApplyingAnInstanceWhosePrefabWasNeverThereIsRefused()
+    {
+        World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Ghost\" prefab=\"res://prefabs/nothing.aprefab\"><Frozen append=\"true\"/></Entity></Scene>");
+        Entity ghost = World.Lookup("Ghost");
+
+        Assert.Throws<InvalidOperationException>(() => World.ApplyAllOverrides(ghost));
+    }
+
+    [Fact]
+    public void WhatIsKeptAsideCannotBeApplied()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"7\"><Health Max=\"40\"/></Override>");
+
+        Assert.Throws<ArgumentException>(() => World.ApplyOverride(lamp, World.PrefabOverrides(lamp).Single()));
+        Assert.Null(World.ApplyAllOverrides(lamp));     // nothing else to apply
+    }
+
+    [Fact]
+    public void ApplyingWhileAnUpdateWaitsIsRefused()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\"><Health Max=\"40\"/></Override>");
+        Write(LampFile, Read(LampFile).Replace("Regen=\"0.5\"", "Regen=\"0.75\"", StringComparison.Ordinal));
+        Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
+
+        Assert.Throws<InvalidOperationException>(() => World.ApplyAllOverrides(lamp));
+        World.ApplyPrefabUpdates();
+
+        Assert.NotNull(World.ApplyAllOverrides(lamp));
+        Assert.Equal("40", EntityElement(LampDocument(), 2).Child("Health")!.Attribute("Max"));
+        Assert.Equal("0.75", EntityElement(LampDocument(), 2).Child("Health")!.Attribute("Regen"));
+    }
+
+    [Fact]
+    public void AFieldNamingAnEntityOutsideTheInstanceCannotBeApplied()
+    {
+        Entity lamp = LoadLamp();
+        Entity bulb = Child(lamp, "Bulb");
+        World.Set(bulb, new Marks { Level = 2, Target = World.Lookup("Player"), Alive = true, Mass = 1.5 });
+        string before = Read(LampFile);
+
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => World.ApplyAllOverrides(lamp));
+
+        Assert.Contains("Marks.Target", error.Message, StringComparison.Ordinal);
+        Assert.Equal(before, Read(LampFile));
+        Assert.Equal(World.Lookup("Player"), World.Get<Marks>(bulb).Target);
+        Assert.Single(World.PrefabOverrides(lamp));
+    }
+
+    [Fact]
+    public void AFieldNamingAnotherEntityOfTheInstanceIsWrittenWithTheFilesId()
+    {
+        Entity lamp = LoadLamp();
+        Entity bulb = Child(lamp, "Bulb");
+        World.Set(bulb, new Marks { Level = 2, Target = Child(lamp, "Base"), Alive = true, Mass = 1.5 });
+
+        World.ApplyAllOverrides(lamp);
+
+        Assert.Equal("3", EntityElement(LampDocument(), 2).Child("Marks")!.Attribute("Target"));
+        Entity otherBulb = Child(World.Lookup("Lamp 2"), "Bulb");
+        Assert.Equal(Child(World.Lookup("Lamp 2"), "Base"), World.Get<Marks>(otherBulb).Target);
+    }
+
+    [Fact]
+    public void AnAddedEntityWhoseFieldsNameSomethingOutsideCannotBeApplied()
+    {
+        Entity lamp = LoadLamp("<Entity id=\"9\" name=\"Cord\"><Marks Target=\"1\"/></Entity>");
+        Entity cord = Child(lamp, "Cord");
+        World.Set(cord, new Marks { Target = World.Lookup("Player") });
+        string before = Read(LampFile);
+
+        Assert.Throws<InvalidOperationException>(() => World.ApplyAllOverrides(lamp));
+
+        Assert.Equal(before, Read(LampFile));
+        Assert.True(World.IsAlive(cord));
+        Assert.Equal(["Bulb", "Base", "Cord"], NamesBelow(World, lamp));
+    }
+
+    [Fact]
+    public void TheRootsOwnChangesAreWrittenIntoTheFilesRoot()
+    {
+        Entity lamp = LoadLamp("<Transform Position=\"5 0 0\"/><Marks Level=\"3\" append=\"true\"/>");
+
+        World.ApplyAllOverrides(lamp);
+
+        XmlNode root = EntityElement(LampDocument(), 1);
+        Assert.Equal("5 0 0", root.Child("Transform")!.Attribute("Position"));
+        Assert.Equal("3", root.Child("Marks")!.Attribute("Level"));
+        Assert.Equal(new Double3(5, 0, 0), World.Get<Transform>(World.Lookup("Lamp 2")).Position);
+    }
+
+    [Fact]
+    public void TwoInstancesWithDifferentOverridesKeepWhatWasNotApplied()
+    {
+        World.LoadScene($"""
+            <Scene version="2">
+              <Entity id="1" name="Lamp" prefab="{Lamp}"><Override entity="2"><Health Max="40"/></Override></Entity>
+              <Entity id="2" name="Lamp 2" prefab="{Lamp}"><Override entity="2"><Health Max="50" Regen="2"/></Override></Entity>
+            </Scene>
+            """);
+        Entity first = World.Lookup("Lamp");
+        Entity second = World.Lookup("Lamp 2");
+
+        World.ApplyOverride(first, World.PrefabOverrides(first).Single());
+
+        Assert.Empty(World.PrefabOverrides(first));
+        Assert.Equal(["Field 2|Health|Max", "Field 2|Health|Regen"], Listed(World, second));
+        Assert.Equal(50, World.Get<Health>(Child(second, "Bulb")).Max);
+        Assert.Equal(40, World.Get<Health>(Child(first, "Bulb")).Max);
+        Assert.Equal("40", EntityElement(LampDocument(), 2).Child("Health")!.Attribute("Max"));
+    }
+
+    [Fact]
+    public void AnOverrideInsideANestedPrefabCanBeAppliedToTheNestingPrefab()
+    {
+        Entity corner = LoadCorner("<Override entity=\"2/2\"><Health Max=\"77\"/></Override>");
+        string lampBefore = Read(LampFile);
+
+        World.ApplyOverride(corner, World.PrefabOverrides(corner).Single(), PrefabApplyTarget.InstancePrefab);
+
+        Assert.Equal(lampBefore, Read(LampFile));
+        XmlNode nested = EntityElement(XmlNode.Parse(Read(CornerFile)), 2);
+        XmlNode change = nested.Children.Single(c => c.Name == "Override");
+        Assert.Equal("2", change.Attribute("entity"));
+        Assert.Equal("77", change.Child("Health")!.Attribute("Max"));
+        Assert.Equal("9", change.Child("Health")!.Attribute("Current"));           // what was there stays
+        Assert.Equal(9, World.Get<Health>(Child(Child(corner, "Lamp 2"), "Bulb")).Max); // the other lamp of the corner is the lamp's
+        Assert.Equal(77, World.Get<Health>(Child(Child(corner, "Lamp"), "Bulb")).Max);
+        Assert.Empty(World.PrefabOverrides(corner));
+    }
+
+    [Fact]
+    public void AnOverrideInsideANestedPrefabCanBeAppliedToThePrefabThatDefinesIt()
+    {
+        Entity corner = LoadCorner("<Override entity=\"2/2\"><Health Max=\"77\"/></Override>");
+        string cornerBefore = Read(CornerFile);
+
+        World.ApplyOverride(corner, World.PrefabOverrides(corner).Single(), PrefabApplyTarget.SourcePrefab);
+
+        Assert.Equal(cornerBefore, Read(CornerFile));
+        Assert.Equal("77", EntityElement(LampDocument(), 2).Child("Health")!.Attribute("Max"));
+        Assert.Equal(77, World.Get<Health>(Child(Child(corner, "Lamp 2"), "Bulb")).Max);       // every lamp has it now
+        Assert.Equal(77, World.Get<Health>(Child(Child(corner, "Lamp"), "Bulb")).Max);
+        Assert.Empty(World.PrefabOverrides(corner));
+    }
+
+    [Fact]
+    public void AnOverrideTheNestingPrefabPinsStaysAfterApplyingToTheSource()
+    {
+        // The corner's own file says the first lamp's bulb has Current 9: applying a Current of 3 to the lamp's file leaves the corner's 9 in the way.
+        Entity corner = LoadCorner("<Override entity=\"2/2\"><Health Current=\"3\"/></Override>");
+
+        World.ApplyOverride(corner, World.PrefabOverrides(corner).Single(), PrefabApplyTarget.SourcePrefab);
+
+        Assert.Equal("3", EntityElement(LampDocument(), 2).Child("Health")!.Attribute("Current"));
+        Assert.Equal(3, World.Get<Health>(Child(Child(corner, "Lamp"), "Bulb")).Current);          // the live value is still what was applied
+        Assert.Equal(["Field 2/2|Health|Current"], Listed(World, corner));                           // and it is still an override: the corner pins 9
+    }
+
+    [Fact]
+    public void ANestedInstanceCanApplyItsOwnChangesToItsPrefab()
+    {
+        Entity corner = LoadCorner();
+        Entity nested = Child(corner, "Lamp");
+        Entity bulb = Child(nested, "Bulb");
+        Marks marks = World.Get<Marks>(bulb);
+        marks.Level = 7;
+        World.Set(bulb, marks);
+
+        Assert.Equal(["Field 2|Marks|Level"], Listed(World, nested).Where(x => x.Contains("Marks", StringComparison.Ordinal)).ToArray());
+        World.ApplyOverride(nested, World.PrefabOverrides(nested).Single(o => o.Component == "Marks"));
+
+        Assert.Equal("7", EntityElement(LampDocument(), 2).Child("Marks")!.Attribute("Level"));
+        Assert.Equal(7, World.Get<Marks>(Child(Child(corner, "Lamp 2"), "Bulb")).Level);
+        Assert.Equal(bulb, Child(nested, "Bulb"));
+        Assert.Empty(World.PrefabOverrides(corner));
+    }
+
+    [Fact]
+    public void AnInstanceThatCannotFollowTheFileLeavesBothAsTheyWere()
+    {
+        Entity lamp = LoadLamp("<Override entity=\"2\"><Health Max=\"40\"/></Override><Entity id=\"9\" name=\"Cord\"/>");
+        string before = Read(LampFile);
+        string dump = PrefabFuzzBase.DumpTree(World, lamp);
+        World.MaxLoadEntities = 3;     // the lamp is three entities; with the Cord the instance is four: it cannot be planned
+
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => World.ApplyOverride(lamp, World.PrefabOverrides(lamp).Single(o => o.Kind == PrefabOverrideKind.Field)));
+
+        Assert.Contains("put back", error.Message, StringComparison.Ordinal);
+        World.MaxLoadEntities = 262144;
+        Assert.Equal(before, Read(LampFile));
+        Assert.Equal(dump, PrefabFuzzBase.DumpTree(World, lamp));
+        Assert.Equal(2, World.PrefabOverrides(lamp).Count);
+        Assert.False(World.HasPendingPrefabUpdates);
+        Assert.Equal(["Bulb", "Base"], NamesBelow(World, World.Lookup("Lamp 2")));
     }
 }

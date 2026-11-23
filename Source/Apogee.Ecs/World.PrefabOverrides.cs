@@ -659,7 +659,9 @@ public sealed unsafe partial class World
             return;
         }
 
-        RemoveFromCapture(edit, root, applied);
+        // What the file says now is not said again, except what would not mean the same: a removal of what the file no longer has would be kept aside, and an added entity would be made twice. A changed
+        // field, a name or an added component is left: against the new file it is the same value, and where a file between the instance and this one pins another, it keeps what was applied.
+        RemoveFromCapture(edit, root, [.. applied.Where(static o => o.Kind is PrefabOverrideKind.RemovedComponent or PrefabOverrideKind.RemovedEntity or PrefabOverrideKind.AddedEntity)]);
         var moved = new Dictionary<string, string>(StringComparer.Ordinal);
         var arrived = new List<(string Address, Entity Entity)>();
         foreach ((Entity entity, string hops, string local) in placed)

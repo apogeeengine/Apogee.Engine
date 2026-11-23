@@ -85,6 +85,9 @@ public abstract class PrefabTestBase : IDisposable
 
     protected VirtualFileSystem Files { get; }
 
+    /// <summary>The folder <c>res://</c> is.</summary>
+    protected string Folder => _folder;
+
     protected AssetDatabase Assets { get; }
 
     protected World World { get; }
