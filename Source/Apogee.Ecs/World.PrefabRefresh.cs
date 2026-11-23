@@ -44,6 +44,7 @@ public sealed unsafe partial class World
     private HashSet<ulong>? _upToDateNow;                              // the instances ApplyPrefabUpdates leaves alone because they were saved over their prefab
     private bool _asCurrent;                                           // an instance of that kind is being read: its prefabs are read as they are, not as they were
     private Aftermath? _aftermath;                                     // what the instances updated so far did to the world, while ApplyPrefabUpdates runs
+    private Action<CaptureEdit>? _captureEdit;                         // what changes the saved form of an instance before it is updated from it (a revert, an apply)
 
     private DanglingRef? DroppedBy(ulong entity) => _aftermath is { } aftermath && aftermath.Dropped.TryGetValue(entity, out DanglingRef? named) ? named : null;
 
@@ -457,7 +458,7 @@ public sealed unsafe partial class World
     private static bool IsRecoverable(Exception e) => e is not OutOfMemoryException;
 
     // Updates one instance, or leaves it as it was and says why.
-    private void UpdateInstance(Entity root, IReadOnlyDictionary<uint, XmlNode?> before, PrefabUpdate update, Aftermath aftermath)
+    private void UpdateInstance(Entity root, IReadOnlyDictionary<uint, XmlNode?>? before, PrefabUpdate update, Aftermath aftermath)
     {
         InstanceUpdate plan;
         try
@@ -537,14 +538,14 @@ public sealed unsafe partial class World
     }
 
     // Steps 1 to 3 (see the top of the file): nothing is changed, and an instance that cannot be updated throws.
-    private InstanceUpdate PlanUpdate(Entity root, IReadOnlyDictionary<uint, XmlNode?> before)
+    private InstanceUpdate PlanUpdate(Entity root, IReadOnlyDictionary<uint, XmlNode?>? before)
     {
         // 1. What the instance is now, read with the documents it was made from.
         var outside = new Dictionary<string, Entity>(StringComparer.Ordinal);
         int number = _numbered;
         SavePlan saved;
         XmlNode document;
-        _asOf = new Dictionary<uint, XmlNode?>(before);
+        _asOf = before is null ? null : new Dictionary<uint, XmlNode?>(before); // no documents given: the ones the entities were made from (what a load reads while a change waits)
         try
         {
             saved = PlanSave([root], _ => checked(++number), default, outside);
@@ -573,6 +574,9 @@ public sealed unsafe partial class World
                 throw new InvalidOperationException($"the entity '{GetName(member) ?? member.Id.ToString(CultureInfo.InvariantCulture)}' is not part of what the instance and its prefab say, so it cannot be told from one the prefab dropped");
             }
         }
+
+        // What the caller changes in the document before it is planned again: the overrides that are reverted or applied (World.PrefabOverrides.cs).
+        _captureEdit?.Invoke(new CaptureEdit(root, saved, document, living));
 
         // 2. What it should be: the load of that document, with the documents as they are now, at the depth the instance has in the world.
         ScenePlan target = ScenePlan.Build(document, NewExpander(new ExpansionBudget(MaxLoadEntities)), DepthOf(root));

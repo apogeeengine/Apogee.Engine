@@ -312,6 +312,24 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
         return null;
     }
 
+    /// <summary>Why a document could replace the one the library has for this prefab (it parses as one, holds no instance of itself, is not nested too deep or too big), or null. Nothing changes.</summary>
+    internal string? Problem(uint handle, XmlNode document, string origin, int maxEntities)
+    {
+        try
+        {
+            PrefabDocument.Check(document, origin, warnNextId: false);
+        }
+        catch (FormatException e)
+        {
+            return e.Message;
+        }
+
+        lock (_lock)
+        {
+            return NestingProblem(handle, document, maxEntities);
+        }
+    }
+
     // Tells the handlers (outside the lock), and lets go of the old document once they have all seen it.
     private void Announce(uint handle)
     {

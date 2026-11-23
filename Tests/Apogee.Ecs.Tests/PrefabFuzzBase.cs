@@ -190,9 +190,27 @@ public abstract class PrefabFuzzBase : PrefabTestBase
     }
 
     // Every entity by its place in the hierarchy (siblings by name: their order is not something a scene keeps), with its components and every field as text; an entity field is the path of what it names.
-    protected static unsafe string Dump(World world)
+    protected static string Dump(World world)
     {
         var text = new StringBuilder();
+        foreach (Entity root in world.Roots().OrderBy(e => world.GetName(e), StringComparer.Ordinal))
+        {
+            WriteTree(world, text, root, 0);
+        }
+
+        return text.ToString();
+    }
+
+    /// <summary>The same for one entity and what is below it.</summary>
+    public static string DumpTree(World world, Entity root)
+    {
+        var text = new StringBuilder();
+        WriteTree(world, text, root, 0);
+        return text.ToString();
+    }
+
+    private static unsafe void WriteTree(World world, StringBuilder text, Entity top, int topDepth)
+    {
         void Write(Entity entity, int depth)
         {
             string indent = new(' ', depth * 2);
@@ -229,12 +247,7 @@ public abstract class PrefabFuzzBase : PrefabTestBase
             }
         }
 
-        foreach (Entity root in world.Roots().OrderBy(e => world.GetName(e), StringComparer.Ordinal))
-        {
-            Write(root, 0);
-        }
-
-        return text.ToString();
+        Write(top, topDepth);
     }
 
     // How many edits a seed makes: from one to a few dozen, and the last seeds many more (a sequence that is long enough shows what a short one does not).
