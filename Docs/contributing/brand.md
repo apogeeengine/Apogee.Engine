@@ -37,8 +37,8 @@ Keep free space of **32 units** (one eighth of the mark's width: 12.5 %) on ever
 
 ## Minimum size
 
-- 48 px and above: the full mark (variant A in the files above, unless the project chooses another).
-- 24 to 47 px: the band and its gaps are about one pixel wide and the hairline circle is faint, but the W still reads. Prefer a variant without the hairline circle (B) here.
+- 48 px and above: the full mark (variant A in the files above).
+- 24 to 47 px: the band and its gaps are about one pixel wide and the hairline circle is faint, but the W still reads. Use the compact mark (B) here, and for app icons and banners at any size.
 - Below 24 px (favicons at 16 px): use the variant where the band stays behind the body (C), whose W is the cleanest at tiny sizes.
 
 The wordmark is not used under 96 px high.
@@ -61,7 +61,7 @@ A multi-size Windows icon, if it is needed, is `magick png/weft-mark-16.png png/
 
 ## The three variants
 
-Three constructions of the same idea, to choose from. The files are in `Docs/assets/brand/variants/` (the top-level SVGs above are variant A for now). Once one is chosen, the other two are deleted and this section is replaced by the decision.
+Three constructions of the same idea, in `Docs/assets/brand/variants/`. **Decision:** A is the primary mark (the top-level SVGs above). B, A without the hairline circle, is the compact mark, for app icons, banners and a mark placed straight on a black background, where the circle adds nothing or gets in the way. C is kept only for favicons below 24 px.
 
 | | A | B | C |
 |---|---|---|---|
