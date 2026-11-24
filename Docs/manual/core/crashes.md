@@ -5,7 +5,7 @@ sends the files, or you ask for them.
 
 ## The log file
 
-A game started by `Apogee.Runtime` (`--game <folder>`, or a shipped game starting itself) and the editor open a `FileLogSink` when they start. It writes the same lines as the console
+A game started by `Weft.Runtime` (`--game <folder>`, or a shipped game starting itself) and the editor open a `FileLogSink` when they start. It writes the same lines as the console
 (`HH:mm:ss.fff LVL [Category] message`), one `Log` entry per line, and flushes after every line, so that the end of the file survives a crash. The first lines say which engine version, which OS and
 which command line the run had. `Log.MinimumLevel` filters what reaches it, as it filters the console.
 
@@ -25,8 +25,8 @@ which command line the run had. `Log.MinimumLevel` filters what reaches it, as i
 | Windows | `%LOCALAPPDATA%` | `C:\Users\you\AppData\Local\Acme\Truck\crashes\` |
 | macOS | `~/Library/Application Support` | `~/Library/Application Support/Acme/Truck/crashes/` |
 
-The editor keeps its own `logs` and `crashes` in `<local application data>/Apogee/Editor`. Before a game's folder is known (while the program parses its arguments), and for commands that are not a
-game (`--pack`, `--import`, ...), reports go to `<local application data>/Apogee/Runtime/crashes`.
+The editor keeps its own `logs` and `crashes` in `<local application data>/Weft/Editor`. Before a game's folder is known (while the program parses its arguments), and for commands that are not a
+game (`--pack`, `--import`, ...), reports go to `<local application data>/Weft/Runtime/crashes`.
 
 ## Crash reports
 
@@ -69,7 +69,7 @@ accurate: the run did not end by itself.
 The operating system captures native crashes better than a program can from inside itself. To find the cause of a crash in native code:
 
 - **Linux.** Allow core dumps (`ulimit -c unlimited` in the shell that runs the game), and see where they go with `cat /proc/sys/kernel/core_pattern`. On systemd machines `coredumpctl list` and
-  `coredumpctl gdb` open the last one. `gdb` with `bt` (and `thread apply all bt`) prints the stacks. `./build.sh aot` keeps the symbols in `Apogee.Runtime.dbg` next to the program: keep that file
+  `coredumpctl gdb` open the last one. `gdb` with `bt` (and `thread apply all bt`) prints the stacks. `./build.sh aot` keeps the symbols in `Weft.Runtime.dbg` next to the program: keep that file
   for every build you ship, and load it in gdb with `symbol-file`.
 - **Windows.** Turn on Windows Error Reporting's local dumps: in the registry key `HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps` set `DumpFolder` (a folder that exists) and
   `DumpType` to `2` (a full dump), or add a key named after the executable to limit it to the game. Open the `.dmp` in Visual Studio or WinDbg with the `.pdb` files that the build kept. The Event
@@ -93,7 +93,7 @@ A report and a log may contain the command line, folder names (which often inclu
 
 ## Using it from C#
 
-`Apogee.Runtime` and the editor do all of this themselves. A program of your own does the same in a few lines:
+`Weft.Runtime` and the editor do all of this themselves. A program of your own does the same in a few lines:
 
 ```csharp
 var recent = new RecentLogSink();                       // the lines a report quotes

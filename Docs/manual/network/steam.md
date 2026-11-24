@@ -1,6 +1,6 @@
 # Steam
 
-`Apogee.Steam` connects a game to **Steam**: the player's name and language, the overlay, achievements, stats and leaderboards, rich presence, the timeline, cloud saves, and Workshop mods. In a game, scripts see
+`Weft.Steam` connects a game to **Steam**: the player's name and language, the overlay, achievements, stats and leaderboards, rich presence, the timeline, cloud saves, and Workshop mods. In a game, scripts see
 it as the global `steam` (the `SteamSystem` class). It is the base game's: **a mod cannot use it** (`ModsBlocked`), and a base-game function a mod calls still acts as the base game.
 
 Steam's library (`steam_api`) is Valve's redistributable and is in the repository; the Steam *client* is the player's. **When Steam is not running, or the game was not started with an app id,
@@ -80,9 +80,9 @@ Mods are read when the game starts. `workshop_item_installed(id)` says a subscri
 
 ```sh
 cd path/with/steam_appid.txt          # the game's app id; the Steam client must be running and signed in as a partner of the game
-Apogee.Runtime --workshop-upload Mods/my_mod --title "My mod" --description "What it does" --preview preview.png --tags Vehicles,Tools --visibility private
-Apogee.Runtime --workshop-upload Mods/my_mod --title "My mod" ... --confirm      # this one really uploads
-Apogee.Runtime --workshop-upload Mods/my_mod --item 1234567890 --note "Fixed the hitch" --confirm   # an update of an item
+Weft.Runtime --workshop-upload Mods/my_mod --title "My mod" --description "What it does" --preview preview.png --tags Vehicles,Tools --visibility private
+Weft.Runtime --workshop-upload Mods/my_mod --title "My mod" ... --confirm        # this one really uploads
+Weft.Runtime --workshop-upload Mods/my_mod --item 1234567890 --note "Fixed the hitch" --confirm     # an update of an item
 ```
 
 Uploading makes something visible under the author's Steam account, so **without `--confirm` the command only prints what it would send**. A new item starts `private`: change it to `public` on the Workshop page, or
@@ -97,10 +97,10 @@ library's development switch, and it turns the relaunch off: that is how you run
 your own). A watched game (`--watch`) never asks for a relaunch. `--workshop-upload` still reads the `steam_appid.txt` of the current folder.
 
 Steam Input is not wrapped: SDL sees Steam's virtual gamepad, so a player's Steam controller configuration works with the [input actions](../platform/input.md) as it is. Steam's networking and matchmaking are bound
-([Native libraries](../native/native-libraries.md#steamworks-apogeenativesteam)) but have no engine layer yet.
+([Native libraries](../native/native-libraries.md#steamworks-weftnativesteam)) but have no engine layer yet.
 
 ## Tests
 
-- `Tests/Apogee.Steam.Tests`: the inactive system (every call), the Workshop source, `workshop://` through the package finder, and the cloud's fallback folder. They need no Steam.
-- **Against a real client** (off by default): `APOGEE_STEAM_TESTS=1 ./build.sh test` with the Steam client running and signed in. They use *Spacewar* (480) and change that account's Spacewar stats and cloud files.
+- `Tests/Weft.Steam.Tests`: the inactive system (every call), the Workshop source, `workshop://` through the package finder, and the cloud's fallback folder. They need no Steam.
+- **Against a real client** (off by default): `WEFT_STEAM_TESTS=1 ./build.sh test` with the Steam client running and signed in. They use *Spacewar* (480) and change that account's Spacewar stats and cloud files.
 - `Tests/Luau/steam.test.luau`: the same inactive behavior as scripts see it, in the runtime's Luau tests.

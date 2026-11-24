@@ -33,25 +33,25 @@ jobs:
         shell: bash
     env:
       # The native libraries that must load (the tests fail instead of skipping).
-      APOGEE_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,apogee_net,zstd,freetype,ktx,slang_c,jolt,metal_c
-      APOGEE_REQUIRE_METAL_COMPILER: "1"
+      WEFT_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,weft_net,zstd,freetype,ktx,slang_c,jolt,metal_c
+      WEFT_REQUIRE_METAL_COMPILER: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
         with:
           lfs: ${{ matrix.lfs }}
-      - run: dotnet build Apogee.slnx -c Release
-      # Whether the runner's (paravirtualized) GPU meets the Metal baseline. If it does the GPU tests and renders must run on it (APOGEE_REQUIRE_METAL), else they skip with this reason in the log.
+      - run: dotnet build Weft.slnx -c Release
+      # Whether the runner's (paravirtualized) GPU meets the Metal baseline. If it does the GPU tests and renders must run on it (WEFT_REQUIRE_METAL), else they skip with this reason in the log.
       - name: GPUs (Metal probe)
         run: |
-          dotnet run --no-build -c Release --project Source/Apogee.Runtime -- --gpu-info | tee gpu-info.txt
+          dotnet run --no-build -c Release --project Source/Weft.Runtime -- --gpu-info | tee gpu-info.txt
           if grep -Eq '^metal: .* ok$' gpu-info.txt; then
-            echo "APOGEE_REQUIRE_METAL=1" >> "$GITHUB_ENV"
+            echo "WEFT_REQUIRE_METAL=1" >> "$GITHUB_ENV"
             echo "A Metal GPU that meets the baseline is here: the Metal tests are required."
           else
             echo "No Metal GPU that meets the baseline on this runner: the Metal GPU tests skip."
           fi
-      - run: dotnet test --solution Apogee.slnx -c Release --no-build
+      - run: dotnet test --solution Weft.slnx -c Release --no-build
       # The system's crash reports (the faulting thread's frames), when a test program dies: it leaves only an exit code otherwise.
       - name: Crash diagnostics
         if: failure()
@@ -70,26 +70,26 @@ jobs:
       - name: NativeAOT publish and shader import
         run: ./build.sh aot
       - name: Luau tests in the NativeAOT runtime
-        run: Bin/publish/runtime/Apogee.Runtime --luau-test Tests/Luau
+        run: Bin/publish/runtime/Weft.Runtime --luau-test Tests/Luau
       - name: Fixture game
         run: |
-          Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
+          Bin/publish/runtime/Weft.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
           test -s "$RUNNER_TEMP/game-user/ran.txt"
           test -s "$RUNNER_TEMP/game-user/scene.txt"
           test -s "$RUNNER_TEMP/game-user/prefab.txt"
           test -s "$RUNNER_TEMP/game-user/def.txt"
       # Only when the probe found a Metal GPU that meets the baseline: the fixture game rendered on it.
       - name: Rendered on Metal
-        if: env.APOGEE_REQUIRE_METAL == '1'
+        if: env.WEFT_REQUIRE_METAL == '1'
         run: |
-          Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user-metal" --headless --size 640x360 --frames 10 --screenshot Bin/game-metal.png
+          Bin/publish/runtime/Weft.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user-metal" --headless --size 640x360 --frames 10 --screenshot Bin/game-metal.png
           test -s Bin/game-metal.png
-      # The export test (docs: Docs/manual/tools/export.md). The fixture game is exported for this platform, cooked and encrypted, by the published runtime. APOGEE_PACK_KEY is a fixed test key that is set on
+      # The export test (docs: Docs/manual/tools/export.md). The fixture game is exported for this platform, cooked and encrypted, by the published runtime. WEFT_PACK_KEY is a fixed test key that is set on
       # this step only. It is PUBLIC and worthless: it is made up, protects nothing, and an exported game carries its key anyway. Never ship a game with it; a real game's key is a secret of the release process.
       - name: Export the fixture game, cooked and encrypted
         env:
-          APOGEE_PACK_KEY: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
-        run: Bin/publish/runtime/Apogee.Runtime --export Tests/Fixtures/ShippedGame Bin/export --target ${{ matrix.rid }} --cooked
+          WEFT_PACK_KEY: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+        run: Bin/publish/runtime/Weft.Runtime --export Tests/Fixtures/ShippedGame Bin/export --target ${{ matrix.rid }} --cooked
       - name: Exported game, checked
         run: |
           app="Bin/export/Fixture Game.app"
@@ -191,9 +191,9 @@ jobs:
           rm -rf "$user"
           mkdir -p "$user/mods"
           cp -r Tests/Fixtures/ShippedGame/dev_mods/patcher "$user/mods/"
-          test -z "${APOGEE_PACK_KEY-}"
+          test -z "${WEFT_PACK_KEY-}"
           cd "$RUNNER_TEMP"
-          env -u APOGEE_PACK_KEY "$exe" --headless --frames 60 --user "$user" +connect_lobby 1
+          env -u WEFT_PACK_KEY "$exe" --headless --frames 60 --user "$user" +connect_lobby 1
           test -s "$user/ran.txt"
           test -s "$user/scene.txt"
           test -s "$user/prefab.txt"
@@ -202,17 +202,17 @@ jobs:
           test -s "$user/moddata/patcher/ran.txt"
       - name: Luau definitions
         run: |
-          Bin/publish/runtime/Apogee.Runtime --luau-defs Bin/defs
-          test -s Bin/defs/apogee.d.luau
+          Bin/publish/runtime/Weft.Runtime --luau-defs Bin/defs
+          test -s Bin/defs/weft.d.luau
       # What a Mac without CI runs, for the people who test on real hardware.
       - name: Build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apogee-${{ matrix.rid }}
+          name: weft-${{ matrix.rid }}
           path: Bin/publish/runtime
           retention-days: 14
       - name: Screenshots from Metal
-        if: env.APOGEE_REQUIRE_METAL == '1'
+        if: env.WEFT_REQUIRE_METAL == '1'
         uses: actions/upload-artifact@v4
         with:
           name: metal-screenshots-${{ matrix.rid }}

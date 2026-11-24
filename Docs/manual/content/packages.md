@@ -73,7 +73,7 @@ exception: one broken mod does not stop the game. `PackageSolver.Solve` is the s
 
 ## Running packages in Luau (`PackageLoader`)
 
-`PackageLoader` (in `Apogee.Scripting`) runs the packages of a `PackageSet` in a VM. A game wires its hooks into the VM's options and then loads:
+`PackageLoader` (in `Weft.Scripting`) runs the packages of a `PackageSet` in a VM. A game wires its hooks into the VM's options and then loads:
 
 ```csharp
 var loader = new PackageLoader(files, packages);
@@ -116,14 +116,14 @@ backslash, a drive) is refused before anything is looked up. `fs.exists` says `f
 ## Shaders in a mod
 
 A mod may bring Slang shaders. The shipped game has no shader compiler, so a mod's shaders must be **compiled by the modder**: run the engine's dev runtime on the mod's folder
-(`Apogee.Runtime --import <mod folder>`) and ship the result with the mod. The compiled files are in the mod's `imported/` folder (`imported/shaders/x.slang.ashader` and an `index.xml`), which
+(`Weft.Runtime --import <mod folder>`) and ship the result with the mod. The compiled files are in the mod's `imported/` folder (`imported/shaders/x.slang.ashader` and an `index.xml`), which
 `ShaderLibrary` and `ContentLoader` find at `mod://id/imported`. A bundle records the engine's shader ABI; after an engine update that changes it, the game says to import the mod again. In development, where
 the compiler is present, a mod's `.slang` source loads without importing. See [Asset import](import.md).
 
-## `Apogee.Runtime --game <folder>`
+## `Weft.Runtime --game <folder>`
 
 ```sh
-Apogee.Runtime --game Samples/Mods [--user <folder>] [--headless --frames 60 | --headless --screenshot out.png | (a window)]
+Weft.Runtime --game Samples/Mods [--user <folder>] [--headless --frames 60 | --headless --screenshot out.png | (a window)]
 ```
 
 The folder is `res://` (its `packages/` hold the game's packages), `user://` is `--user` or the platform's folder for the game's name (the player's mods are in `user://mods`). The runtime
@@ -133,7 +133,7 @@ base package that fails is an error of the game (exit code 2).
 ## Tests
 
 
-`Tests/Apogee.Content.Tests`: versions and ranges, the manifest (every field, every kind of problem), the solver (each reason to disable, cascade, cycles, order independent of discovery
-order, duplicate ids) and `PackageSet` over real folders and a zip (places, mounting, switched-off mods, problems, definitions built from the packages, disposal). `Tests/Apogee.Scripting.Tests` runs
+`Tests/Weft.Content.Tests`: versions and ranges, the manifest (every field, every kind of problem), the solver (each reason to disable, cascade, cycles, order independent of discovery
+order, duplicate ids) and `PackageSet` over real folders and a zip (places, mounting, switched-off mods, problems, definitions built from the packages, disposal). `Tests/Weft.Scripting.Tests` runs
 `PackageLoader` over real folders (order, owners and limits, aliases, `require` and `fs` confinement including that no real path leaks, failures that stay inside their package, a runaway mod
-stopped by its budget, definitions seen by scripts), and `Tests/Apogee.Runtime.Tests` runs `--game` end to end.
+stopped by its budget, definitions seen by scripts), and `Tests/Weft.Runtime.Tests` runs `--game` end to end.

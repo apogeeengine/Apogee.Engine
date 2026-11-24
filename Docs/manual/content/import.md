@@ -4,8 +4,8 @@ Source assets (glTF models, PNG and JPEG images, Slang shaders) are made for art
 is done once, not at every start.
 
 ```sh
-Apogee.Runtime --import Samples/Mods/res            # import what changed (in the folder's imported/)
-Apogee.Runtime --import Samples/Mods/res --force    # import everything again
+Weft.Runtime --import Samples/Mods/res              # import what changed (in the folder's imported/)
+Weft.Runtime --import Samples/Mods/res --force      # import everything again
 ./build.sh pack Samples/Mods/res Bin/data/game.pack --cooked   # pack the artifacts instead of the sources they replace
 ```
 
@@ -33,7 +33,7 @@ An image that a model reads is part of that model and is not imported on its own
 ## GPU texture compression
 
 Textures are cooked to **Basis Universal UASTC** inside KTX 2: one file for every platform, which `Ktx2Loader` transcodes when it loads to what the GPU samples (BC7 on desktop, ASTC 4x4 on mobile and Apple, RGBA8 where
-neither exists; `TextureCaps` says which). The encoder is the one in libktx (KTX-Software 4.4.2, [Native libraries](../native/native-libraries.md#libktx-apogeenativektx)); `BasisEncoder` drives it:
+neither exists; `TextureCaps` says which). The encoder is the one in libktx (KTX-Software 4.4.2, [Native libraries](../native/native-libraries.md#libktx-weftnativektx)); `BasisEncoder` drives it:
 
 - **Colour and data maps**: UASTC level 2 (the default speed/quality trade-off) with RDO at quality 1.0, which shapes the blocks so that zstd squeezes them further, then zstd level 18 over the levels.
 - **Normal maps** (a material's normal texture inside a model, or an image whose settings say `normalMap="true"`): UASTC level 3, no RDO, and linear whatever `srgb` says: errors in a normal show as lighting noise, so these take
@@ -116,7 +116,7 @@ stops the pack, with its path and line.
 
 ## Shaders
 
-Shipped games never load the Slang compiler. `./build.sh aot` publishes the runtime and then runs `Apogee.Runtime --import` on its `Shaders` folder, which writes `Shaders/imported/*.ashader`; the
+Shipped games never load the Slang compiler. `./build.sh aot` publishes the runtime and then runs `Weft.Runtime --import` on its `Shaders` folder, which writes `Shaders/imported/*.ashader`; the
 renderers load those (`ShaderLibrary`, [Rendering](../graphics/rendering.md#where-shaders-come-from-shaderlibrary)). In development nothing needs importing: a shader without an artifact is compiled and cached, as before. The bundle records the
 engine's shader ABI, so a mod's old compiled shader is refused with "import it again" rather than crashing the driver; to make a mod's shaders, import the mod's folder with the engine's dev runtime. CI runs the published runtime
 with the compiler libraries and every `.slang` source deleted, running the fixture game, to prove it.
@@ -124,7 +124,7 @@ with the compiler libraries and every `.slang` source deleted, running the fixtu
 ## Cooked XML
 
 Authored XML (scenes and prefabs, and later materials) and definitions are small, but a shipped game still gains from not parsing text: a cooked file is the same document in a binary encoding, `APXB`, in
-`Apogee.Content.Xml.XmlBinary`. It is not typed by the reflection registry: it holds the `XmlNode` tree (names, attributes in their order, text, the line each element started on, children) with every
+`Weft.Content.Xml.XmlBinary`. It is not typed by the reflection registry: it holds the `XmlNode` tree (names, attributes in their order, text, the line each element started on, children) with every
 distinct name and value stored once, so it works for any XML file, does not depend on which components the engine had when the file was cooked, and gives back exactly the tree that was written. A scene with
 a thousand entities is less than half the size of its text.
 
@@ -177,17 +177,17 @@ data that is transcoded at load). That leaves `.amodel` as the one engine-specif
 **How it grows.** `AssetImporter` is a small registry. An importer (`IAssetImporter`) is a name, the extensions it takes, a **fingerprint** (part of the key: its version, and the versions and options of the tools it calls, such as Slang's, so
 changing what it writes imports again), and a function from the source and its settings to an artifact, or to nothing for a file that is not an asset on its own. It reads files through the `ImportContext`, which records them as the
 artifact's dependencies. `new AssetImporter(files, importers)` runs them in the order of the list (a file an earlier importer read is not imported by a later one); `AssetImporter.Defaults` is models and images and the runtime adds
-`ShaderImporter`, which lives in Apogee.Rendering because Content does not reference Graphics. A new kind of asset is a new importer and a `Load…` that takes its artifact; the index, the keys, the sidecar settings, `--import`
+`ShaderImporter`, which lives in Weft.Rendering because Content does not reference Graphics. A new kind of asset is a new importer and a `Load…` that takes its artifact; the index, the keys, the sidecar settings, `--import`
 and `--pack --cooked` stay as they are.
 
 **What is open for you to decide:** whether a `.amat` is ever worth having. It blocks nothing.
 
 ## Tests
 
-`Tests/Apogee.Content.Tests`: GPU compression (transcoding to BC7, ASTC and RGBA8 and how close it stays, the colour space read from the file, normal maps, determinism, the sidecar, a model's textures and the caps of the loader), the registry (order, an asset that is not one, what an earlier importer read, the fingerprint, a package's own artifacts, shader variants in the settings), the KTX 2 writer read back by libktx's reader (sRGB and linear, odd sizes, one level or a chain, the data format descriptor), the model file (every field bit for
+`Tests/Weft.Content.Tests`: GPU compression (transcoding to BC7, ASTC and RGBA8 and how close it stays, the colour space read from the file, normal maps, determinism, the sidecar, a model's textures and the caps of the loader), the registry (order, an asset that is not one, what an earlier importer read, the fingerprint, a package's own artifacts, shader variants in the settings), the KTX 2 writer read back by libktx's reader (sRGB and linear, odd sizes, one level or a chain, the data format descriptor), the model file (every field bit for
 bit, deterministic, a mesh that is not a triangle list, damaged and foreign files), and the importer (artifacts and the index, nothing imported twice, a change to the source, a dependency or
 the settings, deleted sources, failures that keep the old artifact, hidden folders, a damaged index, settings checked against their schema) and `ContentLoader` (the artifact is the one
-used, a source otherwise, a mod's files). cooked XML (`XmlBinaryTests`: every field of a tree back, escapes and non-ASCII text, the same bytes every time, size against the text, text and cooked read alike, a newer version or a flag refused, every truncation and a thousand flipped bytes, counts that do not fit the file, nesting). `Tests/Apogee.Graphics.Tests`: the shader bundle (variants, damaged files, another ABI, backends that are not written yet). `Tests/Apogee.Rendering.Tests`: the shader importer and `ShaderLibrary` (dependencies, variants, the compiler never started when an artifact exists, no compiler no artifact, a mod's artifacts). `Tests/Apogee.Runtime.Tests` runs `--import` and `--pack --cooked` end to end, for shaders too.
+used, a source otherwise, a mod's files). cooked XML (`XmlBinaryTests`: every field of a tree back, escapes and non-ASCII text, the same bytes every time, size against the text, text and cooked read alike, a newer version or a flag refused, every truncation and a thousand flipped bytes, counts that do not fit the file, nesting). `Tests/Weft.Graphics.Tests`: the shader bundle (variants, damaged files, another ABI, backends that are not written yet). `Tests/Weft.Rendering.Tests`: the shader importer and `ShaderLibrary` (dependencies, variants, the compiler never started when an artifact exists, no compiler no artifact, a mod's artifacts). `Tests/Weft.Runtime.Tests` runs `--import` and `--pack --cooked` end to end, for shaders too.
 
 ## Status and re-importing one asset
 

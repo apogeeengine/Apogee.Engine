@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
-using Apogee.Content;
+using Weft.Content;
 
-namespace Apogee.Samples.Viewer;
+namespace Weft.Samples.Viewer;
 
 /// <summary>A colonnaded courtyard generated in code, optionally with the CC0 sample models standing on pedestals: a scene for the lights to play in.</summary>
 internal static class CourtyardScene

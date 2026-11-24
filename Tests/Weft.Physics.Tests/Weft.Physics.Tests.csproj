@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AnalysisMode>Default</AnalysisMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Source/Weft.Physics/Weft.Physics.csproj" />
+    <ProjectReference Include="../../Source/Weft.Reflection.Generator/Weft.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+    <Compile Include="../Weft.Native.Tests/NativeRequirements.cs" Link="NativeRequirements.cs" />
+  </ItemGroup>
+  <Import Project="../../ThirdParty/NativeLibraries.props" />
+</Project>

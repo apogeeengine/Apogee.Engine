@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Native.Vulkan/Weft.Native.Vulkan.csproj" />
+  </ItemGroup>
+</Project>

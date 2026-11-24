@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Native.Sdl/Weft.Native.Sdl.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Weft.Platform.Tests" />
+  </ItemGroup>
+</Project>

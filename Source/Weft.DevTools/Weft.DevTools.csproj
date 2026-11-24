@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Platform/Weft.Platform.csproj" />
+    <ProjectReference Include="../Weft.Reflection/Weft.Reflection.csproj" />
+    <ProjectReference Include="../Weft.Reflection.Generator/Weft.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+    <ProjectReference Include="../Weft.Graphics/Weft.Graphics.csproj" />
+    <ProjectReference Include="../Weft.Rendering/Weft.Rendering.csproj" />
+    <ProjectReference Include="../Weft.Native.CImGui/Weft.Native.CImGui.csproj" />
+    <ProjectReference Include="../Weft.Native.ImGuizmo/Weft.Native.ImGuizmo.csproj" />
+    <ProjectReference Include="../Weft.Native.ImPlot/Weft.Native.ImPlot.csproj" />
+    <ProjectReference Include="../Weft.Native.ImNodes/Weft.Native.ImNodes.csproj" />
+    <ProjectReference Include="../Weft.Native.Sdl/Weft.Native.Sdl.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Weft.DevTools.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Compiled at run time like the renderer's shaders, and shipped next to the program in the same Shaders folder. -->
+    <Content Include="Shaders/*.slang" Link="Shaders/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

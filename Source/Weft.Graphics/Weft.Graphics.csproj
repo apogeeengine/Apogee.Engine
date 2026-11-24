@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Platform/Weft.Platform.csproj" />
+    <ProjectReference Include="../Weft.Native.Sdl/Weft.Native.Sdl.csproj" />
+    <ProjectReference Include="../Weft.Native.Vulkan/Weft.Native.Vulkan.csproj" />
+    <ProjectReference Include="../Weft.Native.Vma/Weft.Native.Vma.csproj" />
+    <ProjectReference Include="../Weft.Native.Metal/Weft.Native.Metal.csproj" />
+    <ProjectReference Include="../Weft.Native.Slang/Weft.Native.Slang.csproj" />
+  </ItemGroup>
+</Project>

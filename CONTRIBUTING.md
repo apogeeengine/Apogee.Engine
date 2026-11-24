@@ -1,18 +1,18 @@
-# Contributing to Apogee Engine
+# Contributing to Weft Engine
 
-Thank you for wanting to help. Apogee is maintained by one person for now, so please be patient: reviews take time, and a pull request that does not fit may be closed even if it is good work.
+Thank you for wanting to help. Weft is maintained by one person for now, so please be patient: reviews take time, and a pull request that does not fit may be closed even if it is good work.
 Read this page before you open a pull request. It is short on purpose.
 
 ## Where to start
 
-- **Questions, ideas, "does it run on my machine?":** [Discussions](https://github.com/apogeeengine/Apogee.Engine/discussions).
+- **Questions, ideas, "does it run on my machine?":** [Discussions](https://github.com/weftengine/weft/discussions).
 - **Bugs:** an issue with a *minimal reproduction* (steps, a script or, best, a failing test). Say your OS, GPU and driver.
 - **Something to work on:** the [help-wanted list](Docs/contributing/help-wanted.md) says what is missing and how to check your work. Open an issue or a discussion before a big change, so nobody writes a feature that cannot be merged.
 - **Security problems:** privately, see [SECURITY.md](SECURITY.md).
 
 ## Scope
 
-Apogee is an engine for games that crunch numbers: big worlds, many entities, simulation. It is not trying to be an engine for everyone, and the most important decision for each feature is whether it belongs.
+Weft is an engine for games that crunch numbers: big worlds, many entities, simulation. It is not trying to be an engine for everyone, and the most important decision for each feature is whether it belongs.
 **Pull requests that drift from this purpose will be rejected**, however well made. Out of scope:
 
 - consoles, mobile and the web (the engine targets Windows, Linux and macOS);
@@ -27,9 +27,9 @@ In scope, and welcome: bug fixes, tests, documentation, performance work with a 
 
 The conventions are in [CLAUDE.md](CLAUDE.md) (the project's style guide). The ones that cause most review comments:
 
-- **AOT-safe:** no runtime reflection, no `Reflection.Emit`, no loading managed code at run time in `Source/`. Use the source generators (`[ApogeeClass]`, `[Property]`, `[Method]`, `[Signal]`). Shipped games are NativeAOT.
+- **AOT-safe:** no runtime reflection, no `Reflection.Emit`, no loading managed code at run time in `Source/`. Use the source generators (`[WeftClass]`, `[Property]`, `[Method]`, `[Signal]`). Shipped games are NativeAOT.
 - **Warnings are errors**, trim and AOT analyzers included. Allocation-free hot paths; `unsafe` and unmanaged memory where they count, and only there.
-- **Bindings are generated** by our own generator (`Tools/Apogee.Build/Bindings`); never edit `Generated/` by hand, change the config and regenerate.
+- **Bindings are generated** by our own generator (`Tools/Weft.Build/Bindings`); never edit `Generated/` by hand, change the config and regenerate.
 - **Every feature has tests** in `Tests/` and a page in `Docs/`. Tests are not samples: nothing in `Tests/` depends on `Samples/`.
 - **Never copy code** from a source whose license does not allow it (proprietary, non-free or copyleft code we would have to relicense). Say where an algorithm comes from.
 - New third-party libraries need their license, the build recipe in `ThirdParty/README.md`, and an entry in `Legal/THIRD_PARTY_NOTICES.md`.

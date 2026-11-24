@@ -1,6 +1,6 @@
 # Platform
 
-`Apogee.Platform` is the engine's window and event layer over SDL3. It runs on the main thread, as SDL requires.
+`Weft.Platform` is the engine's window and event layer over SDL3. It runs on the main thread, as SDL requires.
 
 ## Lifetime and events
 
@@ -31,7 +31,7 @@ with `HighPixelDensity`. `ConsumeResize()` returns true once after the pixel siz
 ## Application metadata and the window icon
 
 `PlatformHost.SetAppMetadata(name, version, identifier)` tells SDL what the application is, and goes before `Initialize`: the name the platform shows (the macOS menu, the audio mixer), the version, and the
-reverse-DNS identifier (`org.apogee.fixturegame`) that Wayland uses as the window's application id and that the sound server uses for the stream. The runtime passes the ones in `game.xml`.
+reverse-DNS identifier (`org.weft.fixturegame`) that Wayland uses as the window's application id and that the sound server uses for the stream. The runtime passes the ones in `game.xml`.
 
 `window.SetIcon(width, height, rgba)` gives a window an icon from RGBA8 pixels (it returns false when the driver cannot show one; a buffer smaller than the image is an `ArgumentException`).
 The runtime uses it on Linux, with the `<Icon>` file of `game.xml`; Windows and macOS take the icon from the executable and the bundle instead.
@@ -64,7 +64,7 @@ text delivers nothing (`DropText` is ignored). `PlatformHost.DragHover` is the p
 ## Windows for a graphics API
 
 A window is made for the API it will be drawn with: `WindowOptions.Vulkan` (loads the Vulkan loader) or `WindowOptions.Metal`. Ask the graphics layer which: `GraphicsDevice.RequiredWindowOptions()`
-(Vulkan for now; Metal on macOS when that backend exists). `Apogee.Platform` knows no graphics API beyond that flag: the instance extensions and the surface are the graphics backend's business (it uses `window.NativeHandle`,
+(Vulkan for now; Metal on macOS when that backend exists). `Weft.Platform` knows no graphics API beyond that flag: the instance extensions and the surface are the graphics backend's business (it uses `window.NativeHandle`,
 the `SDL_Window*`, and `window.PixelSize`), see [Graphics](../graphics/graphics.md).
 
 ## Tests

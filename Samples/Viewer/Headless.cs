@@ -1,21 +1,21 @@
-using Apogee.Core.Graphics;
+using Weft.Core.Graphics;
 using System;
 using System.Diagnostics;
 using System.IO;
-using Apogee.Content;
-using Apogee.Core.Logging;
-using Apogee.DevTools;
-using Apogee.Graphics;
-using Apogee.Rendering;
+using Weft.Content;
+using Weft.Core.Logging;
+using Weft.DevTools;
+using Weft.Graphics;
+using Weft.Rendering;
 
-namespace Apogee.Samples.Viewer;
+namespace Weft.Samples.Viewer;
 
 /// <summary>Renders without a window into an image: screenshots, the CI comparison, and servers. Frames advance by a fixed 1/60 s, so a frame number always looks the same.</summary>
 internal static class Headless
 {
     public static int Run(Options options, string shaderCache)
     {
-        using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Apogee viewer", PreferredDeviceName = options.Gpu });
+        using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Weft viewer", PreferredDeviceName = options.Gpu });
         using var loop = device.CreateFrameLoop();
         using var renderer = new SceneRenderer(device, cacheDirectory: shaderCache);
         using var scene = new ViewerScene(renderer, options, new TextureCaps(device.SupportsBc, device.SupportsAstc));

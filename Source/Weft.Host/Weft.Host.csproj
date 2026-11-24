@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- What runs a game, shared by the runtime and the editor: a session (the world, the scripts, physics, audio, the UI, the models), the world drawn through its main camera, and what goes over the picture. -->
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Ecs/Weft.Ecs.csproj" />
+    <ProjectReference Include="../Weft.Platform/Weft.Platform.csproj" />
+    <ProjectReference Include="../Weft.Input/Weft.Input.csproj" />
+    <ProjectReference Include="../Weft.Physics/Weft.Physics.csproj" />
+    <ProjectReference Include="../Weft.Audio/Weft.Audio.csproj" />
+    <ProjectReference Include="../Weft.Steam/Weft.Steam.csproj" />
+    <ProjectReference Include="../Weft.Network/Weft.Network.csproj" />
+    <ProjectReference Include="../Weft.Content/Weft.Content.csproj" />
+    <ProjectReference Include="../Weft.Graphics/Weft.Graphics.csproj" />
+    <ProjectReference Include="../Weft.Rendering/Weft.Rendering.csproj" />
+    <ProjectReference Include="../Weft.DevTools/Weft.DevTools.csproj" />
+    <ProjectReference Include="../Weft.UI/Weft.UI.csproj" />
+    <ProjectReference Include="../Weft.Reflection/Weft.Reflection.csproj" />
+    <ProjectReference Include="../Weft.Scripting/Weft.Scripting.csproj" />
+    <ProjectReference Include="../Weft.Reflection.Generator/Weft.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+    <ProjectReference Include="../Weft.Native.Sdl/Weft.Native.Sdl.csproj" />
+    <ProjectReference Include="../Weft.Native.Flecs/Weft.Native.Flecs.csproj" />
+    <ProjectReference Include="../Weft.Native.Luau/Weft.Native.Luau.csproj" />
+    <ProjectReference Include="../Weft.Native.Jolt/Weft.Native.Jolt.csproj" />
+    <ProjectReference Include="../Weft.Native.Steam/Weft.Native.Steam.csproj" />
+    <ProjectReference Include="../Weft.Native.CImGui/Weft.Native.CImGui.csproj" />
+    <ProjectReference Include="../Weft.Native.Vulkan/Weft.Native.Vulkan.csproj" />
+  </ItemGroup>
+</Project>

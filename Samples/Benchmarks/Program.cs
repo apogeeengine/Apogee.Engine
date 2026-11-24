@@ -1,6 +1,6 @@
 using BenchmarkDotNet.Running;
 
-namespace Apogee.Benchmarks;
+namespace Weft.Benchmarks;
 
 public static class Program
 {

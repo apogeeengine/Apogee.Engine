@@ -142,6 +142,6 @@ store belongs to the main thread. `new SettingsStore()` (and `Settings.new()` in
 
 ## Tests
 
-`Tests/Apogee.Host.Tests/SettingsStoreTests.cs` covers the file (round trip, only non-defaults, unknown keys kept, a corrupt file set aside, the atomic write on a read-only folder), the types and ranges, the signal, the
+`Tests/Weft.Host.Tests/SettingsStoreTests.cs` covers the file (round trip, only non-defaults, unknown keys kept, a corrupt file set aside, the atomic write on a read-only folder), the types and ranges, the signal, the
 debounce with a fake clock, the mods' namespace, redefinition, the audio keys with a real `AudioSystem`, the bindings, and the window size tracking. `Tests/Luau/settings.test.luau` covers the script side and
-`AGameKeepsItsSettingsInItsUserFolder` in `Tests/Apogee.Runtime.Tests` starts a game, changes a setting and a binding, ends the session, and starts it again.
+`AGameKeepsItsSettingsInItsUserFolder` in `Tests/Weft.Runtime.Tests` starts a game, changes a setting and a binding, ends the session, and starts it again.

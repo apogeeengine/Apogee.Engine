@@ -1,0 +1,16 @@
+{
+  "name": "metal",
+  "project": "Source/Weft.Native.Metal",
+  "namespace": "Weft.Native.Metal",
+  "className": "Mtl",
+  "library": {
+    "name": "metal_c",
+    "linux": [],
+    "windows": [],
+    "macos": ["libmetal_c.dylib"]
+  },
+  "includeDirs": ["Native/metal_c"],
+  "includes": ["weft_metal.h"],
+  "ownDirs": ["Native/metal_c"],
+  "stripPrefixes": ["weft_mtl_", "WEFT_MTL_", "WeftMtl"]
+}

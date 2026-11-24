@@ -1,20 +1,20 @@
 # Runtime and Luau tests
 
-`Apogee.Runtime` is the game host: one executable, CoreCLR in dev builds and NativeAOT when shipped (`./build.sh aot` publishes it to
+`Weft.Runtime` is the game host: one executable, CoreCLR in dev builds and NativeAOT when shipped (`./build.sh aot` publishes it to
 `Bin/publish/runtime`). Its command line is parsed by hand so that it stays AOT-safe.
 
 ```text
-Apogee.Runtime                                    run the game next to the program (its game.xml and data/*.pack); see below
-Apogee.Runtime --smoke                            load the native libraries and run the smoke tests
-Apogee.Runtime --luau-test <folder> [--luau-filter <text>]
-Apogee.Runtime --run <file.luau> [--frames <n>]   a script with a `world` global, in a window (until it is closed, or n frames)
+Weft.Runtime                                      run the game next to the program (its game.xml and data/*.pack); see below
+Weft.Runtime --smoke                              load the native libraries and run the smoke tests
+Weft.Runtime --luau-test <folder> [--luau-filter <text>]
+Weft.Runtime --run <file.luau> [--frames <n>]     a script with a `world` global, in a window (until it is closed, or n frames)
     --headless                                    no window and no GPU: n frames (default 1)
     --headless --screenshot <file.png>            no window, rendered on the GPU: the last frame as an image
     --size <w>x<h>  --overlay  --gpu <name>       the window or image size (1280x720), the dev overlay in images, which GPU
-Apogee.Runtime --game <folder> [--user <folder>]  a game: its packages and mods (see Packages and mods), then the same loops as --run
-Apogee.Runtime --export <game folder> <out> --target <rid> [--cooked]  export the game as a folder that runs on its own (see Exporting a game)
-Apogee.Runtime --workshop-upload <mod folder> ... publish a mod folder as a Steam Workshop item (only describes it without --confirm; see Steam)
-Apogee.Runtime --luau-defs <folder>               apogee.d.luau and the engine's Luau modules, for luau-lsp
+Weft.Runtime --game <folder> [--user <folder>]  a game: its packages and mods (see Packages and mods), then the same loops as --run
+Weft.Runtime --export <game folder> <out> --target <rid> [--cooked]  export the game as a folder that runs on its own (see Exporting a game)
+Weft.Runtime --workshop-upload <mod folder> ... publish a mod folder as a Steam Workshop item (only describes it without --confirm; see Steam)
+Weft.Runtime --luau-defs <folder>                 weft.d.luau and the engine's Luau modules, for luau-lsp
 ```
 
 Exit codes: 0 fine, 1 bad arguments, missing files or failed tests, 2 a script or the engine failed (including Vulkan and window errors), 3 the Vulkan validation
@@ -24,19 +24,19 @@ layer reported errors.
 
 With no command, the runtime is a game: it looks for a `game.xml` in the folder of its own executable (and, for a macOS app, in `../Resources`, where `Name.app/Contents/MacOS/<exe>` keeps it
 beside `data/`) and runs that game. The game is its packs: only `data/*.pack` are mounted as `res://`, so loose files next to the executable are not part of it and scripts cannot read them
-(`--game <folder>`, the development run, still mounts the folder). The window, its title and its size come from `game.xml` (`--size` wins), and the packs' key from the executable, where an [export](../tools/export.md#the-pack-key) wrote it, else from the environment (`APOGEE_PACK_KEY`).
+(`--game <folder>`, the development run, still mounts the folder). The window, its title and its size come from `game.xml` (`--size` wins), and the packs' key from the executable, where an [export](../tools/export.md#the-pack-key) wrote it, else from the environment (`WEFT_PACK_KEY`).
 `--user`, `--headless`, `--frames`, `--size`, `--gpu`, `--screenshot` and `--overlay` work as they do for `--game`; `--watch` does not (there are no loose files to watch).
 See [The game manifest](../content/game-manifest.md#how-the-runtime-finds-it).
 
 The tests that go with it are `--smoke`, which proves under NativeAOT that every native library loads through its bindings and that the generated registry and the scripting layer work (CI runs it
 on the published runtime). Without a `game.xml` next to the program and without a command, the runtime prints `No game.xml next to the program` and exits with 1.
 
-## `Apogee.Host`: what runs a game
+## `Weft.Host`: what runs a game
 
-`Source/Apogee.Host` holds what the runtime and the editor share, so that both run a game the same way: `ScriptSession` (the world, the Luau VM, physics, audio, Steam, the UI, the model library and the hot
+`Source/Weft.Host` holds what the runtime and the editor share, so that both run a game the same way: `ScriptSession` (the world, the Luau VM, physics, audio, Steam, the UI, the model library and the hot
 reloader, made from a script or a game folder), `WorldView` (the world drawn through its main camera), `FrameOverlay` (the game's UI and then the dev tools over the picture), `GameLibrary` (the script table
-`game`) and, in `Apogee.Host.Editing`, the editor's undo and redo: `EditHistory` and the commands it runs (`SetComponentCommand`, `AddComponentCommand`, `RemoveComponentCommand`, `CreateEntityCommand`,
-`DestroyEntityCommand`, `ReparentCommand`, `RenameCommand`, `CompositeCommand`). `Apogee.Runtime` is the command line and the three loops over them.
+`game`) and, in `Weft.Host.Editing`, the editor's undo and redo: `EditHistory` and the commands it runs (`SetComponentCommand`, `AddComponentCommand`, `RemoveComponentCommand`, `CreateEntityCommand`,
+`DestroyEntityCommand`, `ReparentCommand`, `RenameCommand`, `CompositeCommand`). `Weft.Runtime` is the command line and the three loops over them.
 
 `EditHistory.Execute(command)` runs a command and records it; `Undo` and `Redo` take it back and do it again; the changes of one gesture (a drag of a slider, many small `SetComponentCommand`s on one
 component) merge into one step until `Seal()` is called, which the editor does when the mouse is let go. Deleting and creating entities are undone through snapshots, so an entity comes back under the same
@@ -126,14 +126,14 @@ and before the input, and it is disposed before Steam.
 
 ## Editor definitions
 
-`--luau-defs <folder>` writes `apogee.d.luau`, the API from the registry (see [Scripting](scripting.md#definitions-for-the-editor)), and `engine/<name>.luau`, copies of the engine's
+`--luau-defs <folder>` writes `weft.d.luau`, the API from the registry (see [Scripting](scripting.md#definitions-for-the-editor)), and `engine/<name>.luau`, copies of the engine's
 modules, so that luau-lsp can resolve `require("@engine/test")`. A project's `.luaurc` points the `engine` alias at that folder; at run time the alias is built in.
 
 ## Tests
 
-`Tests/Apogee.Runtime.Tests` (the command line and each command, with their exit codes, and the fixture game run from a folder and from a pack) and, in `Tests/Apogee.Scripting.Tests`, the runner itself: discovery order,
+`Tests/Weft.Runtime.Tests` (the command line and each command, with their exit codes, and the fixture game run from a folder and from a pack) and, in `Tests/Weft.Scripting.Tests`, the runner itself: discovery order,
 the report, a file that does not compile, errors outside a case, filters, files that share nothing, and a loop stopped by the time budget.
 
 ## What a game asks of the program
 
-The script table `game` is for a game that runs inside `Apogee.Runtime`: `game.quit()` ends the run at the end of the frame (a menu's Quit; a headless run stops too), `game.set_time_scale(scale)` and `game.time_scale()` change how fast game time runs next to real time ([Tasks and game time](tasks.md#time-scale)), and `game.set_escape_quits(false)` stops the Escape key from ending a run in a window, which is the default so that a script or a sample can be closed: a game whose Escape opens its own menu turns it off. See the [UI sample](../../getting-started/samples/ui.md).
+The script table `game` is for a game that runs inside `Weft.Runtime`: `game.quit()` ends the run at the end of the frame (a menu's Quit; a headless run stops too), `game.set_time_scale(scale)` and `game.time_scale()` change how fast game time runs next to real time ([Tasks and game time](tasks.md#time-scale)), and `game.set_escape_quits(false)` stops the Escape key from ending a run in a window, which is the default so that a script or a sample can be closed: a game whose Escape opens its own menu turns it off. See the [UI sample](../../getting-started/samples/ui.md).

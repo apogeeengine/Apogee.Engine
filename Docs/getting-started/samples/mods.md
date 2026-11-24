@@ -4,8 +4,8 @@
 runs end to end: the package loader, definitions with schemas and patches, the sandbox, packs, and a rendered image.
 
 ```sh
-Apogee.Runtime --game Samples/Mods/game --user /tmp/mods-user              # a window with the panels
-Apogee.Runtime --game Samples/Mods/game --user /tmp/mods-user --watch      # and edit while it runs (see Hot reload)
+Weft.Runtime --game Samples/Mods/game --user /tmp/mods-user                # a window with the panels
+Weft.Runtime --game Samples/Mods/game --user /tmp/mods-user --watch        # and edit while it runs (see Hot reload)
 ```
 
 `game/` is the game's folder (`res://`): `packages/base_game` is its one base package, and `dev_mods/` holds the mods of a development build (a player's mods go in `user://mods`, the same
@@ -31,4 +31,4 @@ numbers: nothing else changes.
 ## Tests
 
 - `Samples/Mods/tests/util.test.luau`: the module's functions, with `--luau-test` (run by hand).
-- Nothing in CI runs this sample. What it shows is tested on a fixture game of its own: `Tests/Fixtures/ShippedGame` (a package, a mod, a UI document with a script and a data model, and an ImGui panel) runs headless, from a pack and rendered on lavapipe in CI, and `Tests/Apogee.Runtime.Tests` and `Tests/Apogee.Mods.Tests` cover the loading, patching, dependency and failure rules.
+- Nothing in CI runs this sample. What it shows is tested on a fixture game of its own: `Tests/Fixtures/ShippedGame` (a package, a mod, a UI document with a script and a data model, and an ImGui panel) runs headless, from a pack and rendered on lavapipe in CI, and `Tests/Weft.Runtime.Tests` and `Tests/Weft.Mods.Tests` cover the loading, patching, dependency and failure rules.

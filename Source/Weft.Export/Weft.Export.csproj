@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Exports a game: the runtime and its native libraries for a target platform, the game's packs, and its manifest, as a folder the player can run. -->
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Content/Weft.Content.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Weft.Export.Tests" />
+    <InternalsVisibleTo Include="Weft.Runtime.Tests" />
+  </ItemGroup>
+</Project>

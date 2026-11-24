@@ -1,6 +1,6 @@
 # Core
 
-`Apogee.Core`: the small things every other library uses.
+`Weft.Core`: the small things every other library uses.
 
 ## Logging
 

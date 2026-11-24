@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Reflection/Weft.Reflection.csproj" />
+    <ProjectReference Include="../Weft.Native.Net/Weft.Native.Net.csproj" />
+    <ProjectReference Include="../Weft.Reflection.Generator/Weft.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Weft.Network.Tests" />
+  </ItemGroup>
+</Project>

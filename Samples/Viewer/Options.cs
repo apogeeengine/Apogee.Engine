@@ -4,13 +4,13 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 
-namespace Apogee.Samples.Viewer;
+namespace Weft.Samples.Viewer;
 
 /// <summary>The command line of the viewer. Parsing is by hand: it has to stay trim and NativeAOT safe.</summary>
 internal sealed class Options
 {
     public const string Usage = """
-        Apogee.Samples.Viewer: the engine's viewer.
+        Weft.Samples.Viewer: the engine's viewer.
 
           --scene <courtyard|file.gltf>   what to show (default: courtyard, a generated colonnade with the sample models)
           --assets <dir>                  where the sample models are (default: Samples/Viewer/Assets, found above the program)
@@ -22,7 +22,7 @@ internal sealed class Options
           --size <w>x<h>                  the window or the headless image (default 1280x720)
           --overlay                       draw the dev overlay in headless images (the window always has it; F1 toggles)
           --screenshot <file.png>         headless: write the last frame
-          --gpu <name>                    prefer the GPU whose name contains this (APOGEE_GPU)
+          --gpu <name>                    prefer the GPU whose name contains this (WEFT_GPU)
           --no-vsync                      do not wait for vertical blank
           --watch                         window: use the shaders' source files (from the repository) and rebuild the pipelines when you save one
           --help                          this text

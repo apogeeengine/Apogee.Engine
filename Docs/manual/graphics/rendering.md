@@ -90,7 +90,7 @@ has finished with them. Limits: transients have no multisampling, a storage view
 
 Renderers get their shaders from a `ShaderLibrary` (`SceneRenderer(device, shaders)`; the default is `ShaderLibrary.Standard(cacheDirectory)`, the `Shaders` folder next to the
 program mounted as `shaders://`). `Load("shaders://forward.slang")` takes the compiled artifact when the folder was imported (`imported/forward.slang.ashader`, made by
-`Apogee.Runtime --import`, which `./build.sh aot` runs on the published programs) and never touches the Slang compiler. A module without an artifact is compiled (development), if the
+`Weft.Runtime --import`, which `./build.sh aot` runs on the published programs) and never touches the Slang compiler. A module without an artifact is compiled (development), if the
 compiler library is there; if it is not, the error says to import the folder. A mod's shaders are loaded the same way from `mod://id/…` and its own `imported/`.
 
 ### Rebuilding pipelines when a shader changes
@@ -173,7 +173,7 @@ layout rule agrees, and tests pin the sizes and offsets.
 light that is inside by a margin must be listed, every listed light inside by a margin), the sky tone-mapped exactly like the CPU twin,
 lights brighten what they should and nothing beyond their radius, spot cones, the sun, alpha mask and blend, double-sided surfaces, the
 heatmap, the 64-light cap, 600 lights, and a golden image rendered by the software rasterizer (`Golden/forward_plus.png`;
-`APOGEE_UPDATE_GOLDEN=1` rewrites it). The discrete GPU matches it to a mean of 0.02 out of 255.
+`WEFT_UPDATE_GOLDEN=1` rewrites it). The discrete GPU matches it to a mean of 0.02 out of 255.
 
 ## Drawing a world of entities
 
@@ -220,7 +220,7 @@ light the world, that an unknown or removed id draws nothing, that a model 3 000
 
 ## Debug drawing
 
-`DebugDraw` (in `Apogee.Core`, so anything can add to it without knowing about rendering) is immediate mode: lines and triangles in double-precision world positions that live for one frame.
+`DebugDraw` (in `Weft.Core`, so anything can add to it without knowing about rendering) is immediate mode: lines and triangles in double-precision world positions that live for one frame.
 `Line`, `Triangle`, `Box` (turned, or from two corners), `Circle`, `Sphere`, `Arrow` and `Axes` add them; colors are bytes `r, g, b, a` as a `uint` (`DebugColor.Rgba`, `DebugColor.Red`, ...). It keeps at most `Capacity`
 (a million) lines and as many triangles and counts the rest in `Dropped`, so a loop that draws too much costs detail, not memory. Physics adds to it with `PhysicsWorld.DrawDebug` ([physics](../physics/physics.md#debug-drawing));
 scripts use the `debug_draw` library (`debug_draw.line(from, to, color)`, `box`, `sphere`, `arrow`, `axes`; a color is a vector of red, green and blue from 0 to 1, white without one), called every frame for as long as the picture should stay.

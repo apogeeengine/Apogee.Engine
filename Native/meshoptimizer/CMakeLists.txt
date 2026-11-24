@@ -1,5 +1,5 @@
 # meshoptimizer's sources as one shared library; MESHOPTIMIZER_API is its hook for exporting the C functions.
-set(MESHOPT "${APOGEE_THIRDPARTY}/meshoptimizer")
+set(MESHOPT "${WEFT_THIRDPARTY}/meshoptimizer")
 file(GLOB MESHOPT_SOURCES "${MESHOPT}/src/*.cpp")
 add_library(meshoptimizer SHARED ${MESHOPT_SOURCES})
 target_include_directories(meshoptimizer PRIVATE "${MESHOPT}/src")
@@ -11,4 +11,4 @@ else()
     target_link_options(meshoptimizer PRIVATE -Wl,--no-undefined)
   endif()
 endif()
-apogee_library(meshoptimizer)
+weft_library(meshoptimizer)

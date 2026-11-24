@@ -8,7 +8,7 @@ every other quantity (directions, rotations, scales, velocities, everything on t
 
 The engine does not have a math library of its own. It uses `System.Numerics` (`Vector2/3/4`, `Quaternion`, `Matrix4x4`, `Plane`): the JIT and NativeAOT
 treat those as SIMD intrinsic types (a `Vector3` lives in one register and `+`, `Dot`, `Normalize` compile to a few vector instructions), which a struct
-of our own would only match by wrapping them. `Apogee.Core.Numerics` adds what `System.Numerics` has no type for:
+of our own would only match by wrapping them. `Weft.Core.Numerics` adds what `System.Numerics` has no type for:
 
 | Type | What it is |
 | --- | --- |
@@ -27,7 +27,7 @@ Vector3 onScreen = enemy.Position.RelativeTo(camera.Position);     // a few mete
 Matrix4x4 world = placement.ToMatrix(camera.Position);             // the translation is relative to the camera
 ```
 
-That is how positions reach the GPU: the renderer works camera-relative (see [Rendering](../graphics/rendering.md): `Camera.Position` and a scene's `Origin` are `Double3`). Jolt is built with `JPH_DOUBLE_PRECISION` (see [Native libraries](../native/native-libraries.md#jolt-physics-apogeenativejolt)), so
+That is how positions reach the GPU: the renderer works camera-relative (see [Rendering](../graphics/rendering.md): `Camera.Position` and a scene's `Origin` are `Double3`). Jolt is built with `JPH_DOUBLE_PRECISION` (see [Native libraries](../native/native-libraries.md#jolt-physics-weftnativejolt)), so
 that body positions are `double` too.
 
 ## Transforms in the ECS
@@ -82,7 +82,7 @@ A component a script defines can have fields of type `"dvec3"` (a `Double3`, see
 
 ## Tests
 
-`Tests/Apogee.Core.Tests` (`Double3`, `Trs`: composing, inverting, precision at 10 000 km, the camera-relative matrix), `Tests/Apogee.Ecs.Tests` (propagation through three
-levels created in any order, reparenting, the `With` trait, the layout and the JSON of the components), `Tests/Apogee.Reflection.Tests` (the new field kinds, members and values),
-`Tests/Luau/quat.test.luau` (`Quat` and the transform from a script), the `vector3` case of `Tests/Apogee.Content.Tests` and, in `Tests/Apogee.Rendering.Tests`, the golden scene
+`Tests/Weft.Core.Tests` (`Double3`, `Trs`: composing, inverting, precision at 10 000 km, the camera-relative matrix), `Tests/Weft.Ecs.Tests` (propagation through three
+levels created in any order, reparenting, the `With` trait, the layout and the JSON of the components), `Tests/Weft.Reflection.Tests` (the new field kinds, members and values),
+`Tests/Luau/quat.test.luau` (`Quat` and the transform from a script), the `vector3` case of `Tests/Weft.Content.Tests` and, in `Tests/Weft.Rendering.Tests`, the golden scene
 rendered 100 km and 10 000 km from the origin.

@@ -1,7 +1,7 @@
 # Exposure and tone mapping
 
 The renderer lights the scene in physical units, exposes it like a camera, and then tone maps the exposed image to the screen. This page describes the three steps, the settings that control
-them, and the units the lights are in. The code is in `Source/Apogee.Rendering` (`ExposureMath.cs`, `Gt7ToneMapping.cs` and the shaders `forward.slang`, `exposure.slang` and `tonemap.slang`).
+them, and the units the lights are in. The code is in `Source/Weft.Rendering` (`ExposureMath.cs`, `Gt7ToneMapping.cs` and the shaders `forward.slang`, `exposure.slang` and `tonemap.slang`).
 
 ```
 lights (lux, candela)  →  forward pass: luminance in cd/m²  →  × exposure  →  HDR image (exposed values)

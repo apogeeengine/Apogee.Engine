@@ -1,18 +1,18 @@
 # Reflection
 
-`Apogee.Reflection` is the registry of everything scripts, serialization and inspectors see: classes with properties, methods
+`Weft.Reflection` is the registry of everything scripts, serialization and inspectors see: classes with properties, methods
 and signals, enums, ECS components and script libraries. It is written by a Roslyn source generator
-(`Apogee.Reflection.Generator`), so there is no runtime reflection and it works under NativeAOT.
+(`Weft.Reflection.Generator`), so there is no runtime reflection and it works under NativeAOT.
 
 ## Describing a class
 
-A class derives from `EngineObject`, is `partial`, and is marked `[ApogeeClass]`. Members are opted in:
+A class derives from `EngineObject`, is `partial`, and is marked `[WeftClass]`. Members are opted in:
 
 ```csharp
 public enum Mode { Idle, FastMove }
 
 /// <summary>Something that moves.</summary>
-[ApogeeClass(Creatable = true)]
+[WeftClass(Creatable = true)]
 public partial class Actor : EngineObject
 {
     /// <summary>How fast it goes, in meters per second.</summary>
@@ -29,15 +29,15 @@ public partial class Actor : EngineObject
 ```
 
 - **Names** in scripts are snake_case (`TryMove` → `try_move`, `FastMove` → `"fast_move"`); `Name = "…"` on an attribute
-  overrides it. Classes keep their C# name (`[ApogeeClass(Name = "…")]`).
+  overrides it. Classes keep their C# name (`[WeftClass(Name = "…")]`).
 - **Options:** `Scriptable = false` keeps the class out of scripts, `ModsBlocked = true` refuses its objects to mods, and
   `Creatable = true` gives scripts a `new()` (it needs a parameterless constructor).
 - **Documentation:** the `<summary>` above a member is copied into the registry, for the generated `.d.luau` and the inspectors.
 - **Types** a member may have: `bool`, the integer types, `float`, `double`, `string`, `Vector3`, `Double3` (seen as a vector in scripts), `Quaternion`, enums (a `[Flags]` enum is a list of
   names in scripts), `Entity`, `AssetRef` (a string in scripts, see [asset fields](#asset-fields)), `Value` (any), `ScriptFunction`, `EngineObject` classes, and `T[]`, `List<T>` and `IReadOnlyList<T>` of
-  those. `T?` is nullable. Anything else is error `APG002` that names the member, as are non-partial classes (`APG001`), two members
-  with one script name (`APG003`), a component that is not an unmanaged struct or has an unsupported field (`APG004`) and a member
-  that cannot be described, such as a `ref` parameter or a signal of the wrong type (`APG005`), `Asset` where it does not belong (`APG006`), `Enum` where it does not belong or does not fit (`APG007`) and `Color` on anything but a `Vector3` (`APG008`). A type with an error writes nothing,
+  those. `T?` is nullable. Anything else is error `WFT002` that names the member, as are non-partial classes (`WFT001`), two members
+  with one script name (`WFT003`), a component that is not an unmanaged struct or has an unsupported field (`WFT004`) and a member
+  that cannot be described, such as a `ref` parameter or a signal of the wrong type (`WFT005`), `Asset` where it does not belong (`WFT006`), `Enum` where it does not belong or does not fit (`WFT007`) and `Color` on anything but a `Vector3` (`WFT008`). A type with an error writes nothing,
   so the first error is the only one.
 
 ## Components and libraries
@@ -92,10 +92,10 @@ public struct Gearbox
   (the generated `.d.luau` has no component fields, but it declares the registered enum with its member names, as it does for the enums of classes), and scenes and snapshots hold the number, so a renamed member never breaks a file. A value with no member
   stays what it is. `Enum = typeof(X)` does the same for an integer field that is not declared with the enum (`Light.Kind` is a `byte`, and `LightKind` is an enum of `byte`). `X` must be an enum whose underlying type
   has the field's size and whose members all fit the field (an enum of `byte` with a member 200 does not fit an `sbyte`); the signedness is not compared. It is for integer fields only: on a `bool`, a float, a vector, an
-  `Entity`, an `Asset` handle, a field that has an enum type already, anything but `typeof(an enum)`, or a class property, it is error `APG007`. The registry knows an enum by its simple name, so two different enums with one name in an
-  assembly are error `APG003` (the closed constructions of one generic type share a name and members, and are fine). The enum may come from another assembly; it needs to be accessible to the assembly that uses it.
+  `Entity`, an `Asset` handle, a field that has an enum type already, anything but `typeof(an enum)`, or a class property, it is error `WFT007`. The registry knows an enum by its simple name, so two different enums with one name in an
+  assembly are error `WFT003` (the closed constructions of one generic type share a name and members, and are fine). The enum may come from another assembly; it needs to be accessible to the assembly that uses it.
 - **Colour.** `Color = true` on a `Vector3` component field or class property sets `InspectorMeta.Color`: the three numbers are a linear red, green and blue, and an inspector draws a colour picker that keeps values above 1 (a light is
-  brighter than white). On anything else (including `Double3`, which is a position) it is error `APG008`. The field stays a `Vector3` in memory, in scripts and in scenes.
+  brighter than white). On anything else (including `Double3`, which is a position) it is error `WFT008`. The field stays a `Vector3` in memory, in scripts and in scenes.
 
 `InspectorMeta.Color` and `FieldDef.Enum` were added after the other members, as the last constructor parameters, so existing code that builds them positionally means what it did.
 
@@ -118,16 +118,16 @@ public struct Furnished
 }
 ```
 
-`Asset` is only for `uint` fields of a `[Component]` struct, and needs a non-empty type name; anywhere else it is error `APG006`. Without it a `uint` stays a number.
+`Asset` is only for `uint` fields of a `[Component]` struct, and needs a non-empty type name; anywhere else it is error `WFT006`. Without it a `uint` stays a number.
 
-On a class, a property that names an asset has the type `Apogee.Core.Assets.AssetRef` (path and UID). Scripts see its text form as a string (`res://models/car.glb|uid://4k2m9x7q1w3ze`, a path alone or a
+On a class, a property that names an asset has the type `Weft.Core.Assets.AssetRef` (path and UID). Scripts see its text form as a string (`res://models/car.glb|uid://4k2m9x7q1w3ze`, a path alone or a
 `uid://…` alone), and the generated `.d.luau` says `string` (`string?` for `AssetRef?`). Text that is not an asset reference is an error in the script (`Value.ToAssetRef` throws a `ValueException`)
 and the property keeps its value.
 
 ### Properties of classes in the inspector
 
 The hints above (`Min`, `Max`, `Step`, `Category`, `Hidden`, `ReadOnly`, `Color`) are read the same way from a class's properties, and the editor's object inspector (*Debug > Engine objects*, see [the editor](../tools/editor.md#engine-objects))
-draws an `[ApogeeClass]` object from them: the properties of its base classes first, each by its `TypeRef` (a bool, a number, a string, a vector, a rotation, an enum from its `EnumInfo`, an entity, an object that opens in place, a list of any of
+draws a `[WeftClass]` object from them: the properties of its base classes first, each by its `TypeRef` (a bool, a number, a string, a vector, a rotation, an enum from its `EnumInfo`, an entity, an object that opens in place, a list of any of
 those), through `PropertyDef.Getter` and `PropertyDef.Setter` over `Value`, which are the delegates scripts use. A property with no setter is shown and not edited. A setter that throws a `ValueException` (or anything else) is how a class
 refuses a value: the inspector shows the message and leaves the property alone, so a setter has to leave the object as it was when it throws. A getter should not throw, and an object that a property returns may be destroyed at any time (`IsDestroyed`): the inspector copes with both, but it
 reads every property each frame, so a getter should be cheap. Two things the registry does not say, because it never had to: whether a string is long text (the editor has `InspectorDrawers.RegisterMultiline` for that), and which string is an asset reference (an `AssetRef` property is a plain string in its `TypeRef`, so the inspector shows its text).
@@ -149,7 +149,7 @@ each assembly that has described types, so the registry is complete before the f
 
 ## Objects and handles
 
-Every `EngineObject` takes a slot in one table: its `Handle` is an index and a generation (`SlotTable<T>` in `Apogee.Core`).
+Every `EngineObject` takes a slot in one table: its `Handle` is an index and a generation (`SlotTable<T>` in `Weft.Core`).
 Scripts hold the handle, never the object. `Destroy()` frees the slot and bumps the generation, so a handle to a destroyed
 object, or to one whose slot was reused, is recognised (`attempt to use a destroyed object`). An object a script creates is destroyed when the script lets go of it
 unless the engine calls `Adopt()` on it (see [Scripting](../scripting/scripting.md)).
@@ -162,5 +162,5 @@ the others still run; the emitter never sees it. `SignalDef.Connect` connects a 
 
 ## Tests
 
-`Tests/Apogee.Reflection.Tests` compiles C# snippets with the generator (`CSharpGeneratorDriver`), checks the generated text and the
+`Tests/Weft.Reflection.Tests` compiles C# snippets with the generator (`CSharpGeneratorDriver`), checks the generated text and the
 diagnostics, loads the result and drives it through the registry; it also tests `Value`, handles, signals and the registry itself.

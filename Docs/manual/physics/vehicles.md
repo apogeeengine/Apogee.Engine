@@ -98,7 +98,7 @@ does not use it), no per-wheel slip reading and no hitch for more than one body.
 
 ## Tests
 
-`Tests/Apogee.Physics.Tests/VehicleTests.cs` is the old `vehicle.test.luau` (the ratio drives it, neutral and an open clutch drive nothing, the step runs every step before the inputs, brake factors, the readings
+`Tests/Weft.Physics.Tests/VehicleTests.cs` is the old `vehicle.test.luau` (the ratio drives it, neutral and an open clutch drive nothing, the step runs every step before the inputs, brake factors, the readings
 with the load equal to the weight, torque shares, a trailer in neutral) with Ackermann angles checked against `cot(outer) − cot(inner) = track / wheelbase`, rear and crab steering, wheel entities, a tracked
 vehicle turning on the spot. `HitchTests.cs` covers a scenario (a mounted attachment lifted 0.35 m, riding within 1 cm of the hitch, lowered and detached to rest on the ground; a trailer holding its
 drawbar within 5 cm through a turn and staying upright), plus the cleanup paths. `Tests/Luau/physics.test.luau` drives a vehicle and a mount hitch from a script, in the NativeAOT binary too.

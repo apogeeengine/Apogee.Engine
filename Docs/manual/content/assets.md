@@ -12,7 +12,7 @@ writes the new path).
 
 ## The values
 
-`AssetUid` and `AssetRef` are in `Apogee.Core.Assets`.
+`AssetUid` and `AssetRef` are in `Weft.Core.Assets`.
 
 - **`AssetUid`** is 64 random bits, never zero (zero is `AssetUid.None`, "no UID"). Its text is `uid://` and 13 characters of lower-case Crockford base32 (`0-9 a-h j k m n p-t v-z`, no `i l o u`): `uid://[0-9a-hjkmnp-tv-z]{13}`.
   Parsing ignores case and refuses anything else, including all zeros.
@@ -34,7 +34,7 @@ own and is mounted at `mod://id/` is read with its paths under `mod://id/`. In a
 
 ## When a UID is made
 
-- **`Apogee.Runtime --import`** (`AssetImporter.Run`) gives a UID to every imported file that has none, by creating or editing its `.import.xml`, and to every authored file that has none, by adding the attribute to its root.
+- **`Weft.Runtime --import`** (`AssetImporter.Run`) gives a UID to every imported file that has none, by creating or editing its `.import.xml`, and to every authored file that has none, by adding the attribute to its root.
   Only those two attributes are written: comments, indentation, quote style, line endings and a byte order mark in the file stay as they were, and an attribute that is already there is never changed.
   The editor's single-asset `Reimport` does the same for its asset.
 - **Never at run time, except when a scene is saved.** A game, a mod, a pack or a read-only folder is never written to by the engine. Their assets without a UID simply have none, and a reference to them is by path.
@@ -177,20 +177,20 @@ A game cooked with `--pack --cooked` has the artifacts of its imported assets an
 The editor's inspector shows an asset field by the file it names and lets you pick another from a list of the game's files of that kind, or drop one on it: see [Asset fields](../tools/editor.md#asset-fields). What that depends on here:
 
 - A field is saved as the reference of the file the picker chose, `path|uid`, with the UID the file has at that moment (none for a file that has not been imported: the path alone is saved, and the next import gives the file its UID).
-- The list is made from the files of `AssetDatabase.Roots` (`res://` first, then the packages in load order), by extension (`AssetKinds`, in `Apogee.Host.Editing`: `model`, `texture`, `scene`, and what a package registers), leaving out `imported/`, hidden names and sidecars.
+- The list is made from the files of `AssetDatabase.Roots` (`res://` first, then the packages in load order), by extension (`AssetKinds`, in `Weft.Host.Editing`: `model`, `texture`, `scene`, and what a package registers), leaving out `imported/`, hidden names and sidecars.
 - A reference is **found** when its path has a file, **moved** when only its UID leads to one (the editor says where, and a save writes the new path), and **missing** when neither does: such a field is drawn in red with the text it was written as.
 - A scene that named a file that did not load keeps that text (`World.UnresolvedAssetOf`) and writes it back on save, so that the reference works again when the file does. An editor that replaces the field drops the text with `World.SetUnresolvedAsset(entity, component, field, null)`.
 
 ## Tests
 
-`Tests/Apogee.Core.Tests/AssetRefTests.cs` covers the text forms. `Tests/Apogee.Content.Tests/AssetUidTests.cs` covers the UID in sidecars (made, kept, edited in place with comments, quotes, CRLF and a byte order mark), the key that ignores it
+`Tests/Weft.Core.Tests/AssetRefTests.cs` covers the text forms. `Tests/Weft.Content.Tests/AssetUidTests.cs` covers the UID in sidecars (made, kept, edited in place with comments, quotes, CRLF and a byte order mark), the key that ignores it
 (nothing is imported again; a real setting still does), a deleted sidecar, copies and the file that moved with its UID, authored files, `assets.xml`, read-only roots, packages, and an asset that is renamed and
 still resolves.
 
-`Tests/Apogee.Content.Tests/AssetReferencesTests.cs` covers finding and rewriting references (by path and by a stale path's UID, comments, quotes, CRLF and a byte order mark kept, similar paths left alone, packages, read-only
+`Tests/Weft.Content.Tests/AssetReferencesTests.cs` covers finding and rewriting references (by path and by a stale path's UID, comments, quotes, CRLF and a byte order mark kept, similar paths left alone, packages, read-only
 roots, hostile and cooked files, a writable document that was skipped, a failed write put back for any exception, a file saved since or in between, a file that cannot be put back, symbolic links, reading that goes
 wrong, a script with 500,000 mentions, a UID on two files, a UID in capitals, `game.xml`, `mod.xml` and element text, previews) and `Move` (sidecar, artifact and lists, a model used by two scenes that still resolves through its UID,
-refusals, a failed move put back, a move that cannot be undone and the same call finishing it, an interrupted one finished). `Tests/Apogee.Content.Tests/FileSystemTests.cs` covers the durable write and the limits of a listing.
+refusals, a failed move put back, a move that cannot be undone and the same call finishing it, an interrupted one finished). `Tests/Weft.Content.Tests/FileSystemTests.cs` covers the durable write and the limits of a listing.
 
-`Tests/Apogee.Ecs.Tests/SceneAssetTests.cs` covers asset fields in scenes (saved as path and UID, loaded from either, a moved asset found through its UID, an unregistered type, the text of a reference that did not load read and forgotten), `Tests/Apogee.Editor.Tests/AssetCatalogTests.cs` and `AssetPickerTests.cs` the editor's list and picker, `GamePackerTests` the path-only reference in a cooked pack,
-`Tests/Apogee.Rendering.Tests/ModelLibraryPathTests.cs` `uid://` in `ModelLibrary.Load`, and `RuntimeTests.AModelLoadsByUidAndASavedSceneFindsAModelThatWasMoved` the `assets` global and a scene saved by a script that loads after the model moved.
+`Tests/Weft.Ecs.Tests/SceneAssetTests.cs` covers asset fields in scenes (saved as path and UID, loaded from either, a moved asset found through its UID, an unregistered type, the text of a reference that did not load read and forgotten), `Tests/Weft.Editor.Tests/AssetCatalogTests.cs` and `AssetPickerTests.cs` the editor's list and picker, `GamePackerTests` the path-only reference in a cooked pack,
+`Tests/Weft.Rendering.Tests/ModelLibraryPathTests.cs` `uid://` in `ModelLibrary.Load`, and `RuntimeTests.AModelLoadsByUidAndASavedSceneFindsAModelThatWasMoved` the `assets` global and a scene saved by a script that loads after the model moved.

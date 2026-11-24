@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Content/Weft.Content.csproj" />
+    <ProjectReference Include="../Weft.Graphics/Weft.Graphics.csproj" />
+    <ProjectReference Include="../Weft.Reflection/Weft.Reflection.csproj" />
+    <ProjectReference Include="../Weft.Ecs/Weft.Ecs.csproj" />
+    <ProjectReference Include="../Weft.Reflection.Generator/Weft.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Weft.Rendering.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The shaders are compiled at run time (and by the tests), so they ship next to the program in a Shaders folder. -->
+    <Content Include="Shaders/*.slang" Link="Shaders/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

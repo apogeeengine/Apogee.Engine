@@ -1,7 +1,7 @@
 # Physics
 
-`Apogee.Physics` is Jolt Physics for the ECS: entities get **bodies**, the simulation steps at a fixed rate, and the entities' transforms follow. The raw library is in
-[Native libraries](../native/native-libraries.md#jolt-physics-apogeenativejolt); this is what the engine makes of it. In a game, scripts see the world as the global `physics`.
+`Weft.Physics` is Jolt Physics for the ECS: entities get **bodies**, the simulation steps at a fixed rate, and the entities' transforms follow. The raw library is in
+[Native libraries](../native/native-libraries.md#jolt-physics-weftnativejolt); this is what the engine makes of it. In a game, scripts see the world as the global `physics`.
 
 ```lua
 local Transform = world:component("Transform")
@@ -34,7 +34,7 @@ local hit, entity, point, normal, distance = physics:raycast(Vector3(0, 10, 0), 
 - **`stepping`** (`Stepping` in C#) is raised before each fixed step. Anything that must act once per step, vehicle controls above all, connects there, not to a per-frame callback.
 - **Interpolation** (`Interpolate`, on by default): the entity of a moving dynamic body shows the pose between its last two steps by how far the accumulator is into the next one, so motion is smooth at any frame
   rate, at the price of showing the past by up to one step. `physics:pose(entity)` is the exact pose of the last step. A body that comes to rest shows exactly where it is, not a blend.
-- **Determinism:** the library is built so that the same inputs give the same bits on every OS (see [Native libraries](../native/native-libraries.md#jolt-physics-apogeenativejolt)), whatever `ThreadCount` is.
+- **Determinism:** the library is built so that the same inputs give the same bits on every OS (see [Native libraries](../native/native-libraries.md#jolt-physics-weftnativejolt)), whatever `ThreadCount` is.
 - Options: `MaxBodies` (10 240), `MaxBodyPairs`, `MaxContactConstraints`, `TempBufferBytes` (32 MiB), `Gravity`, `VelocitySteps` 10, `PositionSteps` 2, `EventCapacity` (4096). These are the old project's settings.
 
 ## Bodies
@@ -69,11 +69,11 @@ platform entity falls in the world's space, and its local transform changes to m
 ## Layers
 
 A body is in some of 14 collision layers (`layers`, a bit each: `1` is the default layer) and collides with the layers in its `mask` (all by default). Two bodies collide when each is in a layer the other's mask holds.
-Two more bits are the world's own and sort bodies into three broad-phase trees (static, sensor, moving); Jolt never collides two bodies that are both static or kinematic. The native layer builds the object layer from them, and the query filters (`mask`, `ignore`) run natively too: see `Native/jolt/apogee_jolt.cpp`.
+Two more bits are the world's own and sort bodies into three broad-phase trees (static, sensor, moving); Jolt never collides two bodies that are both static or kinematic. The native layer builds the object layer from them, and the query filters (`mask`, `ignore`) run natively too: see `Native/jolt/weft_jolt.cpp`.
 
 ## Events
 
-Bodies that have `events` (and every sensor) report to the world's event queue (`apogee_jolt`), which is drained after each step on the main thread:
+Bodies that have `events` (and every sensor) report to the world's event queue (`weft_jolt`), which is drained after each step on the main thread:
 
 | Signal | Arguments |
 | --- | --- |
@@ -131,9 +131,9 @@ A character is not a body, so `aj_character_draw_debug` draws its capsule separa
 ## Not done
 
 Constraints (joints beyond the [hitches](vehicles.md)), soft bodies, ragdolls, and changing a body's shape or scale after it
-is made. The Jolt library has all of them in its C API (`Apogee.Native.Jolt`).
+is made. The Jolt library has all of them in its C API (`Weft.Native.Jolt`).
 
 ## Tests
 
-`Tests/Apogee.Physics.Tests` covers falling and resting, double precision 10 000 km out, parent spaces, kinematic carrying, scale, teleport, impulses and mass, the fixed step and interpolation, queries, events, sensors,
+`Tests/Weft.Physics.Tests` covers falling and resting, double precision 10 000 km out, parent spaces, kinematic carrying, scale, teleport, impulses and mass, the fixed step and interpolation, queries, events, sensors,
 layers, every shape, the character, debug drawing (the layout of its structs, a box's lines at their place 1 000 km out, solid and wireframe, bounding boxes, the character's capsule), and that the result is the same with 1 and 4 threads. `Tests/Luau/physics.test.luau` runs the script surface in the NativeAOT binary too.

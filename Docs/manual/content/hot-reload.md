@@ -3,7 +3,7 @@
 While a game runs in development (and in the editor, which uses the same pieces), changing a file takes effect without a restart: a script you saved, a definition, an image.
 
 ```sh
-Apogee.Runtime --game Samples/Mods --watch
+Weft.Runtime --game Samples/Mods --watch
 ```
 
 `--watch` goes with `--game`. It makes `res://` writable (so that a changed asset can be imported again into `res://imported`) and reloads, every frame it has something to do:
@@ -64,6 +64,6 @@ for 150 ms (saving a file is usually several events) and gives each path once. A
 
 ## Tests
 
-`Tests/Apogee.Scripting.Tests`: module updates (identity, removed fields, the old module kept when the new one fails to compile or run, `on_reload`, a failing `on_reload`, frozen and non-table modules, listeners and signal
+`Tests/Weft.Scripting.Tests`: module updates (identity, removed fields, the old module kept when the new one fails to compile or run, `on_reload`, a failing `on_reload`, frozen and non-table modules, listeners and signal
 connections moved to the new code, a module that failed its first load leaving nothing registered) and `HotReloader` over real files (a module edit, a broken edit then a fix, definitions and schemas, changes that need a restart,
-modules nothing required, an image imported again, sources and shaders without an import). `Tests/Apogee.Content.Tests`: the watcher (debounce, once, new and deleted files, ignored names, package views, zips). `Tests/Apogee.Runtime.Tests`: `--watch`, and a game's shader edits reaching its `ShaderLibrary`. `Tests/Apogee.Host.Tests`: a watched session whose prefab file is edited changes its instances in place, and a broken file keeps the old version. `Tests/Apogee.Rendering.Tests`: a shader edit changing the rendered image (with its before and after), only the pipelines that use the file rebuilt, a broken edit then a fix, rebuilds while frames are in flight, changes during a build. `Tests/Apogee.DevTools.Tests`: the same for the overlay's shader, and the error section.
+modules nothing required, an image imported again, sources and shaders without an import). `Tests/Weft.Content.Tests`: the watcher (debounce, once, new and deleted files, ignored names, package views, zips). `Tests/Weft.Runtime.Tests`: `--watch`, and a game's shader edits reaching its `ShaderLibrary`. `Tests/Weft.Host.Tests`: a watched session whose prefab file is edited changes its instances in place, and a broken file keeps the old version. `Tests/Weft.Rendering.Tests`: a shader edit changing the rendered image (with its before and after), only the pipelines that use the file rebuilt, a broken edit then a fix, rebuilds while frames are in flight, changes during a build. `Tests/Weft.DevTools.Tests`: the same for the overlay's shader, and the error section.

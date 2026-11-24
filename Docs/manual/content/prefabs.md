@@ -46,7 +46,7 @@ A prefab file is a scene with one root and stable ids. Everything inside `<Entit
   (`RegisterComponent` and `DefineComponent` refuse them): `<Entity>` is a child entity, and `<Override>` is how an instance of a prefab will hold its changes.
 - An `<Entity>` with a `prefab` attribute is an instance of another prefab inside this one; see [Nested prefabs](#nested-prefabs). Its `id` is in this file's numbering like any entity's.
 
-`prefab.xsd` (embedded in `Apogee.Ecs`, and at `Source/Apogee.Ecs/Scene/prefab.xsd`) describes the structure; the writer is tested against it.
+`prefab.xsd` (embedded in `Weft.Ecs`, and at `Source/Weft.Ecs/Scene/prefab.xsd`) describes the structure; the writer is tested against it.
 
 ## Ids stay the same
 
@@ -126,7 +126,7 @@ entity's, and its `name` is the name the root of the nested instance gets.
 </Prefab>
 ```
 
-Loading a scene or a prefab, and `Instantiate`, expand every instance element by the rules below (`PrefabExpander`, in `Apogee.Ecs`) and then create all the entities. Prefabs are read from the world's
+Loading a scene or a prefab, and `Instantiate`, expand every instance element by the rules below (`PrefabExpander`, in `Weft.Ecs`) and then create all the entities. Prefabs are read from the world's
 [library](#the-library), so an instance names its prefab by a path, a UID or both and finds the same file whichever it uses.
 
 **Addresses.** Ids repeat from one prefab to the next (every lamp has an entity 2), so an entity is named by a path of ids, its **address**: `4` is entity 4 of the document, `4/2` entity 2 of the prefab
@@ -298,7 +298,7 @@ leave what is inside an `<Override>` open: the rules above are what check it whe
 ## From an editor or a tool
 
 An editor that shows an instance (bold fields, an "Overrides" menu, "Apply", "Revert", "Unpack", "Create Prefab") needs to know what the instance changed, and to put it back or write it into the prefab. These
-are library functions of `World`, with no interface of their own; `Apogee.Host.Editing` has them as steps of an undo history.
+are library functions of `World`, with no interface of their own; `Weft.Host.Editing` has them as steps of an undo history.
 
 ```csharp
 IReadOnlyList<PrefabOverride> changes = world.PrefabOverrides(root);       // what the instance changed, worked out now
@@ -360,7 +360,7 @@ own position for its lamps, or the Health it pins, are not changes of the lamp, 
 - **A race that is not closed.** Between the check that a file is what the library read and the write there are a few milliseconds (the write itself is made to a temporary file, flushed, and renamed over
   the old one). The bytes are compared once more just before the first write, so a save by someone else in that window is the only thing that is lost, and an editor that holds the file open in a buffer and
   saves it afterwards puts the old text back: the instance's override is gone and the file says the old value again. A tool that applies keeps the file out of the way of other editors while it does.
-- **What undo does:** nothing. An apply writes a file, which a step of the world's history does not take back, so `Apogee.Host.Editing` has no command for it: the tool offers "Apply" as an action, and
+- **What undo does:** nothing. An apply writes a file, which a step of the world's history does not take back, so `Weft.Host.Editing` has no command for it: the tool offers "Apply" as an action, and
   clears its history afterwards, since the update may have made and destroyed entities that older steps name. To take an apply back, the tool writes the earlier text of the file (`Original`) and reloads it.
 
 **Breaking the link** (`BreakPrefabLink`, "Unpack") turns an instance into plain entities: the two components come off, the entities, ids, names and values stay, and a scene saves them as the entities they
@@ -374,7 +374,7 @@ prefab cannot hold (an Entity field that names an entity outside the tree stays 
 prefab of an instance would hold another prefab's entities) or part of one, for a file that already exists (it never writes over one), for a path that cannot be written, and for a tree that holds an instance
 of a prefab that names the new file (it would contain itself, even though the file is not there yet).
 
-**As steps of a history.** `PrefabCommands` (in `Apogee.Host.Editing`) makes `IEditCommand`s: `Revert`, `RevertAll`, `BreakLink`, `CreatePrefab` (each a `SubtreeEditCommand`) and `Instantiate`
+**As steps of a history.** `PrefabCommands` (in `Weft.Host.Editing`) makes `IEditCommand`s: `Revert`, `RevertAll`, `BreakLink`, `CreatePrefab` (each a `SubtreeEditCommand`) and `Instantiate`
 (`InstantiatePrefabCommand`). A `SubtreeEditCommand` takes the branch as it was and as it is, so undoing destroys what the change made and brings back what it destroyed under the ids they had, and redoing
 does it again; entity fields outside the branch that named an entity the change destroyed are put back with it. The file `CreatePrefab` wrote stays after an undo (it is an asset of the game): the entities are plain
 again, and redoing makes them its instance. A change that is refused throws before it is a step.
@@ -382,7 +382,7 @@ again, and redoing makes them its instance. A change that is refused throws befo
 ## Prefab mode (for tools)
 
 An editor that edits a prefab *as the prefab* (not as an instance in a scene: its own entities, with the scene out of the way) needs a second set of entities next to the scene's. A session can hold only
-one script VM, one physics world, one audio and one UI, so the second set is a second `World`, not a second session: `Apogee.Host` gives the pieces, and a tool brings the windows.
+one script VM, one physics world, one audio and one UI, so the second set is a second `World`, not a second session: `Weft.Host` gives the pieces, and a tool brings the windows.
 
 ```csharp
 using PrefabStage stage = PrefabStage.Open(session, "res://prefabs/lamp.aprefab");   // a path, a uid://…, or both
@@ -428,7 +428,7 @@ if (stage.CanSave)
 A file reached by two spellings (`res://packages/core/prefabs/lamp.aprefab` and the `mod://core/prefabs/lamp.aprefab` the asset database gives the same file) is two library handles when it has a UID, so
 open a prefab by the path an instance names it by (`world.PrefabOf(instance)`) or by its `uid://…`.
 
-The `PrefabStageTests` (`Tests/Apogee.Host.Tests`) and `PrefabContentsTests` (`Tests/Apogee.Ecs.Tests`) cover all of this: ids, instances kept as instances, the session's instances following a save (also
+The `PrefabStageTests` (`Tests/Weft.Host.Tests`) and `PrefabContentsTests` (`Tests/Weft.Ecs.Tests`) cover all of this: ids, instances kept as instances, the session's instances following a save (also
 those of an outer prefab), a failing or damaged write, a cycle, a read-only prefab, and the end of the session.
 
 ## Cooked builds
@@ -439,7 +439,7 @@ holds another all take the text and the cooked form alike, with the same limits 
 what an instance makes does not depend on how the file was written down. Nothing in a game needs the sources: the pack of the fixture game of the tests is run with its folder deleted.
 
 The fixture game (`Tests/Fixtures/ShippedGame`) shows it: its scene holds an instance of a crate prefab, which holds a lid prefab, with an override of the lid's handle, and its script instantiates the crate
-once more and leaves `user://prefab.txt`. The `ACookedGameInstantiatesPrefabsFromThePack` test (`Tests/Apogee.Runtime.Tests`) imports it, packs it `--cooked`, checks that the packed prefabs start with
+once more and leaves `user://prefab.txt`. The `ACookedGameInstantiatesPrefabsFromThePack` test (`Tests/Weft.Runtime.Tests`) imports it, packs it `--cooked`, checks that the packed prefabs start with
 the magic of cooked XML (`APXB`), deletes the sources and runs the game from the pack: it must leave the text the game left when it ran from its folder.
 
 ## Renaming a prefab
@@ -452,7 +452,7 @@ An instance names its prefab by a path and a UID (`res://prefabs/lamp.aprefab|ui
 - **By hand** (a file manager, a version control checkout): nothing is rewritten and nothing breaks. The path in the references is out of date, so they find the file by its UID, as for any asset
   ([where a UID lives](assets.md#where-a-uid-lives)); the next time the scene is saved, it writes the path the prefab has now.
 
-A reference with a path and no UID follows only a rename that goes through `Move`. The `PrefabRenameTests` of `Tests/Apogee.Ecs.Tests` cover both.
+A reference with a path and no UID follows only a rename that goes through `Move`. The `PrefabRenameTests` of `Tests/Weft.Ecs.Tests` cover both.
 
 ## Files
 

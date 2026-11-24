@@ -11,7 +11,7 @@ permissions:
 
 env:
   # The native libraries that must load (the tests fail instead of skipping).
-  APOGEE_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,apogee_net,zstd,freetype,ktx,slang_c,jolt
+  WEFT_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,weft_net,zstd,freetype,ktx,slang_c,jolt
 
 jobs:
   tests:
@@ -26,8 +26,8 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           lfs: ThirdParty/*/lib/win-x64/*
-      - run: dotnet build Apogee.slnx -c Release
-      - run: dotnet test --solution Apogee.slnx -c Release --no-build
+      - run: dotnet build Weft.slnx -c Release
+      - run: dotnet test --solution Weft.slnx -c Release --no-build
 
   aot:
     name: NativeAOT (win-x64)
@@ -46,21 +46,21 @@ jobs:
         run: ./build.sh aot
       # The engine's own Luau tests, in the native binary: the scripting layer and the ECS from scripts, with no GPU.
       - name: Luau tests in the NativeAOT runtime
-        run: Bin/publish/runtime/Apogee.Runtime --luau-test Tests/Luau
+        run: Bin/publish/runtime/Weft.Runtime --luau-test Tests/Luau
       - name: Fixture game
         run: |
-          Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
+          Bin/publish/runtime/Weft.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
           test -s "$RUNNER_TEMP/game-user/ran.txt"
           test -s "$RUNNER_TEMP/game-user/scene.txt"
           test -s "$RUNNER_TEMP/game-user/prefab.txt"
           test -s "$RUNNER_TEMP/game-user/def.txt"
           test -s "$RUNNER_TEMP/game-user/moddata/patcher/ran.txt"
-      # The export test (docs: Docs/manual/tools/export.md). The fixture game is exported for this platform, cooked and encrypted, by the published runtime. APOGEE_PACK_KEY is a fixed test key that is set on
+      # The export test (docs: Docs/manual/tools/export.md). The fixture game is exported for this platform, cooked and encrypted, by the published runtime. WEFT_PACK_KEY is a fixed test key that is set on
       # this step only. It is PUBLIC and worthless: it is made up, protects nothing, and an exported game carries its key anyway. Never ship a game with it; a real game's key is a secret of the release process.
       - name: Export the fixture game, cooked and encrypted
         env:
-          APOGEE_PACK_KEY: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
-        run: Bin/publish/runtime/Apogee.Runtime --export Tests/Fixtures/ShippedGame Bin/export --target win-x64 --cooked
+          WEFT_PACK_KEY: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+        run: Bin/publish/runtime/Weft.Runtime --export Tests/Fixtures/ShippedGame Bin/export --target win-x64 --cooked
       - name: Exported game, checked
         run: |
           root=Bin/export
@@ -129,9 +129,9 @@ jobs:
           rm -rf "$user"
           mkdir -p "$user/mods"
           cp -r Tests/Fixtures/ShippedGame/dev_mods/patcher "$user/mods/"
-          test -z "${APOGEE_PACK_KEY-}"
+          test -z "${WEFT_PACK_KEY-}"
           cd "$RUNNER_TEMP"
-          env -u APOGEE_PACK_KEY "$exe" --headless --frames 60 --user "$user" +connect_lobby 1
+          env -u WEFT_PACK_KEY "$exe" --headless --frames 60 --user "$user" +connect_lobby 1
           test -s "$user/ran.txt"
           test -s "$user/scene.txt"
           test -s "$user/prefab.txt"
@@ -140,13 +140,13 @@ jobs:
           test -s "$user/moddata/patcher/ran.txt"
       - name: Luau definitions
         run: |
-          Bin/publish/runtime/Apogee.Runtime --luau-defs Bin/defs
-          test -s Bin/defs/apogee.d.luau
+          Bin/publish/runtime/Weft.Runtime --luau-defs Bin/defs
+          test -s Bin/defs/weft.d.luau
       # The published runtime and the export, for whoever exports for this platform from another one (--runtime <dir>, see Docs/manual/tools/export.md) or wants to try the exported game.
       - name: Runtime artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apogee-win-x64
+          name: weft-win-x64
           path: Bin/publish/runtime
           retention-days: 14
       - name: Export artifact

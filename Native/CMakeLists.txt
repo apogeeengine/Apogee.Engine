@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ApogeeNative C CXX)
+project(WeftNative C CXX)
 if(APPLE)
   enable_language(OBJC)
 endif()
@@ -16,29 +16,29 @@ endif()
 
 # Libraries land in Bin/native/<rid>, where the tests and the samples pick them up.
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  set(APOGEE_OS win)
+  set(WEFT_OS win)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-  set(APOGEE_OS osx)
+  set(WEFT_OS osx)
 else()
-  set(APOGEE_OS linux)
+  set(WEFT_OS linux)
 endif()
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
-  set(APOGEE_ARCH arm64)
+  set(WEFT_ARCH arm64)
 else()
-  set(APOGEE_ARCH x64)
+  set(WEFT_ARCH x64)
 endif()
-set(APOGEE_OUT "${CMAKE_CURRENT_LIST_DIR}/../Bin/native/${APOGEE_OS}-${APOGEE_ARCH}")
-set(APOGEE_THIRDPARTY "${CMAKE_CURRENT_LIST_DIR}/../ThirdParty")
+set(WEFT_OUT "${CMAKE_CURRENT_LIST_DIR}/../Bin/native/${WEFT_OS}-${WEFT_ARCH}")
+set(WEFT_THIRDPARTY "${CMAKE_CURRENT_LIST_DIR}/../ThirdParty")
 
-function(apogee_library target)
+function(weft_library target)
   set_target_properties(${target} PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY "${APOGEE_OUT}"
-    RUNTIME_OUTPUT_DIRECTORY "${APOGEE_OUT}")
+    LIBRARY_OUTPUT_DIRECTORY "${WEFT_OUT}"
+    RUNTIME_OUTPUT_DIRECTORY "${WEFT_OUT}")
   foreach(config Debug Release RelWithDebInfo MinSizeRel)
     string(TOUPPER ${config} upper)
     set_target_properties(${target} PROPERTIES
-      LIBRARY_OUTPUT_DIRECTORY_${upper} "${APOGEE_OUT}"
-      RUNTIME_OUTPUT_DIRECTORY_${upper} "${APOGEE_OUT}")
+      LIBRARY_OUTPUT_DIRECTORY_${upper} "${WEFT_OUT}"
+      RUNTIME_OUTPUT_DIRECTORY_${upper} "${WEFT_OUT}")
   endforeach()
 endfunction()
 

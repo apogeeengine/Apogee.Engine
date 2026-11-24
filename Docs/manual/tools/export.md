@@ -1,7 +1,7 @@
 # Exporting a game
 
 An export turns a game folder into a folder that runs on its own: the runtime built for a platform, renamed to the game's executable name, its native libraries and compiled shaders, the game's files in
-`data/game.pack`, and the game's `game.xml`. It is made from the command line (`Apogee.Runtime --export`, wrapped by `./build.sh export`) or from code (`GameExporter` in `Source/Apogee.Export`). The editor
+`data/game.pack`, and the game's `game.xml`. It is made from the command line (`Weft.Runtime --export`, wrapped by `./build.sh export`) or from code (`GameExporter` in `Source/Weft.Export`). The editor
 has no Export dialog yet.
 
 ```sh
@@ -11,19 +11,19 @@ Bin/export/linux/FixtureGame                                           # runs fr
 ```
 
 ```text
-Apogee.Runtime --export <game folder> <out folder> --target <rid> [--cooked] [--runtime <dir>] [--console]
+Weft.Runtime --export <game folder> <out folder> --target <rid> [--cooked] [--runtime <dir>] [--console]
 ```
 
 | | |
 | --- | --- |
 | `<game folder>` | the game: a folder with a [`game.xml`](../content/game-manifest.md). It is never written to. |
-| `<out folder>` | where the export goes: it does not exist, is empty, or is an earlier export (it holds a file `.apogee-export`), which is then replaced. Anything else is an error, so that nothing of yours is deleted. It cannot be inside the game folder, nor contain it. |
+| `<out folder>` | where the export goes: it does not exist, is empty, or is an earlier export (it holds a file `.weft-export`), which is then replaced. Anything else is an error, so that nothing of yours is deleted. It cannot be inside the game folder, nor contain it. |
 | `--target <rid>` | the platform: `linux-x64`, `win-x64`, `osx-arm64` or `osx-x64` (the platforms the engine has complete native libraries for). Anything else is an error that lists these. |
 | `--cooked` | pack the [imported](../content/import.md) artifacts and the [cooked](../content/packs.md#making-one) documents instead of the sources they replace (the game is imported first, in a copy). |
 | `--runtime <dir>` | the folder the runtime for the target was published to. Default: the folder of the running program when it is the NativeAOT runtime, else the `Bin/publish/runtime` above the program or the current folder. |
 | `--console` | Windows only: keep the console subsystem, so that the game opens a console window (to read its log). Without it the program is a windowed one, see [Windows](#windows). |
 
-Exit codes: 0 fine, 1 bad arguments (an unknown target, a bad `APOGEE_PACK_KEY`), 2 the export failed (the message says why). Warnings are printed to stderr, for example that no key is set.
+Exit codes: 0 fine, 1 bad arguments (an unknown target, a bad `WEFT_PACK_KEY`), 2 the export failed (the message says why). Warnings are printed to stderr, for example that no key is set.
 
 ## Where the runtime for a platform comes from
 
@@ -31,14 +31,14 @@ The runtime is a NativeAOT program, so it can only be built on its own operating
 export copies from such a folder. It reads the header of the program in it (PE, ELF or Mach-O, with its processor) and refuses a folder of another platform with what to do:
 
 ```text
-/path/runtime holds a linux-x64 runtime; --target win-x64 needs one published for win-x64 (./build.sh aot on that operating system, or the CI artifact apogee-win-x64), passed with --runtime <dir>.
+/path/runtime holds a linux-x64 runtime; --target win-x64 needs one published for win-x64 (./build.sh aot on that operating system, or the CI artifact weft-win-x64), passed with --runtime <dir>.
 ```
 
 So exporting for the machine you are on needs nothing but `./build.sh aot`; exporting for another platform needs a runtime published there (or downloaded from CI) and `--runtime`. A macOS runtime has to
 be a thin binary for one processor, not a universal one. Left out of the copy: debug files (`*.pdb`, `*.dbg`, `*.dSYM`), import libraries (`*.lib`, `*.exp`), the Slang compiler's libraries and the shader
 sources and their import settings (`Shaders/*.slang` and `Shaders/*.slang.import.xml`; the compiled `Shaders/imported` stays: a shipped game never loads the compiler), `steam_appid.txt`, and the runtime folder's own `game.xml` and `data/`.
 
-The continuous integration publishes the runtime of each platform it builds (`apogee-linux-x64`, `apogee-win-x64`, `apogee-osx-arm64`, `apogee-osx-x64`) as a workflow artifact for 14 days: download one,
+The continuous integration publishes the runtime of each platform it builds (`weft-linux-x64`, `weft-win-x64`, `weft-osx-arm64`, `weft-osx-x64`) as a workflow artifact for 14 days: download one,
 unzip it (an archive does not keep the executable bit; the export sets it on the program it writes), and pass the folder with `--runtime`. This is how to export for Windows or macOS without a computer of that kind.
 
 ## The layout
@@ -62,7 +62,7 @@ The exported `game.xml` is the game's, with the icon changed: the icon is in the
 
 ## The pack key
 
-If `APOGEE_PACK_KEY` is set (64 hexadecimal digits, in the environment or in the `.env` file that the `./build.sh` wrapper loads), the export encrypts the pack with it, and writes the key into the
+If `WEFT_PACK_KEY` is set (64 hexadecimal digits, in the environment or in the `.env` file that the `./build.sh` wrapper loads), the export encrypts the pack with it, and writes the key into the
 executable, so that the game opens its own pack without the variable. Without a key the packs are plain, and the export warns about it. See [Encryption and the key](../content/packs.md#encryption-and-the-key).
 
 The key goes into a reserved **slot** of the runtime (`PackKeySlot`): the executable holds 68 bytes in its read-only data, which start with a 16-byte magic that appears nowhere else, and the export
@@ -88,7 +88,7 @@ entry on Linux. The Windows, Linux and macOS steps are described below. Code sig
 
 ### Windows
 
-The export copies the runtime built for `win-x64`, renames it `<executable>.exe`, and then changes the file in place with the export's own PE writer (`Source/Apogee.Export/Windows`). It reads and
+The export copies the runtime built for `win-x64`, renames it `<executable>.exe`, and then changes the file in place with the export's own PE writer (`Source/Weft.Export/Windows`). It reads and
 writes the executable's headers and resource section itself, with no Windows API, `rc.exe` or `rcedit`, so a Windows export can be made on Linux or macOS from a runtime published on Windows
 (`--runtime`). Three things change:
 
@@ -143,7 +143,7 @@ lib*.so, libSDL3.so.0 ...        the native libraries, beside it
 Shaders/imported/                compiled shaders
 game.xml, data/game.pack         the game
 icon.png                         the icon, 256x256
-org.apogee.fixturegame.desktop   the desktop entry
+org.weft.fixturegame.desktop     the desktop entry
 ```
 
 - **The executable bit.** The step sets the executable's mode to `rwxr-xr-x` (`File.SetUnixFileMode`). On a Windows computer there are no Unix modes, so the export warns that the bit is not set: set it
@@ -256,12 +256,12 @@ What it does **not** do:
 The three `aot` jobs of the continuous integration (`.github/workflows/*_builds.yml`) export `Tests/Fixtures/ShippedGame` for their own platform with the runtime they just published, `--cooked`, and then
 check and run the result:
 
-1. The export step sets `APOGEE_PACK_KEY` to a fixed test key, `000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f`, on that step only. **The key is public and worthless**: it is made
+1. The export step sets `WEFT_PACK_KEY` to a fixed test key, `000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f`, on that step only. **The key is public and worthless**: it is made
    up, nothing is protected by it, and an exported game carries its key anyway. Never ship a game with it.
 2. The result is checked: the pack does not start with the plain magic (it is encrypted), no debug file, Slang library, shader source or `steam_appid.txt` was copied, and the game folder in the
    repository has no changed or new file. On Windows the version information says `Fixture Game`; on macOS the program's signature is verified (`codesign --verify --strict --verbose=4` on a copy
    outside the bundle, then `codesign -dvvv`) and `Info.plist` and `game.icns` are read by `plutil -lint` and `iconutil`.
-3. The exported game is run headless **from another folder**, with `APOGEE_PACK_KEY` not in the environment (so the key can only come out of the executable's slot), a player's mod copied to the user
+3. The exported game is run headless **from another folder**, with `WEFT_PACK_KEY` not in the environment (so the key can only come out of the executable's slot), a player's mod copied to the user
    folder, and `+connect_lobby 1` on the command line, which a shipped game ignores. The files that the fixture leaves in the user folder (`ran.txt`, `scene.txt`, `def.txt`, `prefab.txt`, `document.txt` and the mod's
    `moddata/patcher/ran.txt`) must exist. On Linux it is run once more, rendered, on the software rasterizer.
 4. The export is uploaded as the artifact `export-<rid>`.
@@ -291,6 +291,6 @@ game's icon (`Rgba(size)`, `Png(size)`: a box filter down, with a warning for an
 
 ## Tests
 
-`Tests/Apogee.Export.Tests`: the targets, reading the platform from an executable header, what is left out of a runtime folder, the key slot (written into every copy of the slot and read back, a magic without the rest of the template left alone, no slot, a slot cut by the end of the file and too many copies an
+`Tests/Weft.Export.Tests`: the targets, reading the platform from an executable header, what is left out of a runtime folder, the key slot (written into every copy of the slot and read back, a magic without the rest of the template left alone, no slot, a slot cut by the end of the file and too many copies an
 error, the key is not in the file in the clear), the icon sizes, the PE writer (the resource tree, the section that is rewritten or added, header room, signatures and overlays, the subsystem, the checksum, files that are damaged or hostile, the engine's vendored Windows libraries, damaged and hostile files), the Windows step (the version information and the icon images read back, every copy of the key kept), the Linux step (the executable bit, `icon.png` and the manifest's icon, the escaping of the desktop entry), the macOS step (the plist and its escaping, the `icns` structure and sizes, the bundle layout, the minimum system version, and the Mach-O signature: page hashes of every hash type and page size checked against an independent computation, real signatures from `ThirdParty` reproduced, and hostile lengths and offsets, truncation and random damage all ending in an `ExportException`), and exports for all four targets from any host with a synthesized runtime folder (layout, renamed executable, what is packed, the game
-folder untouched, encrypted packs, the output folder rules). `Tests/Apogee.Runtime.Tests` runs an exported game from its folder, headless, on its encrypted pack.
+folder untouched, encrypted packs, the output folder rules). `Tests/Weft.Runtime.Tests` runs an exported game from its folder, headless, on its encrypted pack.

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Native.Cgltf/Weft.Native.Cgltf.csproj" />
+    <ProjectReference Include="../Weft.Native.Stb/Weft.Native.Stb.csproj" />
+    <ProjectReference Include="../Weft.Native.Ktx/Weft.Native.Ktx.csproj" />
+    <ProjectReference Include="../Weft.Native.Meshopt/Weft.Native.Meshopt.csproj" />
+    <ProjectReference Include="../Weft.Native.Zstd/Weft.Native.Zstd.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The schema of a package's mod.xml. -->
+    <EmbeddedResource Include="Packages/mod.xsd" LogicalName="Packages/mod.xsd" />
+    <!-- The schema of a game folder's game.xml. -->
+    <EmbeddedResource Include="Packages/game.xsd" LogicalName="Packages/game.xsd" />
+    <!-- The schema of the <asset>.import.xml settings files. -->
+    <EmbeddedResource Include="Import/import.xsd" LogicalName="Import/import.xsd" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Weft.Content.Tests" />
+    <!-- The export writes a pack key into the executable (PackKey.Bytes). -->
+    <InternalsVisibleTo Include="Weft.Export" />
+    <InternalsVisibleTo Include="Weft.Export.Tests" />
+  </ItemGroup>
+</Project>

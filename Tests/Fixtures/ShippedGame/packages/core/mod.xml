@@ -1,4 +1,4 @@
-<Mod id="core" name="Fixture game" version="1.0.0" author="Apogee" description="The shipped-game fixture of the CI." apiVersion="1">
+<Mod id="core" name="Fixture game" version="1.0.0" author="Weft" description="The shipped-game fixture of the CI." apiVersion="1">
   <Script path="main.luau"/>
   <Content path="data"/>
 </Mod>

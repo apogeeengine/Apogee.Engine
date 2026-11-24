@@ -10,7 +10,7 @@ look, what the shipped programs are compiled for, and where hand-written vector 
 - **RenderDoc** shows the same pass names (`frame.Scope(name)` and `recorder.Label(name)` are debug labels).
 - **CoreCLR (the editor and `dotnet run`)**: `dotnet-trace collect -- <program>` and `dotnet-counters monitor` (install them with `dotnet tool install -g dotnet-trace dotnet-counters`).
 - **NativeAOT (a shipped build)**: a native program, so the platform's profiler reads it: `perf record -g` on Linux, Instruments on macOS, Windows Performance Analyzer or Visual Studio on Windows.
-  `./build.sh aot` keeps the symbols (`Apogee.Runtime.dbg` next to the program on Linux, `.pdb` files on Windows).
+  `./build.sh aot` keeps the symbols (`Weft.Runtime.dbg` next to the program on Linux, `.pdb` files on Windows).
 - **Micro-benchmarks**: `./build.sh bench [filter]` runs BenchmarkDotNet over `Samples/Benchmarks` (a sample: benchmarks are run by hand) in Release (the raw results go to `Bin/benchmarks`, which is not committed) (for example `./build.sh bench '*Culling*' --job short`). BenchmarkDotNet is used there
   only (MIT, a test dependency, never shipped), and CI builds the project but does not run it: benchmarks are noisy on shared machines. Remember that BenchmarkDotNet's NativeAOT mode compiles for the
   CPU it runs on, which is not what a game ships with; to measure the shipped baseline publish a small program with `-p:PublishAot=true` instead.
@@ -29,7 +29,7 @@ small program on an AVX2 machine:
 So the default of x64 *is* `x86-64-v2` (SSE4.2 and POPCNT, practically every PC since 2009), and AVX2 code is simply compiled out of a default NativeAOT build; it is not a run-time check. Our choice, in
 `Directory.Build.props` for `PublishAot` builds:
 
-- **x64: `x86-64-v2`**, written down so that it is a decision. `-p:ApogeeAotInstructionSet=x86-64-v3` builds for AVX2, BMI and FMA (Intel since Haswell in 2013, AMD since Excavator in 2015 and Zen) at the price of the older CPUs, which then do not start the game; the next
+- **x64: `x86-64-v2`**, written down so that it is a decision. `-p:WeftAotInstructionSet=x86-64-v3` builds for AVX2, BMI and FMA (Intel since Haswell in 2013, AMD since Excavator in 2015 and Zen) at the price of the older CPUs, which then do not start the game; the next
   section says what that buys.
 - **osx-arm64: `apple-m1`** (atomics, CRC, rounding multiply, dot products): every Apple-silicon Mac has at least that.
 - Other arm64 and anything else keep the compiler's default (ARMv8.0 with NEON).
@@ -40,7 +40,7 @@ The CoreCLR editor and development runs use the JIT and so *do* get AVX2 on a CP
 
 Only where it was measured to pay, and with a scalar twin that the tests compare it with.
 
-**Frustum culling** (`Apogee.Core.Numerics.FrustumCulling`, used by `SceneRenderer`): the bounds of every draw are kept as six arrays (centers and half extents, structure of arrays, padded to a multiple of eight),
+**Frustum culling** (`Weft.Core.Numerics.FrustumCulling`, used by `SceneRenderer`): the bounds of every draw are kept as six arrays (centers and half extents, structure of arrays, padded to a multiple of eight),
 and each frame the five planes of the camera's view volume are tested against all of them, four or eight boxes per instruction, producing a bit per draw. The three kernels (`CullScalar`, `CullVector128`,
 `CullVector256`) do the same arithmetic in the same order, so they set the same bits, which `FrustumCullingTests` checks on random boxes and frusta; `Cull` picks the widest that is hardware accelerated.
 Because the scene's boxes are relative to its origin, the frustum is moved to them with `Frustum.Offset` (the plane constants absorb the offset) and the arrays never change.

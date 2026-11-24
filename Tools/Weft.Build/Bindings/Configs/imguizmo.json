@@ -1,0 +1,12 @@
+{
+  "name": "imguizmo",
+  "project": "Source/Weft.Native.ImGuizmo",
+  "namespace": "Weft.Native.ImGuizmo",
+  "className": "Gizmo",
+  "library": { "name": "cimgui", "linux": ["libcimgui.so"], "windows": ["cimgui.dll"], "macos": ["libcimgui.dylib"] },
+  "includeDirs": ["Native/imgui"],
+  "includes": ["weft_imguizmo.h"],
+  "ownDirs": ["Native/imgui"],
+  "stripPrefixes": ["agz_", "AGZ_"],
+  "excludeConstants": ["^WEFT_IMGUIZMO_H$"]
+}

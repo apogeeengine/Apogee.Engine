@@ -1,7 +1,7 @@
 # Definitions and schemas
 
 A game's data is XML: *definitions* (a crate, a machine, a crop) that mods can add to, change and remove, checked against *schemas* (XSD) that say what a valid one looks
-like. `Apogee.Content` reads both (`Apogee.Content.Xml`) and gives code and scripts typed data, with the line of every mistake.
+like. `Weft.Content` reads both (`Weft.Content.Xml`) and gives code and scripts typed data, with the line of every mistake.
 
 ## Definitions
 
@@ -100,7 +100,7 @@ attributes as text, children by name (a repeated name is a list), text as `value
 
 ## From Luau
 
-Two global libraries (hand-written natives, declared in `apogee.d.luau`):
+Two global libraries (hand-written natives, declared in `weft.d.luau`):
 
 ```lua
 -- defs: the game's definitions, set with LuauVm.Defs (a game sets it when it has loaded its content)
@@ -136,7 +136,7 @@ so the text is the same every time; elements nest at most 128 deep, both ways.
 ## Tests
 
 
-`Tests/Apogee.Content.Tests`: the XML reader and writer (lines, entities, a DTD refused), each schema feature with the exact problem messages, the merge rules including place counting
-and removal, and the database (load order, replace, patch, remove, sources, problems with file and line, kinds without a schema). `Tests/Apogee.Scripting.Tests` runs `xml` and `defs` from scripts
+`Tests/Weft.Content.Tests`: the XML reader and writer (lines, entities, a DTD refused), each schema feature with the exact problem messages, the merge rules including place counting
+and removal, and the database (load order, replace, patch, remove, sources, problems with file and line, kinds without a schema). `Tests/Weft.Scripting.Tests` runs `xml` and `defs` from scripts
 (read-only tables, identity, sources and problems, reloads, `xml.load` of a text and a cooked file), and `Tests/Luau/xml.test.luau` runs them in the NativeAOT binary. Cooked definitions load and merge like
-text ones (`CookedDefsLoadAndMergeLikeText`), `GamePackerTests` checks which files a cooked pack cooks, and `Tests/Apogee.Runtime.Tests` packs the shipped-game fixture `--cooked` and encrypted and runs it from the pack.
+text ones (`CookedDefsLoadAndMergeLikeText`), `GamePackerTests` checks which files a cooked pack cooks, and `Tests/Weft.Runtime.Tests` packs the shipped-game fixture `--cooked` and encrypted and runs it from the pack.

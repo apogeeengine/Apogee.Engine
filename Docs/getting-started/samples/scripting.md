@@ -12,10 +12,10 @@ how a game's scripts are laid out.
   and sixty boxes staying inside the cube for ten seconds.
 
 ```sh
-Apogee.Runtime --luau-test Samples/Scripting
-Apogee.Runtime --run Samples/Scripting/main.luau                    # in a window, with the panel and the dev overlay
-Apogee.Runtime --run Samples/Scripting/main.luau --frames 120 --headless
+Weft.Runtime --luau-test Samples/Scripting
+Weft.Runtime --run Samples/Scripting/main.luau                      # in a window, with the panel and the dev overlay
+Weft.Runtime --run Samples/Scripting/main.luau --frames 120 --headless
 ```
 
-This is a sample: you run it by hand, and nothing in CI runs it (the Luau library it uses is tested by `Tests/Luau` and the engine's own test projects). For luau-lsp, `Apogee.Runtime --luau-defs Bin/defs` writes the definitions and the sample's `.luaurc` points
+This is a sample: you run it by hand, and nothing in CI runs it (the Luau library it uses is tested by `Tests/Luau` and the engine's own test projects). For luau-lsp, `Weft.Runtime --luau-defs Bin/defs` writes the definitions and the sample's `.luaurc` points
 the `engine` alias at them. See [Scripting](../../manual/scripting/scripting.md), [Runtime and Luau tests](../../manual/scripting/runtime.md) and [Dev tools](../../manual/tools/devtools.md#dear-imgui-for-luau-scripts).

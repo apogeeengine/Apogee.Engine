@@ -127,4 +127,4 @@ double eased = Easing.Apply(Ease.QuadInOut, 0.25);
 ```
 
 `Tween` is an engine class (`Tween.Playing`, `Tween.Cancel()`, `Tween.Completed`…), so it is in the generated definitions and reference. The tests of the library are in
-`Tests/Apogee.Scripting.Tests/TweenTests.cs` and `Tests/Luau/tween.test.luau`, whose cases count frames at the runner's 60 Hz clock.
+`Tests/Weft.Scripting.Tests/TweenTests.cs` and `Tests/Luau/tween.test.luau`, whose cases count frames at the runner's 60 Hz clock.

@@ -1,8 +1,8 @@
 using System;
 using System.Numerics;
-using Apogee.Rendering;
+using Weft.Rendering;
 
-namespace Apogee.Samples.Viewer;
+namespace Weft.Samples.Viewer;
 
 /// <summary>Moves a <see cref="Camera"/> from keyboard and mouse input.</summary>
 internal sealed class FlyCamera(Camera camera)

@@ -19,7 +19,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: OS and version, GPU and driver, .NET SDK (`dotnet --version`), the commit, and the output of `Bin/publish/runtime/Apogee.Runtime --gpu-info` for graphics problems.
+      description: OS and version, GPU and driver, .NET SDK (`dotnet --version`), the commit, and the output of `Bin/publish/runtime/Weft.Runtime --gpu-info` for graphics problems.
     validations:
       required: true
   - type: textarea

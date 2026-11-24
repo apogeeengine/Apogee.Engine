@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AnalysisMode>Default</AnalysisMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Source/Weft.Runtime/Weft.Runtime.csproj" />
+    <Compile Include="../Weft.Native.Tests/NativeRequirements.cs" Link="NativeRequirements.cs" />
+    <Compile Include="../Weft.Graphics.Tests/GpuFixture.cs" Link="GpuFixture.cs" />
+    <Compile Include="../Weft.Export.Tests/TinyPe.cs" Link="TinyPe.cs" />
+    <Compile Include="../Weft.Export.Tests/SyntheticMachO.cs" Link="SyntheticMachO.cs" />
+    <Compile Include="../Weft.Export.Tests/TestResources.cs" Link="TestResources.cs" />
+  </ItemGroup>
+  <Import Project="../../ThirdParty/NativeLibraries.props" />
+</Project>

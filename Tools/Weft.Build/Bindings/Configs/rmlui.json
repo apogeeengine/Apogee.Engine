@@ -1,0 +1,12 @@
+{
+  "name": "rmlui",
+  "project": "Source/Weft.Native.RmlUi",
+  "namespace": "Weft.Native.RmlUi",
+  "className": "Rml",
+  "library": { "name": "rmlui", "linux": ["librmlui.so"], "windows": ["rmlui.dll"], "macos": ["librmlui.dylib"] },
+  "includeDirs": ["Native/rmlui"],
+  "includes": ["weft_rmlui.h"],
+  "ownDirs": ["Native/rmlui"],
+  "stripPrefixes": ["ar_", "AR_"],
+  "excludeConstants": ["^WEFT_RMLUI_H$"]
+}

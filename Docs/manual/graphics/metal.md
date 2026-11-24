@@ -7,28 +7,28 @@ that meets the baseline can check the rest. This page is for whoever has one, an
 
 ## What CI does
 
-- Builds `metal_c` (the Objective-C shim), the bindings and the backend, and runs the native binding tests (`Tests/Apogee.Native.Tests`) against the real library.
+- Builds `metal_c` (the Objective-C shim), the bindings and the backend, and runs the native binding tests (`Tests/Weft.Native.Tests`) against the real library.
 - Compiles every engine shader's Metal shading language with Apple's own compiler (`xcrun metal -c`; `AppleCompilesEveryEngineShaderToMetal`).
-- Runs `Apogee.Runtime --gpu-info`. If the runner's GPU meets the baseline (the line `metal: … ok`), the GPU tests are required to run on it (`APOGEE_REQUIRE_METAL=1`); if not, they skip and the log says why.
-- Does all of this on an Apple-silicon runner and an Intel one, and uploads each NativeAOT build as the artifact `apogee-osx-arm64` / `apogee-osx-x64`. When the probe finds a qualifying GPU it also renders the fixture game on Metal (uploaded as `metal-screenshots-*`).
+- Runs `Weft.Runtime --gpu-info`. If the runner's GPU meets the baseline (the line `metal: … ok`), the GPU tests are required to run on it (`WEFT_REQUIRE_METAL=1`); if not, they skip and the log says why.
+- Does all of this on an Apple-silicon runner and an Intel one, and uploads each NativeAOT build as the artifact `weft-osx-arm64` / `weft-osx-x64`. When the probe finds a qualifying GPU it also renders the fixture game on Metal (uploaded as `metal-screenshots-*`).
 
 ## Checking on a Mac
 
-Clone the repository, download the artifact for your Mac (`apogee-osx-arm64` or `apogee-osx-x64`) from the CI run and unzip it into `Bin/publish` (so that `Bin/publish/runtime` exists). A downloaded binary needs
-`chmod +x Bin/publish/runtime/Apogee.Runtime` and `xattr -dr com.apple.quarantine Bin/publish` first. Then, from the repository's root:
+Clone the repository, download the artifact for your Mac (`weft-osx-arm64` or `weft-osx-x64`) from the CI run and unzip it into `Bin/publish` (so that `Bin/publish/runtime` exists). A downloaded binary needs
+`chmod +x Bin/publish/runtime/Weft.Runtime` and `xattr -dr com.apple.quarantine Bin/publish` first. Then, from the repository's root:
 
 ```sh
-Bin/publish/runtime/Apogee.Runtime --gpu-info                       # which GPUs, and whether they qualify; send this line first
-Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user /tmp/game-user --headless --size 640x360 --frames 10 --screenshot game.png
-Bin/publish/runtime/Apogee.Runtime --run Samples/Scripting/main.luau --headless --size 640x360 --frames 30 --screenshot scripting.png   # a sample, run by hand
-Bin/publish/runtime/Apogee.Runtime --luau-test Tests/Luau
+Bin/publish/runtime/Weft.Runtime --gpu-info                         # which GPUs, and whether they qualify; send this line first
+Bin/publish/runtime/Weft.Runtime --game Tests/Fixtures/ShippedGame --user /tmp/game-user --headless --size 640x360 --frames 10 --screenshot game.png
+Bin/publish/runtime/Weft.Runtime --run Samples/Scripting/main.luau --headless --size 640x360 --frames 30 --screenshot scripting.png     # a sample, run by hand
+Bin/publish/runtime/Weft.Runtime --luau-test Tests/Luau
 ```
 
-Then a window, which tests the swapchain: run the lighting sample (`./build.sh aot-viewer`, then `Bin/publish/viewer/Apogee.Samples.Viewer`) and look at it for a few seconds (fly with the mouse and WASD; resize the window).
+Then a window, which tests the swapchain: run the lighting sample (`./build.sh aot-viewer`, then `Bin/publish/viewer/Weft.Samples.Viewer`) and look at it for a few seconds (fly with the mouse and WASD; resize the window).
 
 Report (an issue, or a pull request with the fix) the output of `--gpu-info`, the PNGs, and anything printed in the terminal. There are no reference images: a few pixels of difference at edges between GPUs is the rasterizer, a black or garbled image is a bug.
 
-To run the engine's tests from a checkout instead: `APOGEE_REQUIRE_METAL=1 ./build.sh test` (a missing or unqualified GPU is then a failure, not a skip).
+To run the engine's tests from a checkout instead: `WEFT_REQUIRE_METAL=1 ./build.sh test` (a missing or unqualified GPU is then a failure, not a skip).
 
 ## What is not covered
 
@@ -36,7 +36,7 @@ GPU timings (`Timings` is empty on Metal: Metal samples counters only at encoder
 
 The recorder's fill, clear and indirect calls (`FillBuffer`, `ClearImage`, `DispatchIndirect`, `DrawIndexedIndirect`; see [Graphics](graphics.md#fill-clear-and-indirect-calls)) and the extra bindless arrays (cube, array, 3D and storage textures) are written and
 tested by the shared GPU tests (`RecorderTests`, `BindlessTests`), but only the Metal-specific restrictions they have are known from reading Metal's documentation: a render-pass clear needs the attachment usage, a buffer fill
-is bytewise, and there is no draw count in a buffer. Confirm them with `APOGEE_REQUIRE_METAL=1 ./build.sh test` on a Mac.
+is bytewise, and there is no draw count in a buffer. Confirm them with `WEFT_REQUIRE_METAL=1 ./build.sh test` on a Mac.
 
-The images are compared with the references that Mesa's software rasterizer made, so the Metal tests allow a mean difference of 2 (worst channel 64) instead of Vulkan's 0.5 (24); `APOGEE_IMAGE_TOLERANCE=<mean>` sets it.
+The images are compared with the references that Mesa's software rasterizer made, so the Metal tests allow a mean difference of 2 (worst channel 64) instead of Vulkan's 0.5 (24); `WEFT_IMAGE_TOLERANCE=<mean>` sets it.
 These numbers are a guess until a real Mac has measured the difference: report the "mean difference" lines, and the bound can be tightened (or the Metal reference images split off).

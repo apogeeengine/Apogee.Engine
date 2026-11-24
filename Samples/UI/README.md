@@ -3,9 +3,9 @@
 A small game made of RML and RCSS documents with Luau scripts and data models (a menu, a HUD and a scene), and a mod that adds a panel to the HUD. See `Docs/getting-started/samples/ui.md`.
 
 ```sh
-Apogee.Runtime --game Samples/UI/game --user /tmp/ui-user                  # in a window: Start, play, Esc to pause
-Apogee.Runtime --game Samples/UI/game --user /tmp/ui-user --watch           # edit a script while it runs
-Apogee.Runtime --luau-test Samples/UI                                       # the Luau tests (tests/)
+Weft.Runtime --game Samples/UI/game --user /tmp/ui-user                    # in a window: Start, play, Esc to pause
+Weft.Runtime --game Samples/UI/game --user /tmp/ui-user --watch             # edit a script while it runs
+Weft.Runtime --luau-test Samples/UI                                         # the Luau tests (tests/)
 echo playing > /tmp/ui-user/autostart.txt                                   # start somewhere else than the main menu: menu, options, playing, paused
 ```
 

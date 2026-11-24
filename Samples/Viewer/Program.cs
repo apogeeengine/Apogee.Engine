@@ -1,7 +1,7 @@
 using System;
 using System.IO;
-using Apogee.Core.Logging;
-using Apogee.Samples.Viewer;
+using Weft.Core.Logging;
+using Weft.Samples.Viewer;
 
 // The engine's viewer. See Options.Usage, or run it with --help.
 if (Options.TryParse(args, out Options options) is { } problem)
@@ -17,17 +17,17 @@ if (options.Help)
 }
 
 Log.AddSink(new ConsoleSink());
-string shaderCache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Apogee", "ShaderCache");
+string shaderCache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Weft", "ShaderCache");
 if (options.Gpu is not null)
 {
-    Environment.SetEnvironmentVariable("APOGEE_GPU", options.Gpu);
+    Environment.SetEnvironmentVariable("WEFT_GPU", options.Gpu);
 }
 
 try
 {
     return options.Headless ? Headless.Run(options, shaderCache) : Viewer.Run(options, shaderCache);
 }
-catch (Exception e) when (e is Apogee.Graphics.GraphicsException or Apogee.Graphics.Shaders.ShaderCompileException or Apogee.Content.ContentException or Apogee.Platform.PlatformException or IOException)
+catch (Exception e) when (e is Weft.Graphics.GraphicsException or Weft.Graphics.Shaders.ShaderCompileException or Weft.Content.ContentException or Weft.Platform.PlatformException or IOException)
 {
     Console.Error.WriteLine(e.Message);
     return 2;

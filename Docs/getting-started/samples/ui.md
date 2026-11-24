@@ -4,9 +4,9 @@
 a panel to the HUD. It is the model for how a game and its mods build UI with [the `ui` surface](../../manual/ui/index.md): documents that carry their own [scripts](../../manual/ui/index.md#scripts-in-documents) and [data models](../../manual/ui/index.md#data-models).
 
 ```sh
-Apogee.Runtime --game Samples/UI/game --user /tmp/ui-user          # Start, play; Esc pauses and resumes
+Weft.Runtime --game Samples/UI/game --user /tmp/ui-user            # Start, play; Esc pauses and resumes
 echo playing > /tmp/ui-user/autostart.txt                          # menu, options, playing or paused: where the game starts
-Apogee.Runtime --luau-test Samples/UI                              # the sample's own tests
+Weft.Runtime --luau-test Samples/UI                                # the sample's own tests
 ```
 
 A window, a keyboard and a mouse are all it needs. Like the other samples it is run by hand (and with `--watch` to edit while it runs), and nothing in CI runs it: the engine's behavior it relies on is tested in the engine's own tests.
@@ -52,5 +52,5 @@ the engine's classes do not know which mod called them; a document's `<script sr
 
 ## Tests
 
-`Samples/UI/tests` holds Luau tests of the pieces that need no UI (the formatting, the volume and the minimap arithmetic, the screen flow); run them by hand with `Apogee.Runtime --luau-test Samples/UI`.
-The things the sample uses are tested where they live: scripts and data models in documents (`Tests/Apogee.UI.Tests`, `Tests/Apogee.Runtime.Tests`), `physics.paused` ([physics](../../manual/physics/physics.md)), `game.quit` ([runtime](../../manual/scripting/runtime.md)).
+`Samples/UI/tests` holds Luau tests of the pieces that need no UI (the formatting, the volume and the minimap arithmetic, the screen flow); run them by hand with `Weft.Runtime --luau-test Samples/UI`.
+The things the sample uses are tested where they live: scripts and data models in documents (`Tests/Weft.UI.Tests`, `Tests/Weft.Runtime.Tests`), `physics.paused` ([physics](../../manual/physics/physics.md)), `game.quit` ([runtime](../../manual/scripting/runtime.md)).

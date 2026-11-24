@@ -1,6 +1,6 @@
 # Vulkan Memory Allocator as a shared library. VMA_CALL_PRE is VMA's hook for exporting its C functions.
 add_library(vma SHARED vma.cpp)
-target_include_directories(vma PRIVATE "${APOGEE_THIRDPARTY}/vma/include" "${APOGEE_THIRDPARTY}/vulkan/include")
+target_include_directories(vma PRIVATE "${WEFT_THIRDPARTY}/vma/include" "${WEFT_THIRDPARTY}/vulkan/include")
 if(WIN32)
   target_compile_definitions(vma PRIVATE "VMA_CALL_PRE=__declspec(dllexport)")
 else()
@@ -9,4 +9,4 @@ else()
     target_link_options(vma PRIVATE -Wl,--no-undefined)
   endif()
 endif()
-apogee_library(vma)
+weft_library(vma)

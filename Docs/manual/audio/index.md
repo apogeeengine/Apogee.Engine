@@ -1,6 +1,6 @@
 # Audio
 
-`Apogee.Audio` is the game's sound: **OpenAL Soft** behind one `AudioSystem`, playing WAV, FLAC, MP3 and Ogg Vorbis files in 3D around the entity that has an `AudioListener`, on buses, with reverb zones and occlusion.
+`Weft.Audio` is the game's sound: **OpenAL Soft** behind one `AudioSystem`, playing WAV, FLAC, MP3 and Ogg Vorbis files in 3D around the entity that has an `AudioListener`, on buses, with reverb zones and occlusion.
 In a game, scripts see it as the global `audio`.
 
 > OpenAL Soft is LGPL, so it is its own shared library beside the program (`libopenal.so.1`, `OpenAL32.dll`, `libopenal.1.dylib` in `ThirdParty/openal-soft/lib`), loaded at run time and replaceable: see `Legal/THIRD_PARTY_NOTICES.md`
@@ -17,7 +17,7 @@ music:play("music")
 ```
 
 **Another audio engine.** There is no backend layer: the engine has one audio library. Middleware such as FMOD or Wwise is built around authored events, which a "play a file" API does not cover, so a shared seam
-would only get in the way; a game that needs one replaces `Apogee.Audio`.
+would only get in the way; a game that needs one replaces `Weft.Audio`.
 
 ## The system
 
@@ -84,8 +84,8 @@ recording, `.pck`-style sound banks, and audio in the editor's own viewport (the
 
 ## Tests
 
-`Tests/Apogee.Audio.Tests` mixes into a WAV file (`AudioOutput.WavFile`) and measures it, with no sound card, so **they run in CI**: a sound from the virtual file system is heard and ends, every format plays, only virtual
+`Tests/Weft.Audio.Tests` mixes into a WAV file (`AudioOutput.WavFile`) and measures it, with no sound card, so **they run in CI**: a sound from the virtual file system is heard and ends, every format plays, only virtual
 paths are read, a stream plays to its end and a streamed loop goes on, a source on the left is louder in the left speaker and the sound follows when it moves, a far source is quieter and the distances of a voice
 change that, a bus scales what plays on it by exactly its gain (4:1 for 0.25), the master bus mutes the mix, mute and pause silence a bus, pitch and stop, destroying a sound cuts its voices, a reverb zone leaves a tail
-that no zone does not, zones are picked by priority then size, and a wall between the listener and the source muffles it (with the physics world's rays). `Tests/Apogee.Native.Tests` renders a source on the loopback
+that no zone does not, zones are picked by priority then size, and a wall between the listener and the source muffles it (with the physics world's rays). `Tests/Weft.Native.Tests` renders a source on the loopback
 device and tests the decoders. `Tests/Luau/audio.test.luau` runs the script surface, passing with or without the library, in the NativeAOT binary too.

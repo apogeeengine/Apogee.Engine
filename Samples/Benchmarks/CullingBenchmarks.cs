@@ -1,10 +1,10 @@
 using System;
 using System.Numerics;
 using System.Runtime.Intrinsics;
-using Apogee.Core.Numerics;
+using Weft.Core.Numerics;
 using BenchmarkDotNet.Attributes;
 
-namespace Apogee.Benchmarks;
+namespace Weft.Benchmarks;
 
 /// <summary>Boxes against a frustum: the scalar loop, 128-bit vectors (four boxes at a time) and 256-bit vectors (eight).</summary>
 public class CullingBenchmarks

@@ -1,6 +1,6 @@
 # ECS
 
-`Apogee.Ecs` wraps a Flecs world (`Apogee.Native.Flecs`). `World` is an `EngineObject`, so scripts get a handle to it, and its
+`Weft.Ecs` wraps a Flecs world (`Weft.Native.Flecs`). `World` is an `EngineObject`, so scripts get a handle to it, and its
 `[Method]`s (`create_entity`, `lookup`, `progress`…) are in the registry. Use a world from one thread.
 
 ## Components
@@ -31,7 +31,7 @@ ids are `Entity` structs. Ids are never reused as such: deleting an entity and c
 `world.DefineComponent("Spin", [("speed", FieldKind.Float32), ("axis", FieldKind.Vector3)])` lays the fields out in name order
 (each aligned to its own size, a vector to four bytes), so a schema always gives the same layout. The same schema again returns the same
 component; another schema under a known name is an error. `GetComponentInfo(id)` gives the layout, and
-`FieldAccess.Read`/`Write` (in `Apogee.Reflection`) read and write a field of the component's memory as a `Value`, with range checks.
+`FieldAccess.Read`/`Write` (in `Weft.Reflection`) read and write a field of the component's memory as a `Value`, with range checks.
 The pointer API (`GetPointer`, `EnsurePointer`, `SetPointer`) works on any component id.
 
 ### Enum fields
@@ -145,8 +145,8 @@ when the frame is done: the exception itself when there was one, an `AggregateEx
 
 ## Tests
 
-`Tests/Apogee.Ecs.Tests` (needs the `flecs` native library): the transform hierarchy (`TransformTests`), registration and reflection JSON, set/get/ensure, tags, runtime components, names
+`Tests/Weft.Ecs.Tests` (needs the `flecs` native library): the transform hierarchy (`TransformTests`), registration and reflection JSON, set/get/ensure, tags, runtime components, names
 and parents, ids that stay dead, queries (with `Not`, with structural changes inside), systems in phases, failing systems, observers, and
 disposal; and `EditingTests`: which entities are the user's, hierarchy order, the components of an entity, clones, snapshots and restoring (ids that come back, names that swapped, a deleted branch);
 `SnapshotAssetTests` (asset fields restored into a world that numbers its assets differently); and scenes (a round trip with the hierarchy, references, doubles and script components, converters, unknown things, bad files). The scene round trip also runs in the NativeAOT smoke test
-(`Apogee.Runtime --smoke`) and from Luau (`Tests/Luau/ecs.test.luau`).
+(`Weft.Runtime --smoke`) and from Luau (`Tests/Luau/ecs.test.luau`).

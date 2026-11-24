@@ -1,6 +1,6 @@
 # Input actions
 
-`Apogee.Input` turns keys, mouse and gamepads into **actions** a game defines by name (`jump`, `move_forward`, `lights`). The game's code and mods ask for actions, never for keys, so
+`Weft.Input` turns keys, mouse and gamepads into **actions** a game defines by name (`jump`, `move_forward`, `lights`). The game's code and mods ask for actions, never for keys, so
 a player can rebind everything and one gamepad works where another has different buttons. It is built for games with large action catalogs (about 45 actions).
 
 - `InputActionMap`: every action, its contexts, its defaults and what the player bound it to. Saves and loads the player's bindings.
@@ -111,5 +111,5 @@ Gamepad rumble, touch, gamepad hot-plug events for scripts, per-device bindings 
 
 ## Tests
 
-`Tests/Apogee.Input.Tests` covers parsing, key names, the map (clashes, saving), the router (modifiers, hold, double tap, axes, listening) and the SDL devices on the dummy video driver with pushed events.
+`Tests/Weft.Input.Tests` covers parsing, key names, the map (clashes, saving), the router (modifiers, hold, double tap, axes, listening) and the SDL devices on the dummy video driver with pushed events.
 `Tests/Luau/input.test.luau` runs the same checks, with a catalog of about 45 actions, from a script, in the NativeAOT binary too.

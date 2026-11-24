@@ -14,7 +14,7 @@ libstdc++ and compiler headers.
 
 ## Proprietary SDK (Steamworks)
 
-Steamworks is not ours to publish, and the repository is planned to become open source, so it is handled the way its license allows. `./build.sh sdk steam <zip>` (`Tools/Apogee.Build/SdkCommand.cs`) unpacks exactly
+Steamworks is not ours to publish, and the repository is planned to become open source, so it is handled the way its license allows. `./build.sh sdk steam <zip>` (`Tools/Weft.Build/SdkCommand.cs`) unpacks exactly
 the files the engine uses. Download the archive from https://partner.steamgames.com/downloads/list (needs a Steamworks partner account). Everything else here may be redistributed, so a clone builds and runs with
 nothing to download. (FMOD was handled the same way until it was replaced by OpenAL Soft.)
 
@@ -26,7 +26,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
   and needed only to regenerate the bindings.
 - Vendored: `lib/linux-x64/libsteam_api.so`, `lib/win-x64/steam_api64.dll` and `lib/osx-universal/libsteam_api.dylib` (arm64 + x86_64), unchanged, from `sdk/redistributable_bin/{linux64,win64,osx}`. Not vendored: the 32-bit and
   Linux/Android arm64 builds, the import libraries, `sdkencryptedappticket`, and the tools.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/steam.json` into `Source/Apogee.Native.Steam`, generated from the flat API (`steam_api_flat.h`) and committed.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/steam.json` into `Source/Weft.Native.Steam`, generated from the flat API (`steam_api_flat.h`) and committed.
 - A game still needs its own Steamworks app (AppID) and Valve's agreement; `steam_appid.txt` next to the program is for development only.
 
 ## sdl
@@ -44,7 +44,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
     stripped. Run the manual workflow `.github/workflows/thirdparty_sdl_linux.yml` (Actions > SDL for Linux), download its artifact and
     commit it as `libSDL3.so.0`. An earlier build on Arch needed glibc 2.43 and did not load on Ubuntu or in Steam's runtime.
   - Linux arm64 and macOS x64-only are not vendored.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/sdl.json` into `Source/Apogee.Native.Sdl`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/sdl.json` into `Source/Weft.Native.Sdl`.
 
 ## flecs
 
@@ -54,7 +54,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - Vendored: the amalgamated distribution, `distr/flecs.h` → `include/flecs.h` and `distr/flecs.c` → `source/flecs.c`, unchanged.
 - Built: `./build.sh native` (`Native/flecs/CMakeLists.txt`) as a shared library into `Bin/native/<rid>`. The distribution's
   header starts with `#define flecs_STATIC`; the build compiles against a copy without that line so that `FLECS_API` exports.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/flecs.json` into `Source/Apogee.Native.Flecs`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/flecs.json` into `Source/Weft.Native.Flecs`.
 
 ## luau
 
@@ -65,12 +65,12 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
   No Analysis, CLI or tests.
 - Built: `./build.sh native` (`Native/luau/CMakeLists.txt`) as one shared library with the C API under C linkage (`LUA_API`,
   `LUACODE_API` and `LUACODEGEN_API` are Luau's hooks for that) and `LUA_USE_LONGJMP=1`, because C++ exceptions cannot cross managed
-  frames. Our layer, `Native/luau/apogee_luau.{h,cpp}`, is part of it: the allocator with its limits, the interrupt for the time
+  frames. Our layer, `Native/luau/weft_luau.{h,cpp}`, is part of it: the allocator with its limits, the interrupt for the time
   budget, the wrapper for managed functions, protected calls and loading (see `Docs/manual/native/native-libraries.md`). Errors raised from
-  managed callbacks must not unwind through managed code: callbacks return a code and the wrapper calls `lua_error`. A callback may also return `APOGEE_LUAU_YIELD`, and the wrapper yields its thread (`lua_yield`): that is how the `task` library waits. The bindings
+  managed callbacks must not unwind through managed code: callbacks return a code and the wrapper calls `lua_error`. A callback may also return `WEFT_LUAU_YIELD`, and the wrapper yields its thread (`lua_yield`): that is how the `task` library waits. The bindings
   leave out what can raise an error on input a script controls. CodeGen is built for both x64 and arm64 and picks at run time; a
   macOS app signed with the hardened runtime needs the `allow-jit` entitlement.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/luau.json` into `Source/Apogee.Native.Luau`, with the shim's header.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/luau.json` into `Source/Weft.Native.Luau`, with the shim's header.
 
 ## cimgui (Dear ImGui)
 
@@ -90,7 +90,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - Built: `./build.sh native` (`Native/imgui/CMakeLists.txt`) as one shared library, `cimgui`, with `IMGUI_ENABLE_FREETYPE` and `IMGUI_ENABLE_STB_TRUETYPE`
   (ImGui supports both together, and cimgui.cpp calls the stb loader, so the second has to be on; FreeType is the default) and linked to our [freetype](#freetype)
   (it sits next to it: the rpath is `$ORIGIN` / `@loader_path`). [ImGuizmo](#imguizmo), [ImPlot](#implot) and [imnodes](#imnodes) are compiled into the same library, with our own C APIs over them.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/cimgui.json` into `Source/Apogee.Native.CImGui`. Variadic functions
+- Bound by: `Tools/Weft.Build/Bindings/Configs/cimgui.json` into `Source/Weft.Native.CImGui`. Variadic functions
   (`igText`, `igSetTooltip`…) are not bound; use their non-variadic forms (`igTextUnformatted`).
 
 ## ImGuizmo
@@ -98,10 +98,10 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - Upstream: https://github.com/CedricGuillemet/ImGuizmo, tag `1.10` (b796ac3b861afc6e91ca74e4611effd9c9527367, 2026-05-11; tarball sha256 a467155e…5094)
 - License: MIT (`imguizmo/LICENSE`)
 - Vendored: `ImGuizmo.cpp` and `ImGuizmo.h` from the tag's `src/`, unchanged (not its sequencer, curve editor and gradient widgets). It compiles against the vendored ImGui 1.93.0 docking as is.
-- Updating: replace the two files from a newer tag, rebuild, run the tests of `Tests/Apogee.DevTools.Tests` (`ImGuiExtensionTests`).
-- Built: into `cimgui` (see above), with our shim `Native/imgui/apogee_imguizmo.{h,cpp}`: begin frame, rect, draw list, `manipulate` (operation, mode, snap, the change since the drag began), `view_manipulate`, the
+- Updating: replace the two files from a newer tag, rebuild, run the tests of `Tests/Weft.DevTools.Tests` (`ImGuiExtensionTests`).
+- Built: into `cimgui` (see above), with our shim `Native/imgui/weft_imguizmo.{h,cpp}`: begin frame, rect, draw list, `manipulate` (operation, mode, snap, the change since the drag began), `view_manipulate`, the
   is-over and is-using questions, grid and cubes, matrix decomposition. There is no cimguizmo: the C API is ours, on plain floats (matrices are 16 floats).
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/imguizmo.json` into `Source/Apogee.Native.ImGuizmo` (class `Gizmo`), on the library `cimgui`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/imguizmo.json` into `Source/Weft.Native.ImGuizmo` (class `Gizmo`), on the library `cimgui`.
 
 ## ImPlot
 
@@ -109,9 +109,9 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - License: MIT (`implot/LICENSE`)
 - Vendored: `implot.h`, `implot_internal.h`, `implot.cpp`, `implot_items.cpp` (not the demo), unchanged. It compiles against the vendored ImGui 1.93.0 docking as is.
 - Updating: replace the four files from a newer tag, rebuild, run `ImGuiExtensionTests`.
-- Built: into `cimgui`, with our shim `Native/imgui/apogee_implot.{h,cpp}`: contexts, begin and end plot, axes and limits and formats, the legend, and line, shaded, bars and scatter items in float and double
+- Built: into `cimgui`, with our shim `Native/imgui/weft_implot.{h,cpp}`: contexts, begin and end plot, axes and limits and formats, the legend, and line, shaded, bars and scatter items in float and double
   versions (ImPlot's templates are instantiated for those two). An item's look is a small `AplotSpec` struct (ImPlot's `ImPlotSpec` without its arrays). There is no cimplot.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/implot.json` into `Source/Apogee.Native.ImPlot` (class `Plot`), on the library `cimgui`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/implot.json` into `Source/Weft.Native.ImPlot` (class `Plot`), on the library `cimgui`.
 
 ## imnodes
 
@@ -119,9 +119,9 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - License: MIT (`imnodes/LICENSE.md`)
 - Vendored: `imnodes.h`, `imnodes_internal.h`, `imnodes.cpp`, unchanged. It compiles against the vendored ImGui 1.93.0 docking as is (it does not touch ImGui's font or texture API).
 - Updating: replace the three files from a newer commit, rebuild, run `ImGuiExtensionTests`.
-- Built: into `cimgui`, with our shim `Native/imgui/apogee_imnodes.{h,cpp}`: contexts, editors, begin and end editor, nodes with title bars, input, output and static attributes, links, the minimap, positions in
+- Built: into `cimgui`, with our shim `Native/imgui/weft_imnodes.{h,cpp}`: contexts, editors, begin and end editor, nodes with title bars, input, output and static attributes, links, the minimap, positions in
   the three spaces, hover, selection, and the link-created and link-destroyed questions. There is no cimnodes.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/imnodes.json` into `Source/Apogee.Native.ImNodes` (class `Nodes`), on the library `cimgui`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/imnodes.json` into `Source/Weft.Native.ImNodes` (class `Nodes`), on the library `cimgui`.
 
 ## freetype
 
@@ -137,11 +137,11 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - Left out, on purpose: the modules `bdf`, `pcf`, `winfonts` (bitmap and Windows fonts), `pfr`, `hvf` (Apple's experimental driver), `svg` (needs a renderer to plug in), `lzw`, `bzip2`, `cache`, the validators `gxvalid`
   and `otvalid`, and `ftpatent.c` (two deprecated no-ops; their bindings are excluded). Not linked: libpng (colour PNG glyphs), brotli (WOFF 2) and HarfBuzz, which upstream's defaults leave off.
 - Built: `./build.sh native` (`Native/freetype/CMakeLists.txt`) as one shared library, the way `docs/INSTALL.ANY` describes a build without FreeType's make files (the amalgamated module sources, `-Iinclude`,
-  `FT2_BUILD_LIBRARY`, `DLL_EXPORT` on Windows), with our configuration instead of patches: `FT_CONFIG_OPTIONS_H` is `Native/freetype/apogee_ftoption.h` (upstream's `ftoption.h`, then it undefines LZW and
-  SVG, which need modules we do not build) and `FT_CONFIG_MODULES_H` is `apogee_ftmodule.h` (the list of built modules). The options header is also what `cimgui` and the bindings generator compile against, so
+  `FT2_BUILD_LIBRARY`, `DLL_EXPORT` on Windows), with our configuration instead of patches: `FT_CONFIG_OPTIONS_H` is `Native/freetype/weft_ftoption.h` (upstream's `ftoption.h`, then it undefines LZW and
+  SVG, which need modules we do not build) and `FT_CONFIG_MODULES_H` is `weft_ftmodule.h` (the list of built modules). The options header is also what `cimgui` and the bindings generator compile against, so
   that they agree with the library. `ftsystem.c` is the portable one (C `stdio`), because fonts are loaded from memory.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/freetype.json` into `Source/Apogee.Native.FreeType` (class `FT`).
-- Test font: `Tests/Apogee.Native.Tests/Fixtures/fonts/ProggyClean.ttf` (MIT, see its README).
+- Bound by: `Tools/Weft.Build/Bindings/Configs/freetype.json` into `Source/Weft.Native.FreeType` (class `FT`).
+- Test font: `Tests/Weft.Native.Tests/Fixtures/fonts/ProggyClean.ttf` (MIT, see its README).
 
 ## jolt (Jolt Physics)
 
@@ -150,10 +150,10 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - License: MIT (`jolt/LICENSE`, "Copyright 2021 Jorrit Rouwe"; the notice has to travel with games)
 - Vendored, unchanged: the `Jolt/` directory of the release tarball `v5.6.0.tar.gz` (sha256 6e069ee0172478cc78182047aac87e5310ba14a67a53348ae14cc37801fd3f8e) and its `LICENSE`. Not vendored: the samples, the unit tests, the viewer, the build files
   of upstream (`Build/`), the assets.
-- Built: `./build.sh native` (`Native/jolt/CMakeLists.txt`) as one shared library, `jolt`, together with our C API over it, `Native/jolt/apogee_jolt.{h,cpp}` (there is no third-party wrapper: JoltC was used first and replaced). The sources are
+- Built: `./build.sh native` (`Native/jolt/CMakeLists.txt`) as one shared library, `jolt`, together with our C API over it, `Native/jolt/weft_jolt.{h,cpp}` (there is no third-party wrapper: JoltC was used first and replaced). The sources are
   `Jolt/**/*.cpp` without the DirectX 12, Metal and Vulkan compute back ends. The flags and definitions are what upstream's `Build/CMakeLists.txt` and `Jolt/Jolt.cmake` would pass for our options, written out in our CMake file (a Jolt update
-  re-reads both): double precision, cross-platform determinism, 32-bit object layers, SSE 4.2 (`-DAPOGEE_JOLT_AVX2=ON` for AVX2), no exceptions, no RTTI, strict floating point. See `Docs/manual/native/native-libraries.md`.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/jolt.json` into `Source/Apogee.Native.Jolt` (class `Jolt`), generated from `apogee_jolt.h`.
+  re-reads both): double precision, cross-platform determinism, 32-bit object layers, SSE 4.2 (`-DWEFT_JOLT_AVX2=ON` for AVX2), no exceptions, no RTTI, strict floating point. See `Docs/manual/native/native-libraries.md`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/jolt.json` into `Source/Weft.Native.Jolt` (class `Jolt`), generated from `weft_jolt.h`.
 
 ## rmlui
 
@@ -165,8 +165,8 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
   Not vendored: the Lua, SVG and Lottie plugins (scripting is Luau, through our own bridge), the backends (we write the render, system and file interfaces), the samples, the tests, `Dependencies`.
   No patches. (The old engine had patched RmlUi's Lua plugin; the plugin is not used.)
 - Built: `./build.sh native` (`Native/rmlui/CMakeLists.txt`) as one shared library, `rmlui`, with `RMLUI_STATIC_LIB` (RmlUi's own API is not exported), `RMLUI_FONT_ENGINE_FREETYPE` and `RMLUI_VERSION="6.3"`, linked to our
-  [freetype](#freetype) (it sits next to it: the rpath is `$ORIGIN` / `@loader_path`). Our C API over it, `Native/rmlui/apogee_rmlui.{h,cpp}`, is part of the library and its only export.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/rmlui.json` into `Source/Apogee.Native.RmlUi` (class `Rml`), generated from `apogee_rmlui.h`.
+  [freetype](#freetype) (it sits next to it: the rpath is `$ORIGIN` / `@loader_path`). Our C API over it, `Native/rmlui/weft_rmlui.{h,cpp}`, is part of the library and its only export.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/rmlui.json` into `Source/Weft.Native.RmlUi` (class `Rml`), generated from `weft_rmlui.h`.
 - Updating: replace the three folders from the new tag's tarball, `./build.sh native`, and read the new `RenderInterface.h`, `SystemInterface.h` and `FileInterface.h` for functions the C API does not forward (`ArHost`).
 
 ## vulkan
@@ -178,7 +178,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
   (to read the C struct sizes for the layout test, and as the include of libraries such as VMA that are written against Vulkan's C
   headers), and `include/vk_video/*` (which `vulkan_core.h` includes). No window-system headers: `vulkan.h` includes none
   without a `VK_USE_PLATFORM_*` define. Build with only these include paths: a system Vulkan-Headers install hides a missing file.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/vulkan.json` into `Source/Apogee.Native.Vulkan`, from the registry (`kind:
+- Bound by: `Tools/Weft.Build/Bindings/Configs/vulkan.json` into `Source/Weft.Native.Vulkan`, from the registry (`kind:
   vulkan`): Vulkan 1.0 to 1.4 and every extension that is not platform specific, provisional or video. Window-system
   surfaces come from SDL (`SDL_Vulkan_CreateSurface`). Only `vkGetInstanceProcAddr` is imported from the loader; everything
   else is loaded through it into `VkGlobalCommands`, `VkInstanceCommands` and `VkDeviceCommands`.
@@ -188,10 +188,10 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 ## metal (Apple's Metal, through `Native/metal_c`)
 
 - Nothing is vendored: Metal, QuartzCore and Foundation are system frameworks of macOS (15 or later is required, for `MTLResidencySet`).
-- Wrapped by: `Native/metal_c/` (`apogee_metal.h`, `apogee_metal.m`), our own C API over the Objective-C classes, built by `./build.sh native` on macOS only
+- Wrapped by: `Native/metal_c/` (`weft_metal.h`, `weft_metal.m`), our own C API over the Objective-C classes, built by `./build.sh native` on macOS only
   (Objective-C with ARC, linked against the frameworks; the same library as every other, `metal_c`). Objects are opaque handles, the header has no Objective-C in it, and no block crosses it
   (completion is an `MTLSharedEvent` value), so any language can call it.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/metal.json` into `Source/Apogee.Native.Metal` (class `Mtl`). The header is plain C, so the bindings are generated on any OS; the library itself exists only on macOS.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/metal.json` into `Source/Weft.Native.Metal` (class `Mtl`). The header is plain C, so the bindings are generated on any OS; the library itself exists only on macOS.
 - Not verified on a GPU: the shim is compiled and its entry points are checked on the macOS CI job, but no Metal 3 GPU has run it (`Docs/contributing/help-wanted.md`).
 
 ## vma (Vulkan Memory Allocator)
@@ -203,8 +203,8 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - Built: `./build.sh native` (`Native/vma/`) as a shared library from `vma.cpp`, which only defines `VMA_IMPLEMENTATION`.
   Vulkan is not linked: `VMA_STATIC_VULKAN_FUNCTIONS=0`, `VMA_DYNAMIC_VULKAN_FUNCTIONS=1`, so the caller passes
   `vkGetInstanceProcAddr` and `vkGetDeviceProcAddr` in `VmaVulkanFunctions`. `VMA_CALL_PRE` exports the C functions.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/vma.json` into `Source/Apogee.Native.Vma`. Vulkan's types come from
-  `Apogee.Native.Vulkan` (`foreignTypes`); the handles are the opaque structs behind VMA's typedefs (`Allocator*`, `Allocation*`).
+- Bound by: `Tools/Weft.Build/Bindings/Configs/vma.json` into `Source/Weft.Native.Vma`. Vulkan's types come from
+  `Weft.Native.Vulkan` (`foreignTypes`); the handles are the opaque structs behind VMA's typedefs (`Allocator*`, `Allocation*`).
 
 ## meshoptimizer
 
@@ -213,7 +213,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - License: MIT (`meshoptimizer/LICENSE.md`)
 - Vendored: `src/` (the library's sources and `meshoptimizer.h`), unchanged.
 - Built: `./build.sh native` (`Native/meshoptimizer/`) as one shared library; `MESHOPTIMIZER_API` exports the C functions.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/meshopt.json` into `Source/Apogee.Native.Meshopt`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/meshopt.json` into `Source/Weft.Native.Meshopt`.
 
 ## cgltf
 
@@ -223,7 +223,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - Vendored: `cgltf.h`, unchanged. `cgltf_write.h` (the glTF writer) is not vendored; add it with the first tool that exports glTF.
 - Built: `./build.sh native` (`Native/cgltf/`) as a shared library from `cgltf.c`, which only defines `CGLTF_IMPLEMENTATION`. The
   header has no export macro, so the target exports every symbol (default visibility; `WINDOWS_EXPORT_ALL_SYMBOLS`).
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/cgltf.json` into `Source/Apogee.Native.Cgltf`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/cgltf.json` into `Source/Weft.Native.Cgltf`.
 
 ## stb_image
 
@@ -232,7 +232,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - Vendored: `stb_image.h`, unchanged. Not `stb_image_write.h`: screenshots use our own PNG writer.
 - Built: `./build.sh native` (`Native/stb/`) as a shared library from `stb_image.c` (`STB_IMAGE_IMPLEMENTATION`, `STBI_NO_STDIO`: decoding
   from memory only, files come through the engine's file system). The header has no export macro, so the target exports every symbol.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/stb.json` into `Source/Apogee.Native.Stb` (the class is `Stbi`).
+- Bound by: `Tools/Weft.Build/Bindings/Configs/stb.json` into `Source/Weft.Native.Stb` (the class is `Stbi`).
 
 ## stb_vorbis
 
@@ -251,9 +251,9 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 
 ## audio_decode (our own shim over dr_libs and stb_vorbis)
 
-- Source: `Native/audio_decode/apogee_audio.{h,c}`, ours: four functions that open a WAV, FLAC, Ogg Vorbis or MP3 file held in memory (the format is told from its first bytes) and read it as 32-bit float samples.
+- Source: `Native/audio_decode/weft_audio.{h,c}`, ours: four functions that open a WAV, FLAC, Ogg Vorbis or MP3 file held in memory (the format is told from its first bytes) and read it as 32-bit float samples.
 - Built: `./build.sh native` as one shared library, `audio_decode`, from the decoders above.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/audiodecode.json` into `Source/Apogee.Native.AudioDecode` (the class is `AudioDecode`). Tests: `Tests/Apogee.Native.Tests/AudioDecodeSmokeTests.cs` with the tones in `Fixtures/audio/`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/audiodecode.json` into `Source/Weft.Native.AudioDecode` (the class is `AudioDecode`). Tests: `Tests/Weft.Native.Tests/AudioDecodeSmokeTests.cs` with the tones in `Fixtures/audio/`.
 
 ## openal-soft
 
@@ -268,7 +268,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
     loads its audio backends (PipeWire, PulseAudio, ALSA, JACK) at run time, links libstdc++ statically, and the job fails if the result needs a newer glibc than 2.31 or has a `GLIBCXX` symbol (the committed build needs glibc 2.28 and links only libc, libm, libdl and libpthread). On macOS
     it passes `-DHAVE_WFUNCTION_EFFECTS=0`, because OpenAL Soft's `-Werror=function-effects` rejects its own CoreAudio callbacks under Xcode 26. The committed files are the artifacts of run 42389726417.
   - Not vendored: Windows on Arm and a macOS x64-only build.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/openal.json` into `Source/Apogee.Native.OpenAL` (AL, ALC, EFX and the extensions OpenAL Soft exports, with `AL_ALEXT_PROTOTYPES`).
+- Bound by: `Tools/Weft.Build/Bindings/Configs/openal.json` into `Source/Weft.Native.OpenAL` (AL, ALC, EFX and the extensions OpenAL Soft exports, with `AL_ALEXT_PROTOTYPES`).
 
 ## gns (GameNetworkingSockets)
 
@@ -287,10 +287,10 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 
 ## net (our own shim over GameNetworkingSockets)
 
-- Source: `Native/net/apogee_net.{h,cpp}`, ours: connections as integers and everything the library says (a connection asked for, made, closed; a message arrived) as events from a poll. GNS's flat C API is not used: it takes C++
+- Source: `Native/net/weft_net.{h,cpp}`, ours: connections as integers and everything the library says (a connection asked for, made, closed; a message arrived) as events from a poll. GNS's flat C API is not used: it takes C++
   references and structs that are packed differently by platform, which the compiler lays out here instead.
-- Built: `./build.sh native` as the shared library `apogee_net`, linked against `GameNetworkingSockets` (found in `Bin/native/<rid>` first, then `ThirdParty/gns/lib/<rid>`), with an rpath next to itself.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/net.json` into `Source/Apogee.Native.Net` (the class is `Net`). Tests: `Tests/Apogee.Network.Tests` (two systems talk over the loopback interface).
+- Built: `./build.sh native` as the shared library `weft_net`, linked against `GameNetworkingSockets` (found in `Bin/native/<rid>` first, then `ThirdParty/gns/lib/<rid>`), with an rpath next to itself.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/net.json` into `Source/Weft.Native.Net` (the class is `Net`). Tests: `Tests/Weft.Network.Tests` (two systems talk over the loopback interface).
 
 ## ktx (KTX-Software, libktx)
 
@@ -309,8 +309,8 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
   (we upload ourselves), and `external/etcdec` + `lib/etcunpack.cxx`, which are under Ericsson's own license (`LicenseRef-ETCSLA`) and only serve the OpenGL loader.
 - Built: `./build.sh native` (`Native/ktx/`) as one shared library, with `KHRONOS_STATIC` (ktx.h's `KTX_API` then empty), `KTX_FEATURE_WRITE=1` (the writer instead of upstream's stubs) and every symbol exported. The encoder's SSE 4.1 kernels are
   built on x86-64 only, as upstream does (`BASISU_SUPPORT_SSE`; `-msse4.1` on GCC and Clang). It links `zstd` (next to it at run time; the rpath is `$ORIGIN` / `@loader_path`) and threads (the encoder is multithreaded).
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/ktx.json` into `Source/Apogee.Native.Ktx`, without the functions of the left-out parts (ASTC, OpenGL).
-- Test files: `Tests/Apogee.Native.Tests/Fixtures/ktx2/` (from `tests/testimages/`, Apache-2.0, see its README).
+- Bound by: `Tools/Weft.Build/Bindings/Configs/ktx.json` into `Source/Weft.Native.Ktx`, without the functions of the left-out parts (ASTC, OpenGL).
+- Test files: `Tests/Weft.Native.Tests/Fixtures/ktx2/` (from `tests/testimages/`, Apache-2.0, see its README).
 
 ## zstd
 
@@ -322,9 +322,9 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
 - Built: `./build.sh native` (`Native/zstd/`) as one shared library, `zstd`, with multithreaded compression (`ZSTD_MULTITHREAD`) and without the x86-64 assembly of the
   Huffman decoder (`ZSTD_DISABLE_ASM`: the C decoder is a little slower and builds the same everywhere). The library exports its own API (`ZSTDLIB_VISIBLE`;
   `ZSTD_DLL_EXPORT` on Windows). libktx links it.
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/zstd.json` into `Source/Apogee.Native.Zstd`: the stable API of `zstd.h` and `zstd_errors.h` (no
+- Bound by: `Tools/Weft.Build/Bindings/Configs/zstd.json` into `Source/Weft.Native.Zstd`: the stable API of `zstd.h` and `zstd_errors.h` (no
   `ZSTD_STATIC_LINKING_ONLY`). `ZSTD_CONTENTSIZE_UNKNOWN` and `_ERROR` are `(0ULL - 1)` and `(0ULL - 2)`, which the generator's macro evaluator cannot
-  express, so `Source/Apogee.Native.Zstd/Zstd.ContentSize.cs` defines them.
+  express, so `Source/Weft.Native.Zstd/Zstd.ContentSize.cs` defines them.
 
 ## slang
 
@@ -339,7 +339,7 @@ nothing to download. (FMOD was handled the same way until it was replaced by Ope
   fa7629c9…eeee, `slang-2026.19-windows-aarch64.tar.gz` e47c3272…6751, `slang-2026.19-macos-aarch64.tar.gz` fa46822c…f2f0 and
   `slang-2026.19-macos-x86_64.tar.gz` 490b6447…ee11. Not vendored: the tools, `slang-rt`, `gfx`, `slang-llvm` (84 MB, only for the CPU
   targets) and `slang-glsl-module` (only for GLSL input).
-- Slang's API is C++ and COM, so it is bound through our C API over it: `Native/slang_c/` (`apogee_slang.h`, `apogee_slang.cpp`),
+- Slang's API is C++ and COM, so it is bound through our C API over it: `Native/slang_c/` (`weft_slang.h`, `weft_slang.cpp`),
   built by `./build.sh native` into `slang_c` and linked against the vendored compiler library (rpath `$ORIGIN` / `@loader_path`:
   the compiler has to sit next to it, which `ThirdParty/NativeLibraries.props` arranges).
-- Bound by: `Tools/Apogee.Build/Bindings/Configs/slang.json` into `Source/Apogee.Native.Slang`.
+- Bound by: `Tools/Weft.Build/Bindings/Configs/slang.json` into `Source/Weft.Native.Slang`.

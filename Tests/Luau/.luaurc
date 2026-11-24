@@ -1,5 +1,5 @@
 {
-	// For luau-lsp: Apogee.Runtime --luau-defs Bin/defs writes the engine's modules; the alias is only for tools, the runtime resolves @engine itself.
+	// For luau-lsp: Weft.Runtime --luau-defs Bin/defs writes the engine's modules; the alias is only for tools, the runtime resolves @engine itself.
 	"languageMode": "nonstrict",
 	"aliases": {
 		"engine": "../../Bin/defs/engine"

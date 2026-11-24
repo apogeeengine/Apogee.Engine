@@ -50,7 +50,7 @@ them as text. Because a scene is XML like the rest of the game's data, a mod can
 
 The text is the same in every culture. Booleans are `true` and `false`, integers are decimal, floats are the shortest text that reads back as the same number (`NaN`, `Infinity` and `-Infinity`
 are the special values), and a `Vector3`, a `Double3` position or a `Quaternion` is its numbers separated by spaces (`1 2 3`, `0 0 0 1`). 64-bit integers keep all their digits. `FieldText.Format` and
-`FieldText.Parse` (in `Apogee.Reflection`) do this for every kind that needs no context.
+`FieldText.Parse` (in `Weft.Reflection`) do this for every kind that needs no context.
 
 Two kinds need a world:
 
@@ -111,7 +111,7 @@ instance. The element does not repeat what the prefab holds, only what this inst
 
 ## The schema
 
-`scene.xsd` (embedded in `Apogee.Ecs`, and in the repository at `Source/Apogee.Ecs/Scene/scene.xsd`) describes the structure for people and editors: the root, `<Components>`, the entity element with its `id`
+`scene.xsd` (embedded in `Weft.Ecs`, and in the repository at `Source/Weft.Ecs/Scene/scene.xsd`) describes the structure for people and editors: the root, `<Components>`, the entity element with its `id`
 and `name`, and the form of a `uid`. It cannot describe the components, because those are the registry's; they are checked when the scene is loaded. The writer is tested against the schema.
 
 ## From C#

@@ -1,6 +1,6 @@
 # Writing docs
 
-The documentation is Markdown in `Docs/`, built with [MkDocs](https://www.mkdocs.org/) and the Material theme, and published at [apogeeengine.github.io/docs](https://apogeeengine.github.io/docs/). It lives next to the code so that a pull request changes both.
+The documentation is Markdown in `Docs/`, built with [MkDocs](https://www.mkdocs.org/) and the Material theme, and published at [weftengine.github.io/docs](https://weftengine.github.io/docs/). It lives next to the code so that a pull request changes both.
 
 ```text
 Docs/
@@ -22,8 +22,8 @@ pip install mkdocs-material
 `./build.sh docs` first writes the API reference, which is why you do not run `mkdocs` directly:
 
 - **C#:** [DocFX](https://dotnet.github.io/docfx/) (a pinned local dotnet tool, `.config/dotnet-tools.json`) reads the XML documentation comments of the libraries listed in `Tools/docfx/docfx.json` and writes one page per type into `Docs/api/csharp`.
-  The raw bindings (`Apogee.Native.*`) are left out. Document public members with `///` comments: that is the C# reference.
-- **Luau:** `Apogee.Runtime --luau-docs Docs/api/luau` writes one page per class and library from the registry. The text comes from the same `///` comments of `[ApogeeClass]`, `[Property]`, `[Method]` and `[Signal]` members, so documenting
+  The raw bindings (`Weft.Native.*`) are left out. Document public members with `///` comments: that is the C# reference.
+- **Luau:** `Weft.Runtime --luau-docs Docs/api/luau` writes one page per class and library from the registry. The text comes from the same `///` comments of `[WeftClass]`, `[Property]`, `[Method]` and `[Signal]` members, so documenting
   them documents the script API too.
 
 Both folders are git-ignored apart from their `index.md`.

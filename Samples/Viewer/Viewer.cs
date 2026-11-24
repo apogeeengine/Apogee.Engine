@@ -3,19 +3,19 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Numerics;
-using Apogee.Content;
-using Apogee.Content.FileSystem;
-using Apogee.Core.Logging;
-using Apogee.DevTools;
-using Apogee.Graphics;
-using Apogee.Graphics.Shaders;
-using Apogee.Native.CImGui;
-using Apogee.Platform;
-using Apogee.Rendering;
-using Apogee.Rendering.Shaders;
-using Sdl = Apogee.Native.Sdl;
+using Weft.Content;
+using Weft.Content.FileSystem;
+using Weft.Core.Logging;
+using Weft.DevTools;
+using Weft.Graphics;
+using Weft.Graphics.Shaders;
+using Weft.Native.CImGui;
+using Weft.Platform;
+using Weft.Rendering;
+using Weft.Rendering.Shaders;
+using Sdl = Weft.Native.Sdl;
 
-namespace Apogee.Samples.Viewer;
+namespace Weft.Samples.Viewer;
 
 /// <summary>What both hosts need: the scene, its lights and the camera, built from the options.</summary>
 internal sealed class ViewerScene : IDisposable
@@ -107,8 +107,8 @@ internal static class Viewer
         PlatformHost.Initialize();
         try
         {
-            using var window = new Window("Apogee viewer", options.Width, options.Height, WindowOptions.Resizable | WindowOptions.HighPixelDensity | GraphicsDevice.RequiredWindowOptions());
-            using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Apogee viewer", Window = window, PreferredDeviceName = options.Gpu });
+            using var window = new Window("Weft viewer", options.Width, options.Height, WindowOptions.Resizable | WindowOptions.HighPixelDensity | GraphicsDevice.RequiredWindowOptions());
+            using var device = GraphicsDevice.Create(new GraphicsDeviceOptions { ApplicationName = "Weft viewer", Window = window, PreferredDeviceName = options.Gpu });
             using var swapchain = device.CreateSwapchain(options.VSync);
             using var loop = device.CreateFrameLoop(swapchain);
             // With --watch the shaders are the repository's source files and saving one rebuilds the pipelines that use it; otherwise the compiled ones next to the program.

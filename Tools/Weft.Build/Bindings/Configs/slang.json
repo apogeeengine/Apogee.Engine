@@ -1,0 +1,18 @@
+{
+  "name": "slang",
+  "project": "Source/Weft.Native.Slang",
+  "namespace": "Weft.Native.Slang",
+  "className": "Slang",
+  "library": {
+    "name": "slang_c",
+    "linux": ["libslang_c.so"],
+    "windows": ["slang_c.dll"],
+    "macos": ["libslang_c.dylib"]
+  },
+  // Slang's own API is C++ and COM: this binds our C shim over it (Native/slang_c).
+  "includeDirs": ["Native/slang_c"],
+  "includes": ["weft_slang.h"],
+  "ownDirs": ["Native/slang_c"],
+  "stripPrefixes": ["weft_slang_", "WeftSlang"],
+  "excludeConstants": ["^WEFT_SLANG_"]
+}

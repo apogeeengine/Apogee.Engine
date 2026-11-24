@@ -1,6 +1,6 @@
 # User interface
 
-`Apogee.UI` is the game's UI: [RmlUi](../native/native-libraries.md#rmlui-apogeenativermlui) (HTML and CSS as the game UI world knows them, in RML and RCSS) on the engine's renderer, file system and input, behind the script
+`Weft.UI` is the game's UI: [RmlUi](../native/native-libraries.md#rmlui-weftnativermlui) (HTML and CSS as the game UI world knows them, in RML and RCSS) on the engine's renderer, file system and input, behind the script
 global `ui`. A UI is a *document* (RML text, from a file or built in code) of *elements* that scripts make, move, style and listen to. Luau-only mods author UI the same way the base game does, with documents that carry their own [scripts](#scripts-in-documents)
 and [data models](#data-models). The ImGui of the [dev tools](../tools/devtools.md) is a different thing: it is for tools and the editor, this is for players.
 
@@ -19,7 +19,7 @@ doc:append(note)                                           -- the document owns 
 
 ## The pieces
 
-- **`UiSystem`** (`Source/Apogee.UI/UiSystem.cs`) starts RmlUi with one context, the screen, and owns what RmlUi asks of its host: files (read through the virtual file system, so `res://`, `mod://<id>/` and `user://`
+- **`UiSystem`** (`Source/Weft.UI/UiSystem.cs`) starts RmlUi with one context, the screen, and owns what RmlUi asks of its host: files (read through the virtual file system, so `res://`, `mod://<id>/` and `user://`
   paths work in documents' `<link>`s and `src`s, and relative ones resolve against the document), images (decoded by the content loader, premultiplied on loading), the clipboard, the cursor, the clock and the log.
   There is one at a time, because RmlUi has one state per process. `Update(dt)` lays out and runs animations; `SetSize(width, height, density)` follows the window.
 - **`UiElement`** is an element as a script holds it: a *handle*. It names the element without keeping it alive, so one whose element was destroyed (its document was closed, an ancestor destroyed) answers `is_alive = false`
@@ -30,9 +30,9 @@ doc:append(note)                                           -- the document owns 
 
 ## Documents
 
-RmlUi has **no built-in stylesheet**: a `div` is `display: inline` and takes no width or height, text has no font, `body` is only as big as its content. `ui_base.rcss` (`Source/Apogee.UI`, embedded in the assembly) is added **under**
+RmlUi has **no built-in stylesheet**: a `div` is `display: inline` and takes no width or height, text has no font, `body` is only as big as its content. `ui_base.rcss` (`Source/Weft.UI`, embedded in the assembly) is added **under**
 every document's own rules, so a document, or a mod, overrides anything in it: block elements, `box-sizing: border-box` for everything, headings, lists, links, a look for
-form controls and scrollbars, tables, and a `body` as big as the screen with the default font. The default font is Inter (regular, bold and italic, SIL OFL 1.1; `Source/Apogee.UI/Fonts`), registered as the family
+form controls and scrollbars, tables, and a `body` as big as the screen with the default font. The default font is Inter (regular, bold and italic, SIL OFL 1.1; `Source/Weft.UI/Fonts`), registered as the family
 `Inter`; `ui:load_font(path, family, bold, italic, fallback)` adds more from any mounted file. Documents loaded from text have `[document from memory]` as their source unless `load_document_text` is given a URL.
 
 `doc:close()` unloads a document with everything in it. A module that is reloaded (`--watch`) closes the documents it loaded and the listeners it added, and loads them again.
@@ -168,7 +168,7 @@ one). Tween names are RmlUi's (`linear-in`, `quadratic-out`, `cubic-in-out`); a 
 
 ## Tests
 
-`Tests/Apogee.UI.Tests` runs RmlUi through the whole engine: the base stylesheet under a document's own rules, the default font and its bold face, making and moving and destroying elements from the script surface (and what a
+`Tests/Weft.UI.Tests` runs RmlUi through the whole engine: the base stylesheet under a document's own rules, the default font and its bold face, making and moving and destroying elements from the script surface (and what a
 handle to a destroyed one does), attributes, inline styles and pseudo-classes, listeners (bubbling, capture, stopping, a handler that throws, pruning), typing into a text field, documents and their stylesheets read through
 the file system, resizing and density, transitions and the step limit, the debugger, the SDL key and button tables; and on a GPU, pixels read back from the render graph: a box at its place in its color, premultiplied blending
 over black and white, `overflow: hidden` clipping, CSS transforms (a translation and a rotation), text from the default font, an image with straight alpha from the file system, the geometry cache across frames, edits

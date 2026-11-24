@@ -1,6 +1,6 @@
 # Interop
 
-`Apogee.Interop` is what the generated bindings stand on.
+`Weft.Interop` is what the generated bindings stand on.
 
 ## NativeLibraries
 
@@ -20,7 +20,7 @@ ask whether a library is installed without failing.
 `Utf8.FromPointer(byte*)` reads one back (null stays null).
 
 ```csharp
-fixed (byte* name = Utf8.ToZeroTerminated("Apogee"))
+fixed (byte* name = Utf8.ToZeroTerminated("Weft"))
 {
     SDL.SetWindowTitle(window, name);
 }

@@ -1,6 +1,6 @@
 # Third-party notices
 
-Apogee's own code, tools and documentation are under the Apache License 2.0 (`LICENSE`, `NOTICE`).
+Weft's own code, tools and documentation are under the Apache License 2.0 (`LICENSE`, `NOTICE`).
 
 Third-party libraries keep their own licenses, listed in `ThirdParty/README.md` as they are vendored. The
 Steamworks SDK (Valve) is proprietary and not redistributable beyond what its agreement allows: of it only the
@@ -43,7 +43,7 @@ requires the copyright notice, the conditions and the disclaimer to be reproduce
 Agreement (section 1.1) lets a game distribute in binary form. Nothing else of the SDK is in the repository. Using Steamworks needs a Steamworks partner account and
 agreement with Valve; the library does nothing for a game Steam does not know.
 
-`Source/Apogee.Native.Steam/Generated` is generated from the SDK's headers, and Valve's terms apply to those files, not the Apache License 2.0 that covers the rest of the repository.
+`Source/Weft.Native.Steam/Generated` is generated from the SDK's headers, and Valve's terms apply to those files, not the Apache License 2.0 that covers the rest of the repository.
 
 ## Dear ImGui, ImGuizmo, ImPlot and imnodes
 
@@ -65,13 +65,13 @@ The debugger is part of the library in every build, so a game includes the font 
 
 ## Inter
 
-The engine's default UI font, Inter (`Source/Apogee.UI/Fonts`: Regular, Bold and Italic, embedded in `Apogee.UI.dll`), is Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter) and licensed under the SIL Open Font
-License, Version 1.1 (`Source/Apogee.UI/Fonts/Inter-LICENSE.txt`). The license allows bundling it in a game, closed source ones included, as long as the copyright notice and the license travel with the font; a game that
-ships `Apogee.UI` includes them in its credits or documentation, with the notices of the Courier Prime fonts of RmlUi's debugger (see RmlUi above).
+The engine's default UI font, Inter (`Source/Weft.UI/Fonts`: Regular, Bold and Italic, embedded in `Weft.UI.dll`), is Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter) and licensed under the SIL Open Font
+License, Version 1.1 (`Source/Weft.UI/Fonts/Inter-LICENSE.txt`). The license allows bundling it in a game, closed source ones included, as long as the copyright notice and the license travel with the font; a game that
+ships `Weft.UI` includes them in its credits or documentation, with the notices of the Courier Prime fonts of RmlUi's debugger (see RmlUi above).
 
 ## GT7 tone mapping
 
-The Gran Turismo 7 tone mapping curve in `Source/Apogee.Rendering/Shaders/tonemap.slang` and its C# twin `Source/Apogee.Rendering/Gt7ToneMapping.cs` is a port of Polyphony Digital's sample implementation,
+The Gran Turismo 7 tone mapping curve in `Source/Weft.Rendering/Shaders/tonemap.slang` and its C# twin `Source/Weft.Rendering/Gt7ToneMapping.cs` is a port of Polyphony Digital's sample implementation,
 `gt7_tone_mapping.cpp` (version 1.0, 2025-08-10, from the supplemental material of the SIGGRAPH 2025 course "Physically Based Shading in Theory and Practice":
 https://blog.selfshadow.com/publications/s2025-shading-course/pdi/supplemental/gt7_tone_mapping.cpp). It is MIT-licensed, and its notice travels with the port:
 

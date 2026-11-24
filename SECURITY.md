@@ -1,6 +1,6 @@
 # Security policy
 
-Apogee Engine is pre-alpha software: there are no supported release lines yet, and fixes land on `main`.
+Weft Engine is pre-alpha software: there are no supported release lines yet, and fixes land on `main`.
 
 ## Reporting a vulnerability
 

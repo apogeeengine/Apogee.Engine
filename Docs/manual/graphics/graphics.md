@@ -1,14 +1,14 @@
 # Graphics
 
-`Apogee.Graphics` is the GPU layer. The renderer, the dev tools and the content pipeline talk to a small **portable API**: `GraphicsDevice` and the objects it makes (buffers, images,
-samplers, pipelines, a command recorder, a swapchain and a frame loop). Each graphics API implements it in its own namespace: `Apogee.Graphics.Vulkan` and `Apogee.Graphics.Metal`. The renderer on top
+`Weft.Graphics` is the GPU layer. The renderer, the dev tools and the content pipeline talk to a small **portable API**: `GraphicsDevice` and the objects it makes (buffers, images,
+samplers, pipelines, a command recorder, a swapchain and a frame loop). Each graphics API implements it in its own namespace: `Weft.Graphics.Vulkan` and `Weft.Graphics.Metal`. The renderer on top
 of it is in [Rendering](rendering.md).
 
 ## Backends: the seam
 
 Everything above the backends is abstract classes with the portable surface, and each backend has one sealed class for each:
 
-| Portable (`Apogee.Graphics`) | Vulkan (`Apogee.Graphics.Vulkan`) | What it hides |
+| Portable (`Weft.Graphics`) | Vulkan (`Weft.Graphics.Vulkan`) | What it hides |
 | --- | --- | --- |
 | `GraphicsDevice` | `VulkanDevice` | instance, physical device choice, queue, memory allocator, the window's surface |
 | `GpuBuffer`, `GpuImage`, `ImageView`, `GpuSampler` | `VulkanBuffer`, `VulkanImage`, `VulkanImageView`, `VulkanSampler` | `VkBuffer`, `VkImage` and views (VMA allocations) |
@@ -18,13 +18,13 @@ Everything above the backends is abstract classes with the portable surface, and
 | `ImmediateContext` | `VulkanImmediateContext` | a command buffer and a fence for loading and tools |
 | `Swapchain`, `FrameLoop` | `VulkanSwapchain`, `VulkanFrameLoop` | acquiring and presenting, the timeline semaphore of the frames in flight, timestamp queries |
 
-The portable names of things are the engine's own: `PixelFormat` (in `Apogee.Core.Graphics`; its numbers are Vulkan's `VkFormat` numbers, which are also the `vkFormat` of a KTX 2 file, so a texture's
+The portable names of things are the engine's own: `PixelFormat` (in `Weft.Core.Graphics`; its numbers are Vulkan's `VkFormat` numbers, which are also the `vkFormat` of a KTX 2 file, so a texture's
 format is read by a cast, and another backend maps the ones it supports with a table), `BufferUsage`, `ImageUsage`, `SampleCount`, `CullMode`, `FrontFace`, `CompareOp`, `PrimitiveTopology`, `Filter`,
-`MipmapMode`, `AddressMode` and `IndexFormat` (all with Vulkan's numbers too), and `ShaderCode` (the compiled code of one entry point and which `ShaderBackend` it is for). `Apogee.Graphics.Vulkan.VulkanConvert`
+`MipmapMode`, `AddressMode` and `IndexFormat` (all with Vulkan's numbers too), and `ShaderCode` (the compiled code of one entry point and which `ShaderBackend` it is for). `Weft.Graphics.Vulkan.VulkanConvert`
 turns them into Vulkan's enums; the barrier states (`ImageState`, `BufferState`) were already abstract. A device refuses `ShaderCode` of another backend.
 
-**A test keeps the seam closed.** `BackendSeamTests` reads the public surface of `Apogee.Graphics`, `Apogee.Rendering`, `Apogee.DevTools`, `Apogee.Content` and `Apogee.Platform` by reflection and fails on any
-signature that names a type of `Apogee.Native.Vulkan`, outside `Apogee.Graphics.Vulkan`. Code that does need Vulkan (the backend's own tests, tools) casts: `(VulkanDevice)device`.
+**A test keeps the seam closed.** `BackendSeamTests` reads the public surface of `Weft.Graphics`, `Weft.Rendering`, `Weft.DevTools`, `Weft.Content` and `Weft.Platform` by reflection and fails on any
+signature that names a type of `Weft.Native.Vulkan`, outside `Weft.Graphics.Vulkan`. Code that does need Vulkan (the backend's own tests, tools) casts: `(VulkanDevice)device`.
 
 **Creating a device.**
 
@@ -35,7 +35,7 @@ using var swapchain = device.CreateSwapchain(vsync: true);
 using var loop = device.CreateFrameLoop(swapchain);
 ```
 
-`GraphicsDeviceOptions.Backend` chooses the API; when it is null the platform's is used (`GraphicsDevice.DefaultBackend`: Metal on macOS, Vulkan elsewhere; `APOGEE_GRAPHICS=vulkan|metal` overrides it for development).
+`GraphicsDeviceOptions.Backend` chooses the API; when it is null the platform's is used (`GraphicsDevice.DefaultBackend`: Metal on macOS, Vulkan elsewhere; `WEFT_GRAPHICS=vulkan|metal` overrides it for development).
 `TryCreate` returns the reason instead of throwing, for a machine without a usable GPU or driver (`GraphicsException` is what the creation functions throw). `GraphicsDevice.EnumerateDevices` lists every GPU with the reasons
 it cannot be used. `device.Name`, `Kind`, `Backend`, `ShaderBackend` and the capabilities (`SupportsBc`, `SupportsAstc`, `SupportsAnisotropy`, `MaxSamplerAnisotropy`) are portable;
 `device.ValidationErrorCount` / `TakeValidationErrors()` count what the API's validation layer reported, which is how the tests fail on any validation error.
@@ -49,8 +49,8 @@ heap maps to a descriptor heap, the render graph's states are abstract, and the 
 
 **Status: written, never run on a GPU ([help wanted](../../contributing/help-wanted.md)).** It compiles, the shim builds on macOS CI, Apple's compiler accepts every shader, and the native bindings are tested; GitHub's macOS runners have no Metal 3 GPU, so the device, rendering and swapchain code has not run.
 
-`Apogee.Graphics.Metal` is the default on macOS. It needs **macOS 15**, **Metal 3** and **tier 2 argument buffers**, which is Apple silicon and the Intel Macs of 2017 and later; `EnumerateDevices` says why a GPU
-does not qualify. Metal is Objective-C, so it is reached through a small C API, `Native/metal_c` (see `ThirdParty/README.md`), bound by `Apogee.Native.Metal`. Nothing Objective-C crosses it: objects are opaque
+`Weft.Graphics.Metal` is the default on macOS. It needs **macOS 15**, **Metal 3** and **tier 2 argument buffers**, which is Apple silicon and the Intel Macs of 2017 and later; `EnumerateDevices` says why a GPU
+does not qualify. Metal is Objective-C, so it is reached through a small C API, `Native/metal_c` (see `ThirdParty/README.md`), bound by `Weft.Native.Metal`. Nothing Objective-C crosses it: objects are opaque
 handles, and completion is a shared event's value rather than a block.
 
 | Portable | Metal |
@@ -70,20 +70,20 @@ Two things differ from Vulkan and shape the code:
   Image layouts do not exist, so `Barrier` only ends the current encoder.
 
 Not done yet: GPU timings (`FrameLoop.Timings` is empty on Metal), Metal's binary archive cache for compiled shader libraries. The Metal tests (`MetalBackendTests`, and every shared GPU test when the device is Metal)
-skip without a qualifying GPU, unless `APOGEE_REQUIRE_METAL=1`. How to check a build on a Mac: [Metal on a Mac](metal.md); the open tasks: [Help wanted](../../contributing/help-wanted.md).
+skip without a qualifying GPU, unless `WEFT_REQUIRE_METAL=1`. How to check a build on a Mac: [Metal on a Mac](metal.md); the open tasks: [Help wanted](../../contributing/help-wanted.md).
 
 ## The Vulkan backend: instance and device
 
 `GraphicsDevice.Create` makes a `VulkanInstance` and, for a window, its `VkSurfaceKHR` (through SDL), and the `VulkanDevice` owns both; a caller that keeps its own instance uses `VulkanDevice.Create(instance, options)`.
 
-`VulkanInstance` asks for Vulkan 1.3, turns on the Khronos validation layer when it is installed (`APOGEE_VULKAN_VALIDATION=0` turns it
+`VulkanInstance` asks for Vulkan 1.3, turns on the Khronos validation layer when it is installed (`WEFT_VULKAN_VALIDATION=0` turns it
 off, `=1` makes a missing layer an error), and installs a debug messenger: warnings and errors from the layers and the driver go to the
 log, and `ErrorCount` / `TakeErrors()` count them. On macOS the loader's portability enumeration is enabled so MoltenVK is listed.
 
 The device picks the best GPU that meets the engine's baseline: Vulkan 1.3 with dynamic rendering, synchronization2,
 maintenance4, buffer device addresses, timeline semaphores and descriptor indexing (runtime arrays, partially bound, sampled images update
 after bind, non-uniform indexing), plus a graphics and compute queue that can present to the window when one is given. Discrete GPUs win
-over integrated ones, then virtual, then software. `PreferredDeviceName` or `APOGEE_GPU=llvmpipe` picks by name (a substring), and a GPU
+over integrated ones, then virtual, then software. `PreferredDeviceName` or `WEFT_GPU=llvmpipe` picks by name (a substring), and a GPU
 that fails the baseline is skipped with its reason.
 
 The device owns the VMA allocator (created with `bufferDeviceAddress`; VMA loads Vulkan through the device's own entry points), and `VulkanDevice.SetDebugName` names objects for the validation layer and RenderDoc.
@@ -159,8 +159,8 @@ safe to use from two threads at once.
 
 ### Compiled ahead of time: `ShaderBundle`
 
-`Apogee.Runtime --import <folder>` compiles every `.slang` module that has a `[shader(…)]` entry point into `imported/<path>.ashader` (the importer is `ShaderImporter`
-in Apogee.Rendering, see [Asset import](../content/import.md)). A **bundle** holds one or more *variants* of the module, each the module compiled with one set of preprocessor
+`Weft.Runtime --import <folder>` compiles every `.slang` module that has a `[shader(…)]` entry point into `imported/<path>.ashader` (the importer is `ShaderImporter`
+in Weft.Rendering, see [Asset import](../content/import.md)). A **bundle** holds one or more *variants* of the module, each the module compiled with one set of preprocessor
 defines (the variant without defines is always there; more are listed in the shader's `.import.xml`), and for each variant its reflection and the code of every entry
 point **per backend**. The importer writes SPIR-V and Metal shading language into the same file; a reader takes the code of the backend of its device (`ShaderBundle.Read(…, backend)`, `ShaderLibrary.Load(path, backend: device.ShaderBackend)`) and skips the others, and the format reserves DXIL (Direct3D 12). A shader that does not compile for every backend fails the import, so it is found on the author's machine and not on a Mac. Specialization constants need no variant: they stay in the SPIR-V and are in the reflection (pipelines do not set them yet).
 
@@ -180,7 +180,7 @@ shader is loaded). It is the same Slang source for both backends, which is why t
   1 for the samplers, 2 for the storage images: Slang has no other way to alias several types on one binding, and a parameter block would give each its own). **Metal cannot alias**: each member of the block is its own
   run of resource ids, in declaration order, so `MetalBindlessHeap` writes a sampled texture's id into the same index of every sampled run (the shader reads the run of its type) and keeps its table of runs
   (`MetalBindlessHeap.Members`) in step with the block; `BindlessTests` compares that table with the Metal shading language Slang writes, so reordering the block without the heap fails a test. Metal has no
-  descriptor sets and Slang numbers buffers in declaration order, so the compiler defines `APOGEE_METAL` for the Metal build only, and the shaders pin the indices with `: register(b0)` / `: register(b1)`
+  descriptor sets and Slang numbers buffers in declaration order, so the compiler defines `WEFT_METAL` for the Metal build only, and the shaders pin the indices with `: register(b0)` / `: register(b1)`
   (`PUSH_SLOT`, `BINDLESS_SLOT` in `common.slang`). The Vulkan build never sees those annotations: the same `register` annotations changed the SPIR-V's bindings and crashed lavapipe.
 - No other buffer, texture or sampler is bound directly: everything else is reached through an address or an index.
 
@@ -279,9 +279,9 @@ Without a swapchain it runs **headless**: the same frames with no window image, 
 - `frame.Scope("Shadow pass")` is a RenderDoc debug label plus a GPU timer; `loop.Timings` lists the sections of the most recent finished
   frame in order, with their GPU milliseconds.
 
-The window tests open a real window, so they only run with `APOGEE_WINDOW_TESTS=1 ./build.sh test`.
+The window tests open a real window, so they only run with `WEFT_WINDOW_TESTS=1 ./build.sh test`.
 
 ## Tests
 
-The GPU tests share one device and fail on any validation error. They skip without a GPU, unless `APOGEE_REQUIRE_VULKAN=1` (CI, on
-lavapipe) or, with the Metal backend, `APOGEE_REQUIRE_METAL=1`. Run them on a specific GPU with `APOGEE_GPU=nvidia ./build.sh test` or `APOGEE_GPU=llvmpipe ./build.sh test`.
+The GPU tests share one device and fail on any validation error. They skip without a GPU, unless `WEFT_REQUIRE_VULKAN=1` (CI, on
+lavapipe) or, with the Metal backend, `WEFT_REQUIRE_METAL=1`. Run them on a specific GPU with `WEFT_GPU=nvidia ./build.sh test` or `WEFT_GPU=llvmpipe ./build.sh test`.

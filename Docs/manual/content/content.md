@@ -1,6 +1,6 @@
 # Content loading
 
-`Apogee.Content` is how the engine gets its files: the virtual file system (below), and the readers that turn model and texture files into plain CPU data that the
+`Weft.Content` is how the engine gets its files: the virtual file system (below), and the readers that turn model and texture files into plain CPU data that the
 renderer uploads (no GPU types except the `PixelFormat` enum). XML definitions, packs and mods build on the file system and come next.
 
 ## File system

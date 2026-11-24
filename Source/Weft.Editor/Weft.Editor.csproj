@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The ImGui editor: a CoreCLR program (it is a tool, not shipped in a game, so it is never published with NativeAOT). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- The editor's own checks: ImGui code passes pointers and CBool around, which the analyzers do not like in a tool. -->
+    <NoWarn>$(NoWarn);CA1305</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Ecs/Weft.Ecs.csproj" />
+    <ProjectReference Include="../Weft.Platform/Weft.Platform.csproj" />
+    <ProjectReference Include="../Weft.Input/Weft.Input.csproj" />
+    <ProjectReference Include="../Weft.Physics/Weft.Physics.csproj" />
+    <ProjectReference Include="../Weft.Content/Weft.Content.csproj" />
+    <ProjectReference Include="../Weft.Graphics/Weft.Graphics.csproj" />
+    <ProjectReference Include="../Weft.Rendering/Weft.Rendering.csproj" />
+    <ProjectReference Include="../Weft.DevTools/Weft.DevTools.csproj" />
+    <ProjectReference Include="../Weft.UI/Weft.UI.csproj" />
+    <ProjectReference Include="../Weft.Reflection/Weft.Reflection.csproj" />
+    <ProjectReference Include="../Weft.Scripting/Weft.Scripting.csproj" />
+    <ProjectReference Include="../Weft.Host/Weft.Host.csproj" />
+    <ProjectReference Include="../Weft.Reflection.Generator/Weft.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+    <ProjectReference Include="../Weft.Native.Sdl/Weft.Native.Sdl.csproj" />
+    <ProjectReference Include="../Weft.Native.Flecs/Weft.Native.Flecs.csproj" />
+    <ProjectReference Include="../Weft.Native.CImGui/Weft.Native.CImGui.csproj" />
+    <ProjectReference Include="../Weft.Native.ImGuizmo/Weft.Native.ImGuizmo.csproj" />
+    <ProjectReference Include="../Weft.Native.ImNodes/Weft.Native.ImNodes.csproj" />
+    <ProjectReference Include="../Weft.Native.ImPlot/Weft.Native.ImPlot.csproj" />
+    <ProjectReference Include="../Weft.Native.Vulkan/Weft.Native.Vulkan.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Weft.Editor.Tests" />
+  </ItemGroup>
+  <Import Project="../../ThirdParty/NativeLibraries.props" />
+</Project>

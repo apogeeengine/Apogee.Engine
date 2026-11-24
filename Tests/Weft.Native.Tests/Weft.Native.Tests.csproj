@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AnalysisMode>Default</AnalysisMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Source/Weft.Native.Sdl/Weft.Native.Sdl.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Flecs/Weft.Native.Flecs.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Luau/Weft.Native.Luau.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.CImGui/Weft.Native.CImGui.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Vulkan/Weft.Native.Vulkan.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Vma/Weft.Native.Vma.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Meshopt/Weft.Native.Meshopt.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Cgltf/Weft.Native.Cgltf.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Stb/Weft.Native.Stb.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.AudioDecode/Weft.Native.AudioDecode.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.OpenAL/Weft.Native.OpenAL.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Net/Weft.Native.Net.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Ktx/Weft.Native.Ktx.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Jolt/Weft.Native.Jolt.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.RmlUi/Weft.Native.RmlUi.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.ImGuizmo/Weft.Native.ImGuizmo.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.ImPlot/Weft.Native.ImPlot.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.ImNodes/Weft.Native.ImNodes.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Steam/Weft.Native.Steam.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Slang/Weft.Native.Slang.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Zstd/Weft.Native.Zstd.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.FreeType/Weft.Native.FreeType.csproj" />
+    <ProjectReference Include="../../Source/Weft.Native.Metal/Weft.Native.Metal.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Import Project="../../ThirdParty/NativeLibraries.props" />
+</Project>

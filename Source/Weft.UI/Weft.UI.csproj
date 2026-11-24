@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Content/Weft.Content.csproj" />
+    <ProjectReference Include="../Weft.Platform/Weft.Platform.csproj" />
+    <ProjectReference Include="../Weft.Reflection/Weft.Reflection.csproj" />
+    <ProjectReference Include="../Weft.Reflection.Generator/Weft.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+    <ProjectReference Include="../Weft.Graphics/Weft.Graphics.csproj" />
+    <ProjectReference Include="../Weft.Rendering/Weft.Rendering.csproj" />
+    <ProjectReference Include="../Weft.Native.RmlUi/Weft.Native.RmlUi.csproj" />
+    <ProjectReference Include="../Weft.Native.Sdl/Weft.Native.Sdl.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Weft.UI.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The default font and the base stylesheet travel inside the assembly, so a shipped game needs no files for them. -->
+    <EmbeddedResource Include="Fonts/*.ttf" LogicalName="Weft.UI.Fonts.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="ui_base.rcss" LogicalName="Weft.UI.ui_base.rcss" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Compiled at run time like the renderer's shaders, and shipped next to the program in the same Shaders folder. -->
+    <Content Include="Shaders/*.slang" Link="Shaders/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

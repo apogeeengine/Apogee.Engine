@@ -1,0 +1,12 @@
+{
+  "name": "imnodes",
+  "project": "Source/Weft.Native.ImNodes",
+  "namespace": "Weft.Native.ImNodes",
+  "className": "Nodes",
+  "library": { "name": "cimgui", "linux": ["libcimgui.so"], "windows": ["cimgui.dll"], "macos": ["libcimgui.dylib"] },
+  "includeDirs": ["Native/imgui"],
+  "includes": ["weft_imnodes.h"],
+  "ownDirs": ["Native/imgui"],
+  "stripPrefixes": ["anodes_", "ANODES_"],
+  "excludeConstants": ["^WEFT_IMNODES_H$"]
+}

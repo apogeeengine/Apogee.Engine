@@ -1,9 +1,9 @@
 # Contributing
 
-Apogee is maintained by one person for now: reviews take time, and scope is guarded. The rules are in [CONTRIBUTING.md](https://github.com/apogeeengine/Apogee.Engine/blob/main/CONTRIBUTING.md); in short:
+Weft is maintained by one person for now: reviews take time, and scope is guarded. The rules are in [CONTRIBUTING.md](https://github.com/weftengine/weft/blob/main/CONTRIBUTING.md); in short:
 
-- Open an issue or a [discussion](https://github.com/apogeeengine/Apogee.Engine/discussions) before a big change. Bugs need a minimal reproduction.
-- Pull requests that drift from the engine's purpose (see the [Introduction](../about/introduction.md#what-apogee-is-not)) are declined.
+- Open an issue or a [discussion](https://github.com/weftengine/weft/discussions) before a big change. Bugs need a minimal reproduction.
+- Pull requests that drift from the engine's purpose (see the [Introduction](../about/introduction.md#what-weft-is-not)) are declined.
 - Conventional Commits, and every commit signed off (`git commit -s`, the DCO).
 - Every feature has tests and a Manual page. Warnings are errors; no runtime reflection in `Source/`.
 - AI assistance is fine; submitting code you do not understand is not.

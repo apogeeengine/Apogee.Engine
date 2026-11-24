@@ -1,6 +1,6 @@
 # Dev tools
 
-`Apogee.DevTools` is Dear ImGui (the docking branch, through cimgui) wired into the engine: an SDL3 input backend and a Vulkan renderer backend
+`Weft.DevTools` is Dear ImGui (the docking branch, through cimgui) wired into the engine: an SDL3 input backend and a Vulkan renderer backend
 written in C#, a thin C# layer over ImGui's C API, and the engine's debug window. The editor and the game's own dev windows use the same pieces.
 
 ## Using it
@@ -47,7 +47,7 @@ SDL. Events of other windows are ignored; `AttachToAllWindows()` is for headless
 
 ## Text
 
-Dear ImGui rasterizes its fonts with FreeType (`imgui_freetype.cpp` is part of the `cimgui` library, see [Native libraries](../native/native-libraries.md#freetype-apogeenativefreetype)): text is
+Dear ImGui rasterizes its fonts with FreeType (`imgui_freetype.cpp` is part of the `cimgui` library, see [Native libraries](../native/native-libraries.md#freetype-weftnativefreetype)): text is
 hinted and anti-aliased by FreeType instead of ImGui's built-in stb_truetype (which is still compiled in, because cimgui calls it, but is not the default). The loader's name
 (`FreeType (2.15.0; 2.15.0)`, compiled against and linked) is `atlas->FontLoader->Name`, which `TheGlyphsAreRasterizedByFreeType` checks. Colour glyphs are off
 (`ImGuiFreeTypeLoaderFlags.LoadColor`), so the atlas stays a single-channel coverage image that `ImGuiRenderer` expands to RGBA8; the flags can be set per font through
@@ -76,18 +76,18 @@ compile: the renderers keep using the shader as it was, and the message, with th
   view and the cluster range, all edited live.
 
 `Ui` has the ImGui calls the dev tools need with C# strings and `ref` values (windows, text, sliders, checkboxes, combos, plots, tables, headers); for
-anything else call `ImGui` from `Apogee.Native.CImGui` directly.
+anything else call `ImGui` from `Weft.Native.CImGui` directly.
 
 ## ImPlot, ImGuizmo and imnodes
 
 Three more libraries sit in the same shared library as Dear ImGui (they use its C++ API and its context, and ImGui's symbols are hidden), each with a small C API of ours over it (see `ThirdParty/README.md`, and
 [the native libraries](../native/native-libraries.md#imguizmo-implot-and-imnodes)):
 
-- **ImPlot** (`Apogee.Native.ImPlot`, class `Plot`) draws plots. `Plots` in `Apogee.DevTools` is the surface the overlay uses, with strings and spans: `if (Plots.Begin("id", size)) { Plots.Axes(...); Plots.Limits(...);
+- **ImPlot** (`Weft.Native.ImPlot`, class `Plot`) draws plots. `Plots` in `Weft.DevTools` is the surface the overlay uses, with strings and spans: `if (Plots.Begin("id", size)) { Plots.Axes(...); Plots.Limits(...);
   Plots.Line("label", values, spec); Plots.Shaded(...); Plots.Band(...); Plots.Bars(...); Plots.End(); }`.
-- **ImGuizmo** (`Apogee.Native.ImGuizmo`, class `Gizmo`) draws move, rotate and scale gizmos and a view cube over a viewport: `Gizmo.BeginFrame()`, `Gizmo.SetRect(...)`, then `Gizmo.Manipulate(view, projection, operation, mode,
+- **ImGuizmo** (`Weft.Native.ImGuizmo`, class `Gizmo`) draws move, rotate and scale gizmos and a view cube over a viewport: `Gizmo.BeginFrame()`, `Gizmo.SetRect(...)`, then `Gizmo.Manipulate(view, projection, operation, mode,
   matrix, ...)` changes the matrix in place while the player drags (the matrices are 16 floats, column-major).
-- **imnodes** (`Apogee.Native.ImNodes`, class `Nodes`) draws node editors: nodes with title bars and pins, links, a minimap, selection and positions.
+- **imnodes** (`Weft.Native.ImNodes`, class `Nodes`) draws node editors: nodes with title bars and pins, links, a minimap, selection and positions.
 
 `ImGuiHost` makes an ImPlot context and an imnodes context with the ImGui one and makes them current at the start of every frame; they are destroyed with it.
 

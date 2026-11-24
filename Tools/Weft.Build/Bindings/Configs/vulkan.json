@@ -1,0 +1,14 @@
+{
+  "name": "vulkan",
+  "kind": "vulkan",
+  "registry": "ThirdParty/vulkan/registry/vk.xml",
+  "project": "Source/Weft.Native.Vulkan",
+  "namespace": "Weft.Native.Vulkan",
+  "className": "Vk",
+  "library": {
+    "name": "vulkan",
+    "linux": ["libvulkan.so.1", "libvulkan.so"],
+    "windows": ["vulkan-1.dll"],
+    "macos": ["libvulkan.1.dylib", "libvulkan.dylib", "libMoltenVK.dylib"]
+  }
+}

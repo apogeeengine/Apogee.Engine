@@ -1,6 +1,6 @@
 --!strict
 -- The sample: boxes bouncing in a cube, with a panel to watch and steer them. Run it with
---   Apogee.Runtime --run Samples/Scripting/main.luau --frames 120 --headless
+--   Weft.Runtime --run Samples/Scripting/main.luau --frames 120 --headless
 local sim = require("./sim")
 
 local settings: sim.Settings = { speed = 1, bound = 10 }

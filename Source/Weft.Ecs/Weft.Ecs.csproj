@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- CA1720/CA1716: names follow what they hold (Entity, Phase.OnUpdate…). -->
+    <NoWarn>$(NoWarn);CA1720;CA1716</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Weft.Core/Weft.Core.csproj" />
+    <!-- Scenes are documents of assets: ContentException, and later XmlNode and AssetDatabase for scene files. -->
+    <ProjectReference Include="../Weft.Content/Weft.Content.csproj" />
+    <ProjectReference Include="../Weft.Interop/Weft.Interop.csproj" />
+    <ProjectReference Include="../Weft.Reflection/Weft.Reflection.csproj" />
+    <ProjectReference Include="../Weft.Native.Flecs/Weft.Native.Flecs.csproj" />
+    <ProjectReference Include="../Weft.Reflection.Generator/Weft.Reflection.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="PublishAot" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The schema of a .ascene file. -->
+    <EmbeddedResource Include="Scene/scene.xsd" LogicalName="Scene/scene.xsd" />
+    <!-- The schema of a .aprefab file. -->
+    <EmbeddedResource Include="Scene/prefab.xsd" LogicalName="Scene/prefab.xsd" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Weft.Ecs.Tests" />
+  </ItemGroup>
+</Project>

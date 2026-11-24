@@ -2,9 +2,9 @@
 
 What is bound and how to use it. Where each library comes from and how it was built is in `ThirdParty/README.md`.
 
-## Luau (`Apogee.Native.Luau`)
+## Luau (`Weft.Native.Luau`)
 
-The VM, the compiler and the native code generator in one library, plus our layer over them, `Native/luau/apogee_luau.h`.
+The VM, the compiler and the native code generator in one library, plus our layer over them, `Native/luau/weft_luau.h`.
 Luau is built with `LUA_USE_LONGJMP`: **an error is a longjmp to the nearest protected call, and a longjmp must never cross a
 managed frame.** So the binding leaves out what raises an error on input a script controls: `lua_error`, `lua_call`, the
 `luaL_check*`/`luaL_opt*` family, `lua_gettable`/`lua_getfield` and the other calls that run metamethods, `lua_yield`, and
@@ -38,7 +38,7 @@ Lua.CloseVm(state);
   needs executable memory: a macOS app that is signed with the hardened runtime needs the `allow-jit` entitlement.
 - One state belongs to one thread at a time.
 
-## Vulkan Memory Allocator (`Apogee.Native.Vma`)
+## Vulkan Memory Allocator (`Weft.Native.Vma`)
 
 VMA suballocates GPU memory. Its binding is `Vma` (functions) plus `Allocator`, `Allocation`, `Pool`… (the opaque structs
 behind VMA's handles; you only hold pointers to them).
@@ -60,7 +60,7 @@ whatever Vulkan loader the process uses. Flag typedefs are the `*FlagBits` enums
 
 `VirtualBlock` needs no GPU: it hands out offsets from a range (used for sub-allocating our own buffers, and in tests).
 
-## meshoptimizer (`Apogee.Native.Meshopt`)
+## meshoptimizer (`Weft.Native.Meshopt`)
 
 Mesh processing: vertex deduplication, vertex cache / overdraw / vertex fetch optimization, simplification, meshlets and
 quantization. The binding is `Meshopt` and keeps the C spelling of the parameters. The content loader runs every mesh
@@ -73,7 +73,7 @@ Meshopt.RemapIndexBuffer(indices, indices, indexCount, remap);
 Meshopt.OptimizeVertexCache(indices, indices, indexCount, unique);
 ```
 
-## zstd (`Apogee.Native.Zstd`)
+## zstd (`Weft.Native.Zstd`)
 
 Compression, for packs and for libktx's KTX 2 supercompression. The binding is `Zstd` and covers the stable API of `zstd.h` and `zstd_errors.h`: one-shot
 `Compress`/`Decompress` (with `CompressBound` and `GetFrameContentSize` to size the buffers), streaming through `CompressStream2`/`DecompressStream` with
@@ -90,7 +90,7 @@ if (Zstd.IsError(size) != 0) throw new InvalidDataException(Marshal.PtrToStringU
 `Zstd.ContentSizeUnknown` and `ContentSizeError` are what `GetFrameContentSize` returns for a frame that does not say its size and for non-frames.
 libktx links this library (they have to sit next to each other, which the build arranges), so a zstd-compressed KTX 2 file is inflated by the same code.
 
-## FreeType (`Apogee.Native.FreeType`)
+## FreeType (`Weft.Native.FreeType`)
 
 Font rasterization, for the dev tools' text now (Dear ImGui's FreeType loader) and for RmlUi's. The binding is class `FT` over the public headers of the
 modules we build: loading a face (`NewMemoryFace`, `NewFace`), sizes, glyph loading and rendering (`LoadChar`, `RenderGlyph`, with the `Load…` flags and the `RenderMode`
@@ -112,12 +112,12 @@ fixed (byte* font = fontBytes)   // the face reads this memory for as long as it
 
 Every function returns an `FT_Error`: zero is success. The modules are TrueType and OpenType (`tt`, `cff`, `sfnt`), Type 1, CID and Type 42, the PostScript helpers, the auto-hinter, and the
 smooth, monochrome and SDF renderers; zlib is FreeType's own copy (WOFF 1 fonts and `.gz` files). Left out: the bitmap and Windows fonts, PFR, the SVG and colour-PNG
-glyphs, WOFF 2 (brotli) and HarfBuzz; `ThirdParty/README.md` lists them and how the library is configured (`Native/freetype/apogee_ftoption.h`, `apogee_ftmodule.h`).
+glyphs, WOFF 2 (brotli) and HarfBuzz; `ThirdParty/README.md` lists them and how the library is configured (`Native/freetype/weft_ftoption.h`, `weft_ftmodule.h`).
 FreeType is used under the **FreeType License** (BSD-style, with a credit clause: a game that ships the library says so in its credits, see `Legal/THIRD_PARTY_NOTICES.md`).
 Dear ImGui's font atlas is rasterized by it: `cimgui` links this library (they sit next to each other) and ImGui makes it the default font loader.
 `FreeTypeSmokeTests` renders a glyph of a font loaded from memory through every renderer, and the common binding tests check the entry points and struct sizes.
 
-## cgltf (`Apogee.Native.Cgltf`)
+## cgltf (`Weft.Native.Cgltf`)
 
 A glTF 2.0 parser (`.gltf` and `.glb`). `Cgltf.Parse` reads a file from memory and `Cgltf.ParseFile` from a path; both give a
 `Data*` that owns the parsed document and that you release with `Cgltf.Free`. `Cgltf.LoadBuffers` reads the binary buffers
@@ -142,7 +142,7 @@ The names are the C names without `cgltf_`; its booleans are plain `int`s.
     valid until `Free`. Pinning a managed array only for the call works under CoreCLR by luck (the array does not move) and breaks under
     NativeAOT. `GltfLoader` copies the file into native memory and frees it after `Free`.
 
-## stb_image (`Apogee.Native.Stb`)
+## stb_image (`Weft.Native.Stb`)
 
 Decodes the common image formats (PNG, JPEG, BMP, TGA, GIF, PSD, HDR, PIC, PNM) from memory. The class is `Stbi`.
 
@@ -157,7 +157,7 @@ Stbi.ImageFree(pixels);
 Asking for `Stbi.RgbAlpha` always gives four 8-bit channels, whatever the file has. `Stbi.InfoFromMemory` reads the size without
 decoding. There is no file API: read the bytes through the engine's file system first.
 
-## libktx (`Apogee.Native.Ktx`)
+## libktx (`Weft.Native.Ktx`)
 
 Reads KTX 1 and KTX 2 textures, and writes KTX 2 with the Basis Universal encoder. Basis Universal data (ETC1S/BasisLZ and UASTC) is transcoded to whatever the GPU supports. The asset importer
 encodes UASTC with `ktxTexture2_CompressBasisEx` and supercompresses it with `ktxTexture2_DeflateZstd` (`BasisEncoder`, [Asset import](../content/import.md#gpu-texture-compression)); the game only loads, but the encoder is
@@ -178,7 +178,7 @@ Ktx.Texture2Destroy(texture);
 
 Names are the C names without `ktx`, with the `_` after `Texture2` dropped (`Texture2CreateFromMemory`); enums lose `_e`.
 
-## Slang (`Apogee.Native.Slang`)
+## Slang (`Weft.Native.Slang`)
 
 The shader compiler. Slang's own API is C++ and COM, so the binding is over a small C API of ours (`Native/slang_c`) that compiles Slang
 source to SPIR-V for Vulkan 1.3 (SPIR-V 1.6, row-major matrices, entry points keep their names). The compiler library ships with the
@@ -199,9 +199,9 @@ Slang.ResultDestroy(result);
 Passing `source = null` loads `<moduleName>.slang` from the search paths. Besides the code, a result carries the diagnostics (warnings too), the
 program's reflection as Slang's JSON, and the files the compile read, which is what a shader cache keys on.
 
-## Jolt Physics (`Apogee.Native.Jolt`)
+## Jolt Physics (`Weft.Native.Jolt`)
 
-Jolt Physics, behind **our own C API**, `Native/jolt/apogee_jolt.h` (about 80 functions, written for what the engine needs; no third-party wrapper), in one shared library, `jolt`. The binding is a class `Jolt`
+Jolt Physics, behind **our own C API**, `Native/jolt/weft_jolt.h` (about 80 functions, written for what the engine needs; no third-party wrapper), in one shared library, `jolt`. The binding is a class `Jolt`
 (`Jolt.WorldCreate`, `Jolt.BodyCreate`) with structs that keep their `Aj` prefix (`AjBodyDesc`, `AjVec3`, `AjWorld*`) because `BodyDesc`, `VehicleDesc` and `World` are the engine's own names for other things.
 [Physics](../physics/physics.md) is the engine's use of it; this is the raw binding.
 
@@ -215,11 +215,11 @@ How it is built decides what the binding means, so these are fixed in `Native/jo
 - **Double precision** (`JPH_DOUBLE_PRECISION`): `AjRVec3` is three doubles, and so are the positions in every call (`BodyGetPose`, `Raycast`, `AjEvent.Position`). Rotations, scales, velocities and everything else
   are floats. It is the physics side of the double world (see [Math](../core/math.md)).
 - **Cross-platform determinism** (`JPH_CROSS_PLATFORM_DETERMINISTIC`): the same inputs give the same results on Windows, Linux and macOS, on any CPU and with any number of threads (no fused multiply-add, strict float
-  contraction). It costs about 8% of the simulation. `Tests/Apogee.Native.Tests/JoltSmokeTests` simulates a pile of bodies and compares the bits of their final positions with a recorded hash; it was the same on SSE 4.2 and
+  contraction). It costs about 8% of the simulation. `Tests/Weft.Native.Tests/JoltSmokeTests` simulates a pile of bodies and compares the bits of their final positions with a recorded hash; it was the same on SSE 4.2 and
   AVX2 builds, with 1, 2 and 7 threads, and before and after the move from JoltC to our own API.
 - **32-bit object layers** (`JPH_OBJECT_LAYER_BITS=32`): the low 16 bits are a body's group (its 14 layers, plus a marker for static and one for sensor bodies, which only choose the broad phase tree), the high 16 its
   mask. Two bodies collide when each is in a layer the other's mask holds; static bodies never collide with each other.
-- **Instruction set:** SSE 4.2 (the engine's x86-64-v2 baseline). `cmake -DAPOGEE_JOLT_AVX2=ON` builds for AVX2, BMI, LZCNT and F16C, any CPU since Haswell, and Jolt's code is then faster; the library picks its
+- **Instruction set:** SSE 4.2 (the engine's x86-64-v2 baseline). `cmake -DWEFT_JOLT_AVX2=ON` builds for AVX2, BMI, LZCNT and F16C, any CPU since Haswell, and Jolt's code is then faster; the library picks its
   instruction set when it is built, there is no run-time dispatch. FMA is never used.
 - No C++ exceptions and no RTTI, as Jolt does not use them, and none may cross managed frames. No GPU compute, no profiler, no assertions in Release. The debug renderer is compiled in: `aj_world_draw_debug` collects what it draws (see [Physics](../physics/physics.md#debug-drawing)).
 
@@ -243,9 +243,9 @@ fixed capacity: what does not fit is counted, `EventsDropped`), and `EventsTake`
 
 A step that needs more working memory than `TempBufferBytes` allocates from the heap instead of failing.
 
-## RmlUi (`Apogee.Native.RmlUi`)
+## RmlUi (`Weft.Native.RmlUi`)
 
-RmlUi 6.3 (HTML and CSS style game UI), behind **our own C API**, `Native/rmlui/apogee_rmlui.h` (85 functions), in one shared library, `rmlui`. RmlUi's own API is C++ with inheritance, templates and ownership by `unique_ptr`,
+RmlUi 6.3 (HTML and CSS style game UI), behind **our own C API**, `Native/rmlui/weft_rmlui.h` (85 functions), in one shared library, `rmlui`. RmlUi's own API is C++ with inheritance, templates and ownership by `unique_ptr`,
 which a C# program cannot call, so everything goes through handles and plain structs. RmlUi is compiled into the library as a static one would be (`RMLUI_STATIC_LIB`, hidden symbols): the library exports what the header declares and nothing
 else. Its font engine is FreeType, our own `freetype` library (it has to sit next to this one). The binding is a class `Rml` (`Rml.ContextCreate`, `Rml.ElementAppendChild`) with `Ar`-prefixed structs (`ArHost`, `ArVertex`, `ArRect`).
 [UI](../ui/index.md) is the engine's use of it; this is the raw binding.
@@ -285,15 +285,15 @@ Rml.ContextUpdate(context);                                      // layout and a
 Rml.ContextRender(context);                                      // calls host.RenderGeometry for what is visible
 ```
 
-`Tests/Apogee.Native.Tests/RmlUiSmokeTests` runs all of it against a recording host: layout in pixels, the geometry and its colors, text with a real font, building and editing a tree (and what a stale handle does), listeners
+`Tests/Weft.Native.Tests/RmlUiSmokeTests` runs all of it against a recording host: layout in pixels, the geometry and its colors, text with a real font, building and editing a tree (and what a stale handle does), listeners
 (bubbling, capture, stopping, removal, parameters), clicking by pointer position, files and stylesheets through the host, images, added stylesheets, typing into a text field, the debugger, resizing.
 
 ## ImGuizmo, ImPlot and imnodes
 
 Dear ImGui add-ons for the dev tools and the editor: ImGuizmo (3D manipulation gizmos and a view cube), ImPlot (plots) and imnodes (node editors). All three use ImGui's C++ API and its context, and the symbols of ImGui are
-hidden in `cimgui`, so they are compiled **into the `cimgui` library** (`Native/imgui/CMakeLists.txt`), each with **a C API of ours** over it (`apogee_imguizmo.h`, `apogee_implot.h`, `apogee_imnodes.h`: plain
+hidden in `cimgui`, so they are compiled **into the `cimgui` library** (`Native/imgui/CMakeLists.txt`), each with **a C API of ours** over it (`weft_imguizmo.h`, `weft_implot.h`, `weft_imnodes.h`: plain
 functions over floats, ints and opaque handles, no C++ types, no `cimguizmo` / `cimplot` / `cimnodes`). Three binding projects are generated from those headers, all on the library name `cimgui`:
-`Apogee.Native.ImGuizmo` (class `Gizmo`, functions `Gizmo.Manipulate`, `Gizmo.ViewManipulate`...), `Apogee.Native.ImPlot` (class `Plot`: `Plot.BeginPlot`, `Plot.PlotLineF`...) and `Apogee.Native.ImNodes`
+`Weft.Native.ImGuizmo` (class `Gizmo`, functions `Gizmo.Manipulate`, `Gizmo.ViewManipulate`...), `Weft.Native.ImPlot` (class `Plot`: `Plot.BeginPlot`, `Plot.PlotLineF`...) and `Weft.Native.ImNodes`
 (class `Nodes`: `Nodes.BeginNode`, `Nodes.Link`...). Their enums are checked against the library's own at compile time (`static_assert`s in the shims).
 
 - **They act on ImGui's current context**, which is in the same library: make ImGui's context current, create an ImPlot and an imnodes context (`Plot.CreateContext`, `Nodes.CreateContext`), and make those current too.
@@ -303,9 +303,9 @@ functions over floats, ints and opaque handles, no C++ types, no `cimguizmo` / `
 - **ImGuizmo's** matrices are 16 floats, column-major; `Gizmo.Manipulate` changes the object's matrix in place and can give the change since the drag began (`deltaMatrix`).
 - **imnodes'** ids are the caller's integers: nodes, attributes (pins) and links each have their own.
 - The library exports exactly the three headers and ImGui's `cimgui.h`: `nm -D libcimgui.so | grep -c _Z` is 0, no C++ symbol of ImGui, ImPlot or imnodes leaks.
-- Tests: the three bindings are in `NativeBindingTests` (every entry point resolves; they have no struct of a known size but ImPlot's `AplotSpec`), and `Tests/Apogee.DevTools.Tests/ImGuiExtensionTests` runs a headless frame through each.
+- Tests: the three bindings are in `NativeBindingTests` (every entry point resolves; they have no struct of a known size but ImPlot's `AplotSpec`), and `Tests/Weft.DevTools.Tests/ImGuiExtensionTests` runs a headless frame through each.
 
-## OpenAL Soft (`Apogee.Native.OpenAL`)
+## OpenAL Soft (`Weft.Native.OpenAL`)
 
 OpenAL 1.1 with OpenAL Soft's extensions, through its C API with no shim: class `OpenAL`. OpenAL Soft is LGPL, so it is its own shared library beside the program (see `Legal/THIRD_PARTY_NOTICES.md`); [Audio](../audio/index.md) is built on it.
 
@@ -324,9 +324,9 @@ OpenAL.AlcMakeContextCurrent(context);
 OpenAL.AlcRenderSamplesSOFT(device, mix, 1024);
 ```
 
-## Audio decoders (`Apogee.Native.AudioDecode`)
+## Audio decoders (`Weft.Native.AudioDecode`)
 
-WAV, FLAC, Ogg Vorbis and MP3 behind four functions of ours (`Native/audio_decode/apogee_audio.h`, built from dr_libs and stb_vorbis): `Open` takes a whole file in memory and tells the format from its first bytes, `Read` gives interleaved 32-bit float
+WAV, FLAC, Ogg Vorbis and MP3 behind four functions of ours (`Native/audio_decode/weft_audio.h`, built from dr_libs and stb_vorbis): `Open` takes a whole file in memory and tells the format from its first bytes, `Read` gives interleaved 32-bit float
 samples at the file's channel count and sample rate, `Rewind` starts over, `Close` ends it. The memory must stay valid until `Close`. The files come from the engine's file system, so the decoders never touch the disk.
 
 ```csharp
@@ -336,11 +336,11 @@ ulong frames = AudioDecode.Read(decoder, samples, 4096);              // 0 at th
 AudioDecode.Close(decoder);
 ```
 
-## GameNetworkingSockets (`Apogee.Native.Net`)
+## GameNetworkingSockets (`Weft.Native.Net`)
 
-Valve's GameNetworkingSockets behind our own small C API (`Native/net/apogee_net.h`, shim `apogee_net`), class `Net`: GNS's flat C API takes C++ references and structs packed differently by platform, which the shim's compiler lays out
+Valve's GameNetworkingSockets behind our own small C API (`Native/net/weft_net.h`, shim `weft_net`), class `Net`: GNS's flat C API takes C++ references and structs packed differently by platform, which the shim's compiler lays out
 instead. A host owns a listen socket and connections (GNS's handles, as `uint`); `Poll` returns what happened as `AnEvent`s (`Incoming`, `Connected`, `Message`, `Disconnected`), whose message bytes and strings stay valid until the
-next `Poll`, so managed code never runs inside a GNS callback or on one of its threads. [Network](../network/network.md) is built on it; `Tests/Apogee.Network.Tests` is its test. Without `libGameNetworkingSockets` next to it the shim does not
+next `Poll`, so managed code never runs inside a GNS callback or on one of its threads. [Network](../network/network.md) is built on it; `Tests/Weft.Network.Tests` is its test. Without `libGameNetworkingSockets` next to it the shim does not
 load (`NativeLibraries.TryLoad` fails) and networking is off.
 
 ```csharp
@@ -352,7 +352,7 @@ AnEvent* events = ...; int n = Net.Poll(host, events, 256);   // once a frame
 Net.Send(host, connection, bytes, length, reliable: true, lane: 0);
 ```
 
-## Steamworks (`Apogee.Native.Steam`)
+## Steamworks (`Weft.Native.Steam`)
 
 Valve's flat C API (`steam_api.dll` / `libsteam_api.so` / `libsteam_api.dylib`), class `Steam`. The three libraries are Valve's `redistributable_bin`, committed unchanged (Git LFS, `ThirdParty/steamworks/lib`); the SDK
 headers are not (Valve's agreement lets us distribute only the redistributables), so the *bindings* are generated code and committed, and the headers are needed only to regenerate them (`./build.sh sdk steam <zip>`, then
@@ -366,7 +366,7 @@ The headers are C++, and the bindings are generated from what Valve publishes fo
 - **Callbacks use manual dispatch** (`ManualDispatchInit`, `ManualDispatchRunFrame`, `ManualDispatchGetNextCallback` into a `CallbackMsg`, `ManualDispatchGetAPICallResult`), so nothing runs on Steam's threads.
   Every callback struct has its id as a constant (`Steam.GameOverlayActivatedId`).
 - **Packing.** Valve packs its callback structs to 4 bytes on Linux and macOS and to 8 on Windows, and a few structs are `#pragma pack(4)` or `(2)` on every system. The structs that depend on the system say
-  `Pack = SteamPack.Callback`, a constant chosen when the project is built (`APOGEE_STEAM_PACK8` for a Windows build), and the layout test checks the size clang computes for both packings
+  `Pack = SteamPack.Callback`, a constant chosen when the project is built (`WEFT_STEAM_PACK8` for a Windows build), and the layout test checks the size clang computes for both packings
   (`SteamLayout.CallbackPackSizes`). Build the binding for the operating system it runs on.
 - Names lose Valve's Hungarian prefixes (`m_unAppID` is `AppID`, `m_eResult` is `Result`); `_t` and the `E`/`I` prefixes of enums and interfaces stay as Valve writes them.
 - Constants that are plain numbers (or `a * b`, `a + b`) are bound; strings and macros are skipped (`Bin/bindings/steam.skipped.txt`).

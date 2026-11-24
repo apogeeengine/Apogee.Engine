@@ -1,6 +1,6 @@
 # Network
 
-`Apogee.Network` connects the game to other programs over UDP: **GameNetworkingSockets** (GNS, Valve's open-source transport, BSD-3-Clause) behind one `NetSystem`, in scripts the global `net`. Connections are encrypted,
+`Weft.Network` connects the game to other programs over UDP: **GameNetworkingSockets** (GNS, Valve's open-source transport, BSD-3-Clause) behind one `NetSystem`, in scripts the global `net`. Connections are encrypted,
 messages are reliable (arrive once, in order) or not (may be lost, never twice), large messages are split and put back together, and lanes keep a slow message on one from holding up the others.
 There is no replication: what is sent, and what it means, is the game's.
 
@@ -54,14 +54,14 @@ could not be queued), `configure_lanes(count)`, `close(reason, linger = true)` a
 ## With Steamworks
 
 GNS's interface is Steam's: `ISteamNetworkingSockets` in `libsteam_api` is the same class with the same functions, and the Steam Datagram Relay (connections by Steam id, through Valve's network, with no open port) is the
-same API with another way to address the peer. A Steam transport would therefore replace `Native/net/apogee_net.cpp`'s calls (`CreateListenSocketP2P`, `ConnectP2P`, the identity instead of the IP address) and leave `Apogee.Network`,
+same API with another way to address the peer. A Steam transport would therefore replace `Native/net/weft_net.cpp`'s calls (`CreateListenSocketP2P`, `ConnectP2P`, the identity instead of the IP address) and leave `Weft.Network`,
 the scripts and these signals as they are. It is not built: the Steam wrappers of `steam.md` leave networking out on purpose (`steam.json`).
 
 ## How it is built
 
-GNS is C++ with a flat C API that takes C++ references and structs packed differently on each platform, so it is not bound as it is. `Native/net/apogee_net.h` is our own small C API over it (a host, connections as integers,
-`an_poll` returning events), compiled against GNS's headers (`ThirdParty/gns/include`) and linked to its shared library. `Apogee.Native.Net` is the generated binding of that header. Every GNS call is in
-`apogee_net.cpp`. `./build.sh native` builds the shim when `libGameNetworkingSockets` is in `Bin/native/<rid>` or `ThirdParty/gns/lib/<rid>`, and skips it with a message otherwise.
+GNS is C++ with a flat C API that takes C++ references and structs packed differently on each platform, so it is not bound as it is. `Native/net/weft_net.h` is our own small C API over it (a host, connections as integers,
+`an_poll` returning events), compiled against GNS's headers (`ThirdParty/gns/include`) and linked to its shared library. `Weft.Native.Net` is the generated binding of that header. Every GNS call is in
+`weft_net.cpp`. `./build.sh native` builds the shim when `libGameNetworkingSockets` is in `Bin/native/<rid>` or `ThirdParty/gns/lib/<rid>`, and skips it with a message otherwise.
 
 ## Not done
 
@@ -70,7 +70,7 @@ messages. Messages in scripts are text only.
 
 ## Tests
 
-`Tests/Apogee.Network.Tests` runs two network systems in one process over the loopback interface: a client connects and messages go both ways (reliable and unreliable, with non-ASCII text), 300 reliable messages arrive in order,
+`Tests/Weft.Network.Tests` runs two network systems in one process over the loopback interface: a client connects and messages go both ways (reliable and unreliable, with non-ASCII text), 300 reliable messages arrive in order,
 bytes are not changed, a 200 kB message is split and put back together, a close is announced after the messages that came before it, a handler can refuse a connection (the other side sees code 1001), a connection to a port nobody listens
 on stays pending without blocking, lanes carry their number, addresses are parsed and names resolved, and an inactive system does nothing. `Tests/Luau/net.test.luau` runs the same through the script surface. They skip
-where the library is not installed; `Tests/Apogee.Native.Tests` checks the shim's entry points and struct sizes.
+where the library is not installed; `Tests/Weft.Native.Tests` checks the shim's entry points and struct sizes.

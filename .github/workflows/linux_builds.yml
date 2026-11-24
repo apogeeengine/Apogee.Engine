@@ -11,8 +11,8 @@ permissions:
 
 env:
   # The native libraries that must load (the tests fail instead of skipping).
-  APOGEE_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,apogee_net,zstd,freetype,ktx,slang_c,jolt,vulkan
-  APOGEE_REQUIRE_VULKAN: "1"
+  WEFT_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,weft_net,zstd,freetype,ktx,slang_c,jolt,vulkan
+  WEFT_REQUIRE_VULKAN: "1"
 
 jobs:
   tests:
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      APOGEE_REQUIRE_CLANG: "1"
+      WEFT_REQUIRE_CLANG: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -48,11 +48,11 @@ jobs:
           echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
           ldd "$lib" | grep -i 'not found' || echo "libclang: dependencies resolve"
           python3 -c "import ctypes; ctypes.CDLL('libclang.so'); print('libclang.so loads outside .NET')"
-      - run: dotnet build Apogee.slnx -c Release
+      - run: dotnet build Weft.slnx -c Release
       # Next to the test binary is the first place .NET looks for the library.
       - name: libclang next to the generator tests
-        run: cp "$LIBCLANG_PATH" Bin/Apogee.Build.Tests/Release/net10.0/libclang.so
-      - run: dotnet test --solution Apogee.slnx -c Release --no-build
+        run: cp "$LIBCLANG_PATH" Bin/Weft.Build.Tests/Release/net10.0/libclang.so
+      - run: dotnet test --solution Weft.slnx -c Release --no-build
 
   aot:
     name: NativeAOT (linux-x64)
@@ -74,17 +74,17 @@ jobs:
         run: ./build.sh aot
       # The published runtime runs the reflected ECS (the generated registry, a system called back from Flecs) under NativeAOT.
       - name: Runtime smoke test
-        run: Bin/publish/runtime/Apogee.Runtime --smoke
+        run: Bin/publish/runtime/Weft.Runtime --smoke
       # With no arguments the runtime runs the game next to it; the published folder has none, so it says so and exits with 1.
       - name: No game next to the program
-        run: "! Bin/publish/runtime/Apogee.Runtime"
+        run: "! Bin/publish/runtime/Weft.Runtime"
       # The engine's own Luau tests, in the native binary: the scripting layer and the ECS from scripts, with no GPU.
       - name: Luau tests in the NativeAOT runtime
-        run: Bin/publish/runtime/Apogee.Runtime --luau-test Tests/Luau
+        run: Bin/publish/runtime/Weft.Runtime --luau-test Tests/Luau
       # The fixture game, from its folder: Luau, a RmlUi document, an ImGui panel and a mod, for 60 frames with no GPU. Each leaves a mark in the user folder.
       - name: Fixture game
         run: |
-          Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
+          Bin/publish/runtime/Weft.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
           test -s "$RUNNER_TEMP/game-user/ran.txt"
           test -s "$RUNNER_TEMP/game-user/scene.txt"
           test -s "$RUNNER_TEMP/game-user/prefab.txt"
@@ -97,21 +97,21 @@ jobs:
         run: |
           rm -rf Bin/game-imported
           cp -r Tests/Fixtures/ShippedGame Bin/game-imported
-          Bin/publish/runtime/Apogee.Runtime --import Bin/game-imported
-          Bin/publish/runtime/Apogee.Runtime --pack Bin/game-imported Bin/game-shipped/data/game.pack --cooked
-          Bin/publish/runtime/Apogee.Runtime --game Bin/game-shipped --user "$RUNNER_TEMP/game-user-packed" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot Bin/game.png
+          Bin/publish/runtime/Weft.Runtime --import Bin/game-imported
+          Bin/publish/runtime/Weft.Runtime --pack Bin/game-imported Bin/game-shipped/data/game.pack --cooked
+          Bin/publish/runtime/Weft.Runtime --game Bin/game-shipped --user "$RUNNER_TEMP/game-user-packed" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot Bin/game.png
           test -s Bin/game.png
           test -s "$RUNNER_TEMP/game-user-packed/ran.txt"
           test -s "$RUNNER_TEMP/game-user-packed/scene.txt"
           test -s "$RUNNER_TEMP/game-user-packed/prefab.txt"
           test -s "$RUNNER_TEMP/game-user-packed/def.txt"
           test -s "$RUNNER_TEMP/game-user-packed/document.txt"
-      # The export test (docs: Docs/manual/tools/export.md). The fixture game is exported for this platform, cooked and encrypted, by the published runtime. APOGEE_PACK_KEY is a fixed test key that is set on
+      # The export test (docs: Docs/manual/tools/export.md). The fixture game is exported for this platform, cooked and encrypted, by the published runtime. WEFT_PACK_KEY is a fixed test key that is set on
       # this step only. It is PUBLIC and worthless: it is made up, protects nothing, and an exported game carries its key anyway. Never ship a game with it; a real game's key is a secret of the release process.
       - name: Export the fixture game, cooked and encrypted
         env:
-          APOGEE_PACK_KEY: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
-        run: Bin/publish/runtime/Apogee.Runtime --export Tests/Fixtures/ShippedGame Bin/export --target linux-x64 --cooked
+          WEFT_PACK_KEY: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+        run: Bin/publish/runtime/Weft.Runtime --export Tests/Fixtures/ShippedGame Bin/export --target linux-x64 --cooked
       - name: Exported game, checked
         run: |
           root=Bin/export
@@ -171,9 +171,9 @@ jobs:
           rm -rf "$user"
           mkdir -p "$user/mods"
           cp -r Tests/Fixtures/ShippedGame/dev_mods/patcher "$user/mods/"
-          test -z "${APOGEE_PACK_KEY-}"
+          test -z "${WEFT_PACK_KEY-}"
           cd "$RUNNER_TEMP"
-          env -u APOGEE_PACK_KEY "$exe" --headless --frames 60 --user "$user" +connect_lobby 1
+          env -u WEFT_PACK_KEY "$exe" --headless --frames 60 --user "$user" +connect_lobby 1
           test -s "$user/ran.txt"
           test -s "$user/scene.txt"
           test -s "$user/prefab.txt"
@@ -185,13 +185,13 @@ jobs:
         run: |
           exe="$PWD/Bin/export/FixtureGame"
           cd "$RUNNER_TEMP"
-          env -u APOGEE_PACK_KEY "$exe" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot "$RUNNER_TEMP/exported-game.png" --user "$RUNNER_TEMP/exported-user-rendered"
+          env -u WEFT_PACK_KEY "$exe" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot "$RUNNER_TEMP/exported-game.png" --user "$RUNNER_TEMP/exported-user-rendered"
           test -s "$RUNNER_TEMP/exported-game.png"
           test -s "$RUNNER_TEMP/exported-user-rendered/ran.txt"
       - name: Luau definitions
         run: |
-          Bin/publish/runtime/Apogee.Runtime --luau-defs Bin/defs
-          test -s Bin/defs/apogee.d.luau
+          Bin/publish/runtime/Weft.Runtime --luau-defs Bin/defs
+          test -s Bin/defs/weft.d.luau
       # luau-lsp type-checks the engine's own Luau modules against the generated definitions; any error fails the step. Pinned to the
       # release the editor extension was checked with, and to its checksum.
       - name: Luau definitions, checked with luau-lsp
@@ -200,7 +200,7 @@ jobs:
           echo "1a2ea1ae4f98f8946cefd970a4b54853e11ab4775e6932faa7f60cf920346567  $RUNNER_TEMP/luau-lsp.zip" | sha256sum -c -
           unzip -q -o "$RUNNER_TEMP/luau-lsp.zip" -d "$RUNNER_TEMP/luau-lsp"
           chmod +x "$RUNNER_TEMP/luau-lsp/luau-lsp"
-          "$RUNNER_TEMP/luau-lsp/luau-lsp" analyze --platform=standard --definitions=@apogee=Bin/defs/apogee.d.luau Bin/defs/engine
+          "$RUNNER_TEMP/luau-lsp/luau-lsp" analyze --platform=standard --definitions=@weft=Bin/defs/weft.d.luau Bin/defs/engine
       # A shipped game never loads the Slang compiler: the published runtime, with the compiler libraries and the shader sources deleted, still runs the fixture game and renders it
       # (the engine's shaders come from their compiled artifacts).
       - name: Shipped without the shader compiler
@@ -210,13 +210,13 @@ jobs:
           find Bin/shipped-runtime -maxdepth 1 \( -name 'libslang*' -o -name 'slang_c*' -o -name 'libslang_c*' \) -delete
           find Bin/shipped-runtime/Shaders -maxdepth 1 -name '*.slang' -delete
           test -z "$(find Bin/shipped-runtime -maxdepth 1 -iname '*slang*' ! -name '*.pdb')"
-          Bin/shipped-runtime/Apogee.Runtime --game Bin/game-shipped --user "$RUNNER_TEMP/game-user-shipped" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot Bin/shipped-game.png
+          Bin/shipped-runtime/Weft.Runtime --game Bin/game-shipped --user "$RUNNER_TEMP/game-user-shipped" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot Bin/shipped-game.png
           test -s Bin/shipped-game.png
       # The published runtime and the export, for whoever exports for this platform from another one (--runtime <dir>, see Docs/manual/tools/export.md) or wants to try the exported game.
       - name: Runtime artifact
         uses: actions/upload-artifact@v4
         with:
-          name: apogee-linux-x64
+          name: weft-linux-x64
           path: Bin/publish/runtime
           retention-days: 14
       - name: Export artifact

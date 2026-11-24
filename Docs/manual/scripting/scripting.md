@@ -1,7 +1,7 @@
 # Scripting
 
-`Apogee.Scripting` runs Luau, the only scripting language: the engine is C#, and games and mods are written in Luau and data. It sits on the
-Luau library and the layer over its C API described in [Native libraries](../native/native-libraries.md#luau-apogeenativeluau).
+`Weft.Scripting` runs Luau, the only scripting language: the engine is C#, and games and mods are written in Luau and data. It sits on the
+Luau library and the layer over its C API described in [Native libraries](../native/native-libraries.md#luau-weftnativeluau).
 
 ## The VM and its owners
 
@@ -118,17 +118,17 @@ The `task` global library (`task.spawn`, `task.wait`, `task.delay`, `task.every`
 
 ## Definitions for the editor
 
-`DefinitionWriter.Write()` writes the API as Luau type definitions (`apogee.d.luau`) from the registry: classes as `declare extern type`, enums as unions of strings, signals as
+`DefinitionWriter.Write()` writes the API as Luau type definitions (`weft.d.luau`) from the registry: classes as `declare extern type`, enums as unions of strings, signals as
 `Signal<…>`, libraries and statics as `declare` tables, and the hand-written methods with the declarations they were registered with. A host adds the globals it sets
 (`DefinitionOptions.Globals`: the runtime declares `world`) and can leave classes out (`HiddenClasses`: its smoke-test class). The runtime's `--luau-defs <folder>` writes the file
 and the engine's Luau modules (`engine/test.luau`) to a folder (see [Runtime](runtime.md)).
 
-To use it in VS Code with the luau-lsp extension: run `Apogee.Runtime --luau-defs Bin/defs`, add the file to `"luau-lsp.types.definitionFiles"`
-(`{ "@apogee": "Bin/defs/apogee.d.luau" }`), and give each script folder a `.luaurc` whose `engine` alias points at `Bin/defs/engine`, so that `require("@engine/test")` resolves (at
+To use it in VS Code with the luau-lsp extension: run `Weft.Runtime --luau-defs Bin/defs`, add the file to `"luau-lsp.types.definitionFiles"`
+(`{ "@weft": "Bin/defs/weft.d.luau" }`), and give each script folder a `.luaurc` whose `engine` alias points at `Bin/defs/engine`, so that `require("@engine/test")` resolves (at
 run time the alias is built in; the `.luaurc` is only for tools). See `Samples/Scripting/.luaurc`. From a terminal:
 
 ```sh
-luau-lsp analyze --platform=standard --definitions=@apogee=Bin/defs/apogee.d.luau Samples/Scripting Samples/Mods Bin/defs/engine
+luau-lsp analyze --platform=standard --definitions=@weft=Bin/defs/weft.d.luau Samples/Scripting Samples/Mods Bin/defs/engine
 ```
 
 CI runs exactly that, on Linux, with a pinned luau-lsp (1.70.1), and fails on any error: the engine's own modules type-check against the generated file (the samples are run by hand, not in CI; they are written to type-check too).
@@ -145,6 +145,6 @@ Things the definitions cannot say, found by running luau-lsp:
 
 ## Tests
 
-`Tests/Apogee.Scripting.Tests` (needs the `luau` native library): values, the sandbox, errors with tracebacks, time and memory limits per owner including
+`Tests/Weft.Scripting.Tests` (needs the `luau` native library): values, the sandbox, errors with tracebacks, time and memory limits per owner including
 coroutines, native code, `require` with real files, the bridge (properties, methods, enums, lists, identity, lifetimes, signals, libraries, mods), the ECS from scripts, and the
 definitions (an exact expected block). The runtime's smoke test runs the bridge and the ECS from a script under NativeAOT, which CI runs.

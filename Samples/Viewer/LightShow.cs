@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using Apogee.Content;
+using Weft.Content;
 
-namespace Apogee.Samples.Viewer;
+namespace Weft.Samples.Viewer;
 
 /// <summary>Colored point lights that drift around a box of space. Positions are a function of time only, so a given frame always looks the same.</summary>
 internal sealed class LightShow

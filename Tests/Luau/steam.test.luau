@@ -1,6 +1,6 @@
 --!strict
 -- Steam as scripts see it. The Steam client is the player's, not ours: these hold on a machine without it, where the system is inactive, every call does nothing and the callbacks that
--- would carry a result say that it failed. (Against a real client: the opt-in tests of Apogee.Steam.Tests.)
+-- would carry a result say that it failed. (Against a real client: the opt-in tests of Weft.Steam.Tests.)
 local test = require("@engine/test")
 
 -- Only in hosts that have the Steam library (the runtime does; the scripting tests' host does not).

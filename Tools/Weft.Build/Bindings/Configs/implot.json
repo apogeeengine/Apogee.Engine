@@ -1,0 +1,12 @@
+{
+  "name": "implot",
+  "project": "Source/Weft.Native.ImPlot",
+  "namespace": "Weft.Native.ImPlot",
+  "className": "Plot",
+  "library": { "name": "cimgui", "linux": ["libcimgui.so"], "windows": ["cimgui.dll"], "macos": ["libcimgui.dylib"] },
+  "includeDirs": ["Native/imgui"],
+  "includes": ["weft_implot.h"],
+  "ownDirs": ["Native/imgui"],
+  "stripPrefixes": ["aplot_", "APLOT_"],
+  "excludeConstants": ["^WEFT_IMPLOT_H$"]
+}

@@ -1,25 +1,25 @@
 # Help wanted
 
 The engine is developed on Linux with Vulkan, and checked on Windows and macOS by CI. That leaves work that needs hardware, platforms or a second pair of eyes the maintainer does not have. Each task below says what
-exists, what is missing and how to check your work. Open an issue or a discussion before starting a big one, and read [CONTRIBUTING.md](https://github.com/apogeeengine/Apogee.Engine/blob/main/CONTRIBUTING.md).
+exists, what is missing and how to check your work. Open an issue or a discussion before starting a big one, and read [CONTRIBUTING.md](https://github.com/weftengine/weft/blob/main/CONTRIBUTING.md).
 
 ## Metal backend
 
-**What exists.** Everything compiles, and CI checks what a GPU-less runner can: the Objective-C shim `Native/metal_c` builds, its bindings (`Apogee.Native.Metal`) resolve, the engine's Metal shading language is
-accepted by Apple's own compiler, and the backend `Apogee.Graphics.Metal` (device, buffers, textures, argument-buffer bindless heap, pipelines, command encoders, `CAMetalLayer` swapchain, frame loop) is complete
+**What exists.** Everything compiles, and CI checks what a GPU-less runner can: the Objective-C shim `Native/metal_c` builds, its bindings (`Weft.Native.Metal`) resolve, the engine's Metal shading language is
+accepted by Apple's own compiler, and the backend `Weft.Graphics.Metal` (device, buffers, textures, argument-buffer bindless heap, pipelines, command encoders, `CAMetalLayer` swapchain, frame loop) is complete
 on paper. GitHub's macOS runners have a paravirtual GPU that is not Metal 3, so **none of the Metal GPU tests has ever run**: expect bugs.
 
 **Needs:** a Mac with macOS 15 or later and a Metal 3 GPU with tier 2 argument buffers (Apple silicon, or an Intel Mac from 2017 on). Either architecture helps, because a bug can be in one only.
 
 | Task | Where to look | Done when |
 | --- | --- | --- |
-| **Run it and fix what breaks.** Start with `--gpu-info`, then `APOGEE_REQUIRE_METAL=1 ./build.sh test`, then the viewer and the samples. | [Metal on a Mac](../manual/graphics/metal.md), `Source/Apogee.Graphics/Metal/`, `Native/metal_c/` | the GPU tests pass with no skips, and the viewer draws the courtyard in a window |
-| **Measure the image tolerance.** Metal's rasterizer is not Mesa's, which made the reference images; the Metal bound (mean 2, worst channel 64) is a guess. | `GpuTest.ReferenceTolerance` in `Tests/Apogee.Graphics.Tests/GpuFixture.cs` | the bound is tightened to what Macs measure, or Metal gets reference images of its own |
-| **Compile and run `exposure.slang` on Metal.** The auto-exposure's histogram uses `InterlockedAdd` on a pointer to a `uint` buffer and on groupshared memory, and a Slang-to-MSL translation of those atomics has never been seen: the shader is only known to compile to SPIR-V. `MetalShaderTests` compiles every engine shader to Metal shading language and needs a Mac; the GPU tests in `ExposureTests` then show whether the passes run. Metal's fast math may also make `isnan` and comparisons with NaN unreliable in `tonemap.slang` and `exposure.slang`. | `Source/Apogee.Rendering/Shaders/exposure.slang`, `tonemap.slang`, `Tests/Apogee.Rendering.Tests/MetalShaderTests.cs` | `MetalShaderTests` passes with `exposure.slang` in it, and `ExposureTests` passes on Metal |
-| **GPU timings.** `FrameLoop.Timings` is empty on Metal. Counter sample buffers (`MTLCounterSampleBuffer`) sample at encoder boundaries, and not on every GPU. | `MetalFrameLoop`, `MetalDevice.SupportsTimestamps`, `apogee_metal.h` | `GpuScopesAreTimedAndLabelled` runs (is not skipped) and passes on Metal |
+| **Run it and fix what breaks.** Start with `--gpu-info`, then `WEFT_REQUIRE_METAL=1 ./build.sh test`, then the viewer and the samples. | [Metal on a Mac](../manual/graphics/metal.md), `Source/Weft.Graphics/Metal/`, `Native/metal_c/` | the GPU tests pass with no skips, and the viewer draws the courtyard in a window |
+| **Measure the image tolerance.** Metal's rasterizer is not Mesa's, which made the reference images; the Metal bound (mean 2, worst channel 64) is a guess. | `GpuTest.ReferenceTolerance` in `Tests/Weft.Graphics.Tests/GpuFixture.cs` | the bound is tightened to what Macs measure, or Metal gets reference images of its own |
+| **Compile and run `exposure.slang` on Metal.** The auto-exposure's histogram uses `InterlockedAdd` on a pointer to a `uint` buffer and on groupshared memory, and a Slang-to-MSL translation of those atomics has never been seen: the shader is only known to compile to SPIR-V. `MetalShaderTests` compiles every engine shader to Metal shading language and needs a Mac; the GPU tests in `ExposureTests` then show whether the passes run. Metal's fast math may also make `isnan` and comparisons with NaN unreliable in `tonemap.slang` and `exposure.slang`. | `Source/Weft.Rendering/Shaders/exposure.slang`, `tonemap.slang`, `Tests/Weft.Rendering.Tests/MetalShaderTests.cs` | `MetalShaderTests` passes with `exposure.slang` in it, and `ExposureTests` passes on Metal |
+| **GPU timings.** `FrameLoop.Timings` is empty on Metal. Counter sample buffers (`MTLCounterSampleBuffer`) sample at encoder boundaries, and not on every GPU. | `MetalFrameLoop`, `MetalDevice.SupportsTimestamps`, `weft_metal.h` | `GpuScopesAreTimedAndLabelled` runs (is not skipped) and passes on Metal |
 | **Shader library cache.** Metal shading language is compiled with `newLibraryWithSource` every start; an `MTLBinaryArchive` would keep the result. | `MetalDevice.CreateComputePipeline` and `CreateGraphicsPipeline` | the second start does not compile |
-| **A CI runner with a real Metal GPU.** A self-hosted Mac makes `APOGEE_REQUIRE_METAL=1` possible: point `macos_builds.yml` at it (the probe step already turns the requirement on when a GPU qualifies). | `.github/workflows/macos_builds.yml`, "GPUs (Metal probe)" | the Metal tests are required in CI |
-| **Check the Intel (`osx-x64`) NativeAOT build.** CI publishes it as an artifact, but it has only been built. | the `apogee-osx-x64` artifact | the fixture game, a sample and the Luau tests run from it |
+| **A CI runner with a real Metal GPU.** A self-hosted Mac makes `WEFT_REQUIRE_METAL=1` possible: point `macos_builds.yml` at it (the probe step already turns the requirement on when a GPU qualifies). | `.github/workflows/macos_builds.yml`, "GPUs (Metal probe)" | the Metal tests are required in CI |
+| **Check the Intel (`osx-x64`) NativeAOT build.** CI publishes it as an artifact, but it has only been built. | the `weft-osx-x64` artifact | the fixture game, a sample and the Luau tests run from it |
 
 ## Windows testing
 
@@ -30,35 +30,35 @@ hardware.
 
 | Task | Done when |
 | --- | --- |
-| **Run it.** `./build.sh test`, then the viewer sample and the editor (`dotnet run --project Source/Apogee.Editor -- Samples/Mods/game`). Report what fails, with `--gpu-info`'s output. | an issue per problem, or a "works" note in the Windows discussion with your GPU and driver |
+| **Run it.** `./build.sh test`, then the viewer sample and the editor (`dotnet run --project Source/Weft.Editor -- Samples/Mods/game`). Report what fails, with `--gpu-info`'s output. | an issue per problem, or a "works" note in the Windows discussion with your GPU and driver |
 | **Controllers, high-DPI, multi-monitor, fullscreen.** The input and window code is checked on Linux only. | what breaks is reported or fixed |
 | **NativeAOT on Windows.** `./build.sh aot` and the games' commands in [Building](../getting-started/building.md). | the fixture game and the Luau tests run from the published binary |
 
 ## Game export on real hardware
 
-**What exists.** `Apogee.Runtime --export <game folder> <out dir> --target <linux-x64|win-x64|osx-arm64|osx-x64>` (wrapper: `./build.sh export`) copies the platform's runtime, native libraries and cooked packs into a folder that runs on its own. The exporter writes Windows icon/version resources into the .exe, switches it to the windowed subsystem, builds a macOS .app bundle with an ad-hoc code signature repair, and for Linux sets the executable bit and writes an icon and a .desktop file. Everything is tested from Linux with synthesized and vendored binaries; nothing has been run on Windows or macOS.
+**What exists.** `Weft.Runtime --export <game folder> <out dir> --target <linux-x64|win-x64|osx-arm64|osx-x64>` (wrapper: `./build.sh export`) copies the platform's runtime, native libraries and cooked packs into a folder that runs on its own. The exporter writes Windows icon/version resources into the .exe, switches it to the windowed subsystem, builds a macOS .app bundle with an ad-hoc code signature repair, and for Linux sets the executable bit and writes an icon and a .desktop file. Everything is tested from Linux with synthesized and vendored binaries; nothing has been run on Windows or macOS.
 
 **Needs:** a Windows 10/11 machine, a Mac with Apple silicon, and a Linux distribution older than the one the runtime was built on.
 
 | Task | Where to look | Done when |
 | --- | --- | --- |
-| Windows: export `Tests/Fixtures/ShippedGame` for win-x64 from a published NativeAOT runtime and double-click the .exe. | `Docs/manual/tools/export.md`, `Source/Apogee.Export/Windows/` | it starts with no console window, Explorer shows the icon, the Details tab shows the version, and the loader accepts the rewritten image (or the problem is reported). |
-| macOS: export for osx-arm64, copy the executable out of the bundle and run `codesign --verify --strict --verbose=4` on the copy, run `plutil -lint` on `Contents/Info.plist`, then launch the .app on Apple silicon. | `Source/Apogee.Export/Mac/`, the macOS section of `Docs/manual/tools/export.md` | the signature verifies and the game starts, or the failure is reported. |
+| Windows: export `Tests/Fixtures/ShippedGame` for win-x64 from a published NativeAOT runtime and double-click the .exe. | `Docs/manual/tools/export.md`, `Source/Weft.Export/Windows/` | it starts with no console window, Explorer shows the icon, the Details tab shows the version, and the loader accepts the rewritten image (or the problem is reported). |
+| macOS: export for osx-arm64, copy the executable out of the bundle and run `codesign --verify --strict --verbose=4` on the copy, run `plutil -lint` on `Contents/Info.plist`, then launch the .app on Apple silicon. | `Source/Weft.Export/Mac/`, the macOS section of `Docs/manual/tools/export.md` | the signature verifies and the game starts, or the failure is reported. |
 | Linux: run an exported folder on the oldest distribution you can (the runtime needs the glibc of the machine that built it). | the Linux section of `Docs/manual/tools/export.md` | it starts without LD_LIBRARY_PATH, or the missing library or glibc version is reported. |
 
 Building the release runtimes in CI on the oldest supported distribution is part of this work.
 
 ## Reviewing
 
-The maintainer works alone, so every kind of review helps: the `unsafe` and interop code (`Apogee.Interop`, the generated bindings' layout checks, the native shims in `Native/`), the public APIs (naming, ownership, what throws),
+The maintainer works alone, so every kind of review helps: the `unsafe` and interop code (`Weft.Interop`, the generated bindings' layout checks, the native shims in `Native/`), the public APIs (naming, ownership, what throws),
 the shaders, and the Manual (a page that does not match the code is a bug). Open an issue with what you found, or a pull request.
 
 ## Expanding the engine
 
-Features that fit the scope in [CONTRIBUTING.md](https://github.com/apogeeengine/Apogee.Engine/blob/main/CONTRIBUTING.md) are welcome: rendering features (shadows, post-processing, terrain), editor panels, tools, samples,
+Features that fit the scope in [CONTRIBUTING.md](https://github.com/weftengine/weft/blob/main/CONTRIBUTING.md) are welcome: rendering features (shadows, post-processing, terrain), editor panels, tools, samples,
 the editor (importing models and assets, materials, animations, exporting a game: it is very bare-bones), more Luau API, performance work with a benchmark in `Samples/Benchmarks`. Every feature comes with tests and a Manual page. Ask first if it is big.
 
 ## Tell us if you hit this
 
-The `Apogee.Ecs.Tests` test program crashed twice on the Intel macOS CI runner (that job is experimental, so a failure does not fail the run) with a floating-point exception (SIGFPE) in a non-main thread, and passed on other runs. It has not been explained. The CI
+The `Weft.Ecs.Tests` test program crashed twice on the Intel macOS CI runner (that job is experimental, so a failure does not fail the run) with a floating-point exception (SIGFPE) in a non-main thread, and passed on other runs. It has not been explained. The CI
 prints the crash report's faulting thread when it happens again.

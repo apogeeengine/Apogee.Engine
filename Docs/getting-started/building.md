@@ -4,12 +4,12 @@ Requires the .NET 10 SDK, CMake and Ninja (native libraries), Git LFS (prebuilt 
 `git lfs install` once before cloning) and clang (only to regenerate bindings).
 
 ```sh
-./build.sh                       # dotnet build Apogee.slnx
+./build.sh                       # dotnet build Weft.slnx
 ./build.sh test                  # dotnet test
 ./build.sh native                # the shared libraries in Native/ (Flecs, Luau, cimgui) into Bin/native/<rid>
-./build.sh aot                   # NativeAOT publish of Apogee.Runtime and Samples/Viewer into Bin/publish, then their shaders compiled ahead of time
+./build.sh aot                   # NativeAOT publish of Weft.Runtime and Samples/Viewer into Bin/publish, then their shaders compiled ahead of time
 ./build.sh docs                  # this Manual and the API reference, built with mkdocs --strict into Bin/site (see Writing docs)
-./build.sh bindings [lib…]       # regenerate Source/Apogee.Native.*/Generated
+./build.sh bindings [lib…]       # regenerate Source/Weft.Native.*/Generated
 ```
 
 `build.ps1` is the same on Windows. A `.env` file (gitignored) is loaded by both wrappers.

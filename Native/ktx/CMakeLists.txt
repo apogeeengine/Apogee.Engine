@@ -1,7 +1,7 @@
 # libktx: KTX 1 and 2 loading with the Basis Universal transcoder, and KTX 2 writing with the Basis Universal encoder (UASTC), both on our zstd library
 # (Native/zstd). No ASTC encoder (UASTC is transcoded to ASTC when loaded), no OpenGL or Vulkan upload (we upload ourselves), and no software ETC unpacker
 # (it is under Ericsson's license and only the OpenGL loader uses it). KHRONOS_STATIC makes ktx.h's KTX_API empty; every symbol is exported instead.
-set(KTX "${APOGEE_THIRDPARTY}/ktx")
+set(KTX "${WEFT_THIRDPARTY}/ktx")
 # The Basis Universal encoder (upstream's BASISU_ENCODER_CXX_SRC), without the OpenCL path and the JPEG and PNG readers (LIBKTX leaves those out).
 set(KTX_ENCODER_SOURCES)
 foreach(name backend basis_file bc7enc comp enc etc frontend gpu_texture kernels_sse opencl pvrtc1_4 resample_filters resampler ssim uastc_enc)
@@ -53,4 +53,4 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_options(ktx PRIVATE -Wl,--no-undefined)
 endif()
-apogee_library(ktx)
+weft_library(ktx)

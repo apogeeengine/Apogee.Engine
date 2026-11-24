@@ -11,10 +11,10 @@ Luau only, no C#: boxes that move and bounce in a cube, a panel to watch and ste
 
 ```sh
 ./build.sh aot                                                       # or run the runtime from the build output
-Bin/publish/runtime/Apogee.Runtime --luau-test Samples/Scripting    # the tests
-Bin/publish/runtime/Apogee.Runtime --run Samples/Scripting/main.luau                      # in a window
-Bin/publish/runtime/Apogee.Runtime --run Samples/Scripting/main.luau --frames 120 --headless
-Bin/publish/runtime/Apogee.Runtime --luau-defs Bin/defs             # then point luau-lsp at Bin/defs/apogee.d.luau
+Bin/publish/runtime/Weft.Runtime --luau-test Samples/Scripting      # the tests
+Bin/publish/runtime/Weft.Runtime --run Samples/Scripting/main.luau                        # in a window
+Bin/publish/runtime/Weft.Runtime --run Samples/Scripting/main.luau --frames 120 --headless
+Bin/publish/runtime/Weft.Runtime --luau-defs Bin/defs               # then point luau-lsp at Bin/defs/weft.d.luau
 ```
 
 A sample: run it by hand; CI does not run it. See the Manual for the scripting API, the test library and the runtime.
