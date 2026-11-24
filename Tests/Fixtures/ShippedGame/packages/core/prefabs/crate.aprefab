@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Prefab version="1" uid="uid://3k7w2d9p5q8xe" nextId="4">
+  <Entity id="1" name="Crate">
+    <Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/>
+    <!-- a prefab inside a prefab: the lid, with the position of its handle changed (entity 2 of the lid's own numbering) -->
+    <Entity id="2" name="Lid" prefab="mod://core/prefabs/lid.aprefab|uid://4n6v1c8t2m7zh">
+      <Transform Position="0 1 0"/>
+      <Override entity="2"><Transform Position="0 0.3 0"/></Override>
+    </Entity>
+    <Entity id="3" name="Body">
+      <Transform Position="0 0.5 0" Rotation="0 0 0 1" Scale="1 1 1"/>
+    </Entity>
+  </Entity>
+</Prefab>

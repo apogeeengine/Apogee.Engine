@@ -379,6 +379,29 @@ of a prefab that names the new file (it would contain itself, even though the fi
 does it again; entity fields outside the branch that named an entity the change destroyed are put back with it. The file `CreatePrefab` wrote stays after an undo (it is an asset of the game): the entities are plain
 again, and redoing makes them its instance. A change that is refused throws before it is a step.
 
+## Cooked builds
+
+A shipped game holds its prefabs in its [packs](packs.md). `--pack --cooked` (after `--import`, which gives a prefab without a `uid` one) stores each `.aprefab` as [cooked XML](import.md#cooked-xml) in place
+of the text, at the same path, and a script or the game reads it exactly as it reads the file: `world:instantiate("mod://core/prefabs/crate.aprefab")`, a scene that holds an instance, and a prefab that
+holds another all take the text and the cooked form alike, with the same limits ([Limits](#limits)). The format has no parts that only exist in text: the tree of the document is what is stored, so
+what an instance makes does not depend on how the file was written down. Nothing in a game needs the sources: the pack of the fixture game of the tests is run with its folder deleted.
+
+The fixture game (`Tests/Fixtures/ShippedGame`) shows it: its scene holds an instance of a crate prefab, which holds a lid prefab, with an override of the lid's handle, and its script instantiates the crate
+once more and leaves `user://prefab.txt`. The `ACookedGameInstantiatesPrefabsFromThePack` test (`Tests/Apogee.Runtime.Tests`) imports it, packs it `--cooked`, checks that the packed prefabs start with
+the magic of cooked XML (`APXB`), deletes the sources and runs the game from the pack: it must leave the text the game left when it ran from its folder.
+
+## Renaming a prefab
+
+An instance names its prefab by a path and a UID (`res://prefabs/lamp.aprefab|uid://…`), in a scene and in the prefab that holds it. Renaming or moving the file keeps the instances working in either way:
+
+- **From a tool:** `AssetDatabase.Move(from, to)` moves the file, and rewrites the path in every scene and prefab that names it, in the instances of a scene and in the prefabs nested in other prefabs
+  alike; the UID in each stays. A preview (`dryRun`) lists what would change. `AssetReferences.Find` lists the places that name a prefab (an instance is an `Entity` element, with a `prefab` attribute) before
+  that.
+- **By hand** (a file manager, a version control checkout): nothing is rewritten and nothing breaks. The path in the references is out of date, so they find the file by its UID, as for any asset
+  ([where a UID lives](assets.md#where-a-uid-lives)); the next time the scene is saved, it writes the path the prefab has now.
+
+A reference with a path and no UID follows only a rename that goes through `Move`. The `PrefabRenameTests` of `Tests/Apogee.Ecs.Tests` cover both.
+
 ## Files
 
 `.aprefab` is an [authored asset](assets.md#where-a-uid-lives) (`AuthoredAssets.Extensions`): `--import` gives a file without a `uid` one by adding the attribute to its root, the asset database finds a

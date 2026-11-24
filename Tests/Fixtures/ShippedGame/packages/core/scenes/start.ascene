@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Scene version="1" uid="uid://6m3q8c2v7x4ta">
+<Scene version="2" uid="uid://6m3q8c2v7x4ta">
   <Entity id="1" name="camera">
     <Transform Position="0 1 -5" Rotation="0 0 0 1" Scale="1 1 1"/>
     <CameraComponent FovDegrees="60" Near="0.1" ClusterFar="200"/>
@@ -7,5 +7,10 @@
     <Entity id="2" name="marker">
       <Transform Position="0 0 1" Rotation="0 0 0 1" Scale="1 1 1"/>
     </Entity>
+  </Entity>
+  <!-- an instance of the crate prefab, which holds the lid prefab: it moves the crate and the lid's handle, and nothing else -->
+  <Entity id="3" name="stack" prefab="mod://core/prefabs/crate.aprefab|uid://3k7w2d9p5q8xe">
+    <Transform Position="4 0 2"/>
+    <Override entity="2/2"><Transform Position="0 0.9 0"/></Override>
   </Entity>
 </Scene>

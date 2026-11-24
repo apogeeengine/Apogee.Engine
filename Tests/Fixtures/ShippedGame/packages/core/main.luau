@@ -28,6 +28,18 @@ assert(camera and world:has(camera, MainCamera), "the scene's camera is there")
 assert(world:lookup("camera.marker"), "and its child")
 assert(fs.write_text("user://scene.txt", #made .. " entities, a main camera and its child"))
 
+-- Prefabs: the scene holds an instance of one that holds another (stack, with an override of the lid's handle), and a script makes one of its own. A cooked pack holds the prefab files as binary XML at the same paths.
+local Transform = world:component("Transform")
+local function height(path: string): number
+	local entity = assert(world:lookup(path), path .. " is there")
+	return math.floor(world:get(entity, Transform).Position.y * 100 + 0.5)
+end
+local stack = assert(world:lookup("stack"), "the scene's instance is there")
+assert(world:prefab_of(stack), "and is an instance")
+local made_crate = world:instantiate("mod://core/prefabs/crate.aprefab")
+assert(world:prefab_of(made_crate) and world:prefab_of(world:lookup("Crate.Lid")), "the crate, and the lid inside it, are instances")
+assert(fs.write_text("user://prefab.txt", "scene handle " .. height("stack.Lid.Handle") .. ", made handle " .. height("Crate.Lid.Handle") .. ", " .. #world:children(made_crate) .. " children, " .. #world:children(stack) .. " in the scene's"))
+
 local crate = assert(defs.get("Crate", "fixture"), "the definition is loaded")
 local file = assert(xml.load("mod://core/data/crates.xml"))
 assert(fs.write_text("user://def.txt", file.children[1].attrs.id .. " weighs " .. crate.weight .. ", " .. #crate.Tag .. " tags, read from " .. file.name))

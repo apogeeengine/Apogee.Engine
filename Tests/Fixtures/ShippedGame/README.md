@@ -5,8 +5,10 @@ a RmlUi document with a script and a data model, ImGui, the shaders, a mod. It i
 
 `game.xml` is the game's manifest (name, version 1.0.0, the icon `icon.png`, the window): it sets the folder of the player's files and the game version that the mod's `gameVersion="^1.0"` is checked against.
 
-The base package also has a scene (`scenes/start.ascene`: a camera with a child, and a UID) and a definition file (`data/crates.xml`, listed in its `mod.xml` as a `Content` folder). `--pack --cooked` stores both as binary XML at
+The base package also has a scene (`scenes/start.ascene`: a camera with a child, an instance of a prefab, and a UID) and a definition file (`data/crates.xml`, listed in its `mod.xml` as a `Content` folder). `--pack --cooked` stores both as binary XML at
 the same paths, and `main.luau` reads them with `world:load_scene_file`, `defs` and `xml.load`, which take the text and the cooked form alike.
 
-Each run leaves `user://ran.txt` (the base package), `user://scene.txt` and `user://def.txt` (what it read from the scene and the definition), `user://document.txt` (its document's script) and `user://moddata/patcher/ran.txt` (the mod) behind, which CI checks. The
-`ACookedGameLoadsItsSceneAndDefsFromThePack` test (`Tests/Apogee.Runtime.Tests`) imports the fixture, packs it with `--cooked` and an encryption key, deletes the sources and runs it from the pack.
+The prefabs (`prefabs/crate.aprefab`, which holds `prefabs/lid.aprefab`, each with a UID of its own so that an import changes nothing) are cooked too. The scene's instance (`stack`) overrides the position of the lid's handle, and `main.luau` instantiates the crate once more with `world:instantiate("mod://core/prefabs/crate.aprefab")`.
+
+Each run leaves `user://ran.txt` (the base package), `user://scene.txt` and `user://def.txt` (what it read from the scene and the definition), `user://prefab.txt` (what its prefab instances made), `user://document.txt` (its document's script) and `user://moddata/patcher/ran.txt` (the mod) behind, which CI checks. The
+`ACookedGameLoadsItsSceneAndDefsFromThePack` test (`Tests/Apogee.Runtime.Tests`) imports the fixture, packs it with `--cooked` and an encryption key, deletes the sources and runs it from the pack; `ACookedGameInstantiatesPrefabsFromThePack` does the same for the prefabs and checks that the packed prefab files start with the magic of cooked XML.

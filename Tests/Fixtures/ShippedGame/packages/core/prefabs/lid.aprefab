@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Prefab version="1" uid="uid://4n6v1c8t2m7zh" nextId="3">
+  <Entity id="1" name="Lid">
+    <Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/>
+    <Entity id="2" name="Handle">
+      <Transform Position="0 0.1 0" Rotation="0 0 0 1" Scale="1 1 1"/>
+    </Entity>
+  </Entity>
+</Prefab>

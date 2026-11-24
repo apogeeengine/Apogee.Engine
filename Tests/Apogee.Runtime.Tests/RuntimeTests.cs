@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Apogee.Native.Tests;
 using Apogee.Host;
 using Apogee.Runtime;
@@ -598,7 +599,7 @@ public class CommandTests
         Assert.Equal(0, Commands.Run(Options("--game", game, "--user", fromFolder, "--headless", "--frames", "2")));
         string scene = File.ReadAllText(System.IO.Path.Combine(fromFolder, "scene.txt"));
         string def = File.ReadAllText(System.IO.Path.Combine(fromFolder, "def.txt"));
-        Assert.Equal("2 entities, a main camera and its child", scene);
+        Assert.Equal("6 entities, a main camera and its child", scene);   // the camera and its marker, and the scene's instance of a crate (its lid, the lid's handle and its body)
         Assert.Equal("fixture weighs 3, 2 tags, read from Crates", def);
 
         // Import, pack cooked and encrypted, and ship only the pack with the manifest.
@@ -618,16 +619,16 @@ public class CommandTests
             Environment.SetEnvironmentVariable("APOGEE_PACK_KEY", before);
         }
 
-        // Every scene and definition file in the pack is cooked; the manifests, the document and the scripts stay text.
+        // Every scene, prefab and definition file in the pack is cooked; the manifests, the document and the scripts stay text.
         Apogee.Content.Packs.PackKey key = Apogee.Content.Packs.PackKey.Parse(Hex);
         using (var packed = Apogee.Content.Packs.PackSource.Open(pack, key))
         {
             var files = new Apogee.Content.FileSystem.VirtualFileSystem();
             files.Mount("res://", packed);
-            string[] cooked = ["res://packages/core/scenes/start.ascene", "res://packages/core/data/crates.xml", "res://imported/assets.xml"];
+            string[] cooked = ["res://packages/core/scenes/start.ascene", "res://packages/core/prefabs/crate.aprefab", "res://packages/core/prefabs/lid.aprefab", "res://packages/core/data/crates.xml", "res://imported/assets.xml"];
             foreach (string path in files.EnumerateFiles("res://", recursive: true))
             {
-                bool isDocument = path.EndsWith(".ascene", StringComparison.Ordinal) || (path.StartsWith("res://packages/core/data/", StringComparison.Ordinal) && path.EndsWith(".xml", StringComparison.Ordinal));
+                bool isDocument = path.EndsWith(".ascene", StringComparison.Ordinal) || path.EndsWith(".aprefab", StringComparison.Ordinal) || (path.StartsWith("res://packages/core/data/", StringComparison.Ordinal) && path.EndsWith(".xml", StringComparison.Ordinal));
                 Assert.Equal(isDocument || path == "res://imported/assets.xml", Apogee.Content.Xml.XmlBinary.IsBinary(files.ReadAllBytes(path)));
             }
 
@@ -646,6 +647,52 @@ public class CommandTests
         Assert.Equal(def, File.ReadAllText(System.IO.Path.Combine(fromPack, "def.txt")));
         Assert.Equal("core ran", File.ReadAllText(System.IO.Path.Combine(fromPack, "ran.txt")));
         Assert.Equal("document ran", File.ReadAllText(System.IO.Path.Combine(fromPack, "document.txt")));
+    }
+
+    [Fact]
+    public void ACookedGameInstantiatesPrefabsFromThePack()
+    {
+        using var scratch = new Scratch();
+        string game = System.IO.Path.Combine(scratch.Root, "game");
+        CopyFolder(FixtureFolder("ShippedGame"), game);
+        string fromFolder = System.IO.Path.Combine(scratch.Root, "user-folder");
+        string fromPack = System.IO.Path.Combine(scratch.Root, "user-pack");
+
+        // The game as it is in its folder: the scene holds an instance of a prefab that holds another (with an override of a handle), and the script makes one more.
+        Assert.Equal(0, Commands.Run(Options("--game", game, "--user", fromFolder, "--headless", "--frames", "2")));
+        const string Expected = "scene handle 90, made handle 30, 2 children, 2 in the scene's";
+        Assert.Equal(Expected, File.ReadAllText(System.IO.Path.Combine(fromFolder, "prefab.txt")));
+
+        // Import and pack cooked (the import gives a prefab its UID; the fixture's have one already), then ship the pack with the manifest alone: the game's sources are deleted.
+        string shipped = System.IO.Path.Combine(scratch.Root, "shipped");
+        Directory.CreateDirectory(System.IO.Path.Combine(shipped, "data"));
+        File.Copy(System.IO.Path.Combine(game, "game.xml"), System.IO.Path.Combine(shipped, "game.xml"));
+        string pack = System.IO.Path.Combine(shipped, "data", "game.pack");
+        Assert.Equal(0, Commands.Import(Options("--import", game)));
+        Assert.Equal(0, Commands.Pack(Options("--pack", game, pack, "--cooked")));
+        Directory.Delete(game, recursive: true);
+
+        // Each prefab in the pack is binary XML at its own path (it starts with the magic of cooked XML), and it still has its UID.
+        using (var packed = Apogee.Content.Packs.PackSource.Open(pack))
+        {
+            var files = new Apogee.Content.FileSystem.VirtualFileSystem();
+            files.Mount("res://", packed);
+            foreach (string path in new[] { "res://packages/core/prefabs/crate.aprefab", "res://packages/core/prefabs/lid.aprefab" })
+            {
+                byte[] bytes = files.ReadAllBytes(path);
+                Assert.True(Apogee.Content.Xml.XmlBinary.IsBinary(bytes), path);
+                Assert.Equal("APXB", System.Text.Encoding.ASCII.GetString(bytes, 0, 4));
+                Assert.NotEqual(Apogee.Core.Assets.AssetUid.None, Apogee.Content.Assets.AuthoredAssets.ReadUid(bytes));
+            }
+
+            Apogee.Content.Xml.XmlNode crate = Apogee.Content.Xml.XmlFile.Read(files, "res://packages/core/prefabs/crate.aprefab");
+            Assert.Equal("Prefab", crate.Name);
+            Assert.Equal("mod://core/prefabs/lid.aprefab|uid://4n6v1c8t2m7zh", crate.Children.First(c => c.Name == "Entity").Children.First(c => c.Name == "Entity").Attribute("prefab"));
+        }
+
+        // The cooked game, from the pack alone, makes the same entities.
+        Assert.Equal(0, Commands.Launch(Options("--user", fromPack, "--headless", "--frames", "2"), shipped.Replace('\\', '/')));
+        Assert.Equal(Expected, File.ReadAllText(System.IO.Path.Combine(fromPack, "prefab.txt")));
     }
 
     [Fact]

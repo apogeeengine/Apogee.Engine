@@ -262,7 +262,7 @@ check and run the result:
    repository has no changed or new file. On Windows the version information says `Fixture Game`; on macOS the program's signature is verified (`codesign --verify --strict --verbose=4` on a copy
    outside the bundle, then `codesign -dvvv`) and `Info.plist` and `game.icns` are read by `plutil -lint` and `iconutil`.
 3. The exported game is run headless **from another folder**, with `APOGEE_PACK_KEY` not in the environment (so the key can only come out of the executable's slot), a player's mod copied to the user
-   folder, and `+connect_lobby 1` on the command line, which a shipped game ignores. The files that the fixture leaves in the user folder (`ran.txt`, `scene.txt`, `def.txt`, `document.txt` and the mod's
+   folder, and `+connect_lobby 1` on the command line, which a shipped game ignores. The files that the fixture leaves in the user folder (`ran.txt`, `scene.txt`, `def.txt`, `prefab.txt`, `document.txt` and the mod's
    `moddata/patcher/ran.txt`) must exist. On Linux it is run once more, rendered, on the software rasterizer.
 4. The export is uploaded as the artifact `export-<rid>`.
 

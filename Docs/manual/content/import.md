@@ -123,7 +123,7 @@ with the compiler libraries and every `.slang` source deleted, running the fixtu
 
 ## Cooked XML
 
-Authored XML (scenes, and later prefabs and materials) and definitions are small, but a shipped game still gains from not parsing text: a cooked file is the same document in a binary encoding, `APXB`, in
+Authored XML (scenes and prefabs, and later materials) and definitions are small, but a shipped game still gains from not parsing text: a cooked file is the same document in a binary encoding, `APXB`, in
 `Apogee.Content.Xml.XmlBinary`. It is not typed by the reflection registry: it holds the `XmlNode` tree (names, attributes in their order, text, the line each element started on, children) with every
 distinct name and value stored once, so it works for any XML file, does not depend on which components the engine had when the file was cooked, and gives back exactly the tree that was written. A scene with
 a thousand entities is less than half the size of its text.

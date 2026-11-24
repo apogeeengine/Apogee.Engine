@@ -1,5 +1,8 @@
 using System;
+using System.IO;
 using System.Linq;
+using Apogee.Content.Assets;
+using Apogee.Content.FileSystem;
 using Apogee.Content.Xml;
 using Apogee.Core.Logging;
 using Apogee.Ecs;
@@ -65,5 +68,62 @@ internal static class EcsSmoke
         }
 
         Log.Info("Runtime", $"Cooked XML: {cooked.Length} bytes, read back");
+
+        PrefabRoundTrip();
+    }
+
+    // A prefab is a file of the same kind: instantiate it, edit an entity of the instance, save the scene (the edit is written as an override of the prefab), load that into a new world, and do it all again
+    // from the prefab cooked, which is how a shipped game holds it. Nothing here may need reflection: the expander and the diff read the registry's field descriptions and XmlNode.
+    private static void PrefabRoundTrip()
+    {
+        const string Lamp = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <Prefab version="1" nextId="4">
+              <Entity id="1" name="Lamp">
+                <Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/>
+                <Ticks Count="2"/>
+                <Entity id="2" name="Bulb"><Transform Position="0 1.8 0" Rotation="0 0 0 1" Scale="1 1 1"/><Ticks Count="1"/></Entity>
+                <Entity id="3" name="Base"><Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/></Entity>
+              </Entity>
+            </Prefab>
+            """;
+
+        string folder = Directory.CreateTempSubdirectory("apogee-prefab-smoke").FullName;
+        try
+        {
+            string file = Path.Combine(folder, "lamp.aprefab");
+            File.WriteAllText(file, Lamp);
+            var files = new VirtualFileSystem();
+            files.Mount("res://", new DirectorySource(folder, writable: true));
+            var assets = new AssetDatabase(files);
+
+            string text = SceneWithAnEditedLamp(files, assets);
+            File.WriteAllBytes(file, XmlBinary.Write(XmlNode.Parse(Lamp, "lamp.aprefab")));   // the same prefab, cooked
+            string cookedText = SceneWithAnEditedLamp(files, assets);
+
+            using var again = new World { Files = files, Assets = assets };
+            Entity lamp = again.LoadScene(text).First();
+            Entity bulb = again.Children(lamp).First(c => again.GetName(c) == "Bulb");
+            if (!text.Contains("<Override", StringComparison.Ordinal) || text != cookedText || again.SaveScene() != text || again.Get<Ticks>(bulb).Count != 5 || again.Get<Ticks>(lamp).Count != 2
+                || again.PrefabOf(lamp) is null || again.Children(lamp).Count != 2)
+            {
+                throw new InvalidOperationException("The prefab smoke test failed.");
+            }
+
+            Log.Info("Runtime", $"Prefab: an instance saved as {text.Length} characters of scene with an override, the same from the cooked file");
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    private static string SceneWithAnEditedLamp(VirtualFileSystem files, AssetDatabase assets)
+    {
+        using var world = new World { Files = files, Assets = assets };
+        Entity lamp = world.Instantiate("res://lamp.aprefab");
+        Entity bulb = world.Children(lamp).First(c => world.GetName(c) == "Bulb");
+        world.Set(bulb, new Ticks { Count = 5 });
+        return world.SaveScene();
     }
 }
