@@ -325,8 +325,8 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
 
     // ---- Applying
 
-    private const string LampFile = "prefabs/lamp.aprefab";
-    private const string CornerFile = "prefabs/corner.aprefab";
+    private const string LampFile = "prefabs/lamp.wprf";
+    private const string CornerFile = "prefabs/corner.wprf";
 
     private Entity LoadCorner(string body = "")
     {
@@ -579,7 +579,7 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     [Fact]
     public void ApplyingAnInstanceWhosePrefabWasNeverThereIsRefused()
     {
-        World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Ghost\" prefab=\"res://prefabs/nothing.aprefab\"><Frozen append=\"true\"/></Entity></Scene>");
+        World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Ghost\" prefab=\"res://prefabs/nothing.wprf\"><Frozen append=\"true\"/></Entity></Scene>");
         Entity ghost = World.Lookup("Ghost");
 
         Assert.Throws<InvalidOperationException>(() => World.ApplyAllOverrides(ghost));
@@ -910,8 +910,8 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
 
         IOException error = Assert.Throws<IOException>(() => World.ApplyAllOverrides(corner, PrefabApplyTarget.SourcePrefab));
 
-        Assert.Contains("prefabs/corner.aprefab", error.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("prefabs/lamp.aprefab could not", error.Message, StringComparison.Ordinal);
+        Assert.Contains("prefabs/corner.wprf", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("prefabs/lamp.wprf could not", error.Message, StringComparison.Ordinal);
         Assert.Contains("<Frozen", Read(CornerFile), StringComparison.Ordinal);           // the corner holds what was applied
         Assert.Equal(lampBefore, Read(LampFile));
         Assert.False(World.HasPendingPrefabUpdates);
@@ -999,7 +999,7 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     [Fact]
     public void ApplyingToALinkOfAReadOnlyFileIsRefused()
     {
-        string real = System.IO.Path.Combine(Folder, "prefabs/real_lamp.aprefab");
+        string real = System.IO.Path.Combine(Folder, "prefabs/real_lamp.wprf");
         string link = System.IO.Path.Combine(Folder, LampFile);
         System.IO.File.Move(link, real);
         try
@@ -1037,7 +1037,7 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     [Fact]
     public void RevertingAllOnAnInstanceWhosePrefabIsMissingIsRefused()
     {
-        World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Ghost\" prefab=\"res://prefabs/nothing.aprefab\"><Frozen append=\"true\"/><Override entity=\"2\"><Health Max=\"1\"/></Override></Entity></Scene>");
+        World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Ghost\" prefab=\"res://prefabs/nothing.wprf\"><Frozen append=\"true\"/><Override entity=\"2\"><Health Max=\"1\"/></Override></Entity></Scene>");
         Entity ghost = World.Lookup("Ghost");
         Entity child = World.CreateEntity("Child", ghost);
         World.Add<Frozen>(ghost);
@@ -1212,7 +1212,7 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         Entity lid = Child(crate, "Lid");
         string dump = PrefabFuzzBase.DumpTree(World, crate).Replace("Crate", "Crate [instance]", StringComparison.Ordinal);
 
-        Entity made = World.CreatePrefab(crate, "res://prefabs/crate.aprefab");
+        Entity made = World.CreatePrefab(crate, "res://prefabs/crate.wprf");
 
         Assert.Equal(crate, made);
         Assert.True(World.IsPrefabInstance(crate));
@@ -1221,15 +1221,15 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         Assert.Empty(World.PrefabOverrides(crate));
         Assert.False(World.HasPendingPrefabUpdates);
         string scene = World.SaveScene();
-        Assert.Equal(1, scene.Split('\n').Count(line => line.Contains("prefab=\"res://prefabs/crate.aprefab|uid://", StringComparison.Ordinal)));
+        Assert.Equal(1, scene.Split('\n').Count(line => line.Contains("prefab=\"res://prefabs/crate.wprf|uid://", StringComparison.Ordinal)));
         Assert.DoesNotContain("<Health", scene, StringComparison.Ordinal);
-        XmlNode file = XmlNode.Parse(Read("prefabs/crate.aprefab"));
+        XmlNode file = XmlNode.Parse(Read("prefabs/crate.wprf"));
         Assert.Equal("4", file.Attribute("nextId"));
         Assert.Equal("Crate", EntityElement(file, 1).Attribute("name"));
         Assert.Equal("1", EntityElement(file, 2).Child("Marks")!.Attribute("Target"));
         Assert.Equal(dump.Replace(" [instance]", "", StringComparison.Ordinal), PrefabFuzzBase.DumpTree(World, crate).Replace(" [instance]", "", StringComparison.Ordinal));
         using World loaded = OtherWorld();
-        Entity again = loaded.Instantiate("res://prefabs/crate.aprefab");
+        Entity again = loaded.Instantiate("res://prefabs/crate.wprf");
         Assert.Equal(PrefabFuzzBase.DumpTree(World, crate), PrefabFuzzBase.DumpTree(loaded, again));
     }
 
@@ -1237,11 +1237,11 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     public void ACreatedPrefabIsFollowedLikeAnyOther()
     {
         Entity crate = Crate();
-        World.CreatePrefab(crate, "res://prefabs/crate.aprefab");
-        Entity second = World.Instantiate("res://prefabs/crate.aprefab");
+        World.CreatePrefab(crate, "res://prefabs/crate.wprf");
+        Entity second = World.Instantiate("res://prefabs/crate.wprf");
 
-        Write("prefabs/crate.aprefab", Read("prefabs/crate.aprefab").Replace("Max=\"4\"", "Max=\"44\"", StringComparison.Ordinal));
-        World.Prefabs.Reload("res://prefabs/crate.aprefab");
+        Write("prefabs/crate.wprf", Read("prefabs/crate.wprf").Replace("Max=\"4\"", "Max=\"44\"", StringComparison.Ordinal));
+        World.Prefabs.Reload("res://prefabs/crate.wprf");
         World.ApplyPrefabUpdates();
 
         Assert.Equal(44, World.Get<Health>(Child(crate, "Lid")).Max);
@@ -1254,7 +1254,7 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         Entity crate = Crate();
         World.Set(Child(crate, "Lid"), new Marks { Target = World.CreateEntity("Elsewhere"), Level = 5 });
 
-        World.CreatePrefab(crate, "res://prefabs/crate.aprefab");
+        World.CreatePrefab(crate, "res://prefabs/crate.wprf");
 
         Assert.Equal(["Field 2|Marks|Target"], Listed(World, crate));
         Assert.Equal(World.Lookup("Elsewhere"), World.Get<Marks>(Child(crate, "Lid")).Target);
@@ -1265,34 +1265,34 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
     {
         Entity lamp = LoadLamp();
         Entity crate = Crate();
-        World.CreatePrefab(crate, "res://prefabs/crate.aprefab");
-        string crateText = Read("prefabs/crate.aprefab");
+        World.CreatePrefab(crate, "res://prefabs/crate.wprf");
+        string crateText = Read("prefabs/crate.wprf");
 
-        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(lamp, "res://prefabs/other.aprefab"));                       // an instance already
-        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(Child(lamp, "Bulb"), "res://prefabs/other.aprefab"));         // part of one
-        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(World.CreateEntity("Another"), "res://prefabs/crate.aprefab")); // a file that is there
+        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(lamp, "res://prefabs/other.wprf"));                       // an instance already
+        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(Child(lamp, "Bulb"), "res://prefabs/other.wprf"));         // part of one
+        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(World.CreateEntity("Another"), "res://prefabs/crate.wprf")); // a file that is there
         Assert.Throws<ArgumentException>(() => World.CreatePrefab(World.CreateEntity("Wrong"), "res://prefabs/wrong.txt"));
 
-        Assert.Equal(crateText, Read("prefabs/crate.aprefab"));
-        Assert.False(System.IO.File.Exists(System.IO.Path.Combine(Folder, "prefabs/other.aprefab")));
+        Assert.Equal(crateText, Read("prefabs/crate.wprf"));
+        Assert.False(System.IO.File.Exists(System.IO.Path.Combine(Folder, "prefabs/other.wprf")));
     }
 
     [Fact]
     public void CreatingAPrefabRefusesALoop()
     {
         // The tree holds a prefab that already names the file to be made (a prefab of a file that is not there yet): writing it would make a prefab that contains itself.
-        Write("prefabs/holder.aprefab", $"""
+        Write("prefabs/holder.wprf", $"""
             <?xml version="1.0" encoding="utf-8"?>
             <Prefab version="1" uid="{AssetUid.New()}" nextId="3">
-              <Entity id="1" name="Holder"><Entity id="2" name="Inner" prefab="res://prefabs/crate.aprefab"/></Entity>
+              <Entity id="1" name="Holder"><Entity id="2" name="Inner" prefab="res://prefabs/crate.wprf"/></Entity>
             </Prefab>
             """);
         Entity crate = World.CreateEntity("Crate");
-        World.Instantiate("res://prefabs/holder.aprefab", crate);
+        World.Instantiate("res://prefabs/holder.wprf", crate);
 
-        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(crate, "res://prefabs/crate.aprefab"));
+        Assert.Throws<InvalidOperationException>(() => World.CreatePrefab(crate, "res://prefabs/crate.wprf"));
 
-        Assert.False(System.IO.File.Exists(System.IO.Path.Combine(Folder, "prefabs/crate.aprefab")));
+        Assert.False(System.IO.File.Exists(System.IO.Path.Combine(Folder, "prefabs/crate.wprf")));
         Assert.False(World.IsPrefabInstance(crate));
     }
 
@@ -1302,7 +1302,7 @@ public sealed class PrefabOverrideApiTests : PrefabTestBase
         using World reader = new() { Files = ReadOnlyFiles(), Assets = null };
         Entity crate = reader.CreateEntity("Crate");
 
-        Assert.Throws<UnauthorizedAccessException>(() => reader.CreatePrefab(crate, "res://prefabs/crate.aprefab"));
+        Assert.Throws<UnauthorizedAccessException>(() => reader.CreatePrefab(crate, "res://prefabs/crate.wprf"));
 
         Assert.False(reader.IsPrefabInstance(crate));
     }

@@ -7,7 +7,7 @@ using Weft.Content.Packages;
 namespace Weft.Export;
 
 /// <summary>
-/// The <c>Info.plist</c> of an exported macOS bundle, in the XML property list format, which <c>plutil -lint</c> reads. The text of the game's <c>game.xml</c> goes through an XML writer, so a name with
+/// The <c>Info.plist</c> of an exported macOS bundle, in the XML property list format, which <c>plutil -lint</c> reads. The text of the game's <c>game.wgam</c> goes through an XML writer, so a name with
 /// <c>&amp;</c> or <c>&lt;</c> in it is escaped.
 /// </summary>
 internal static class InfoPlist

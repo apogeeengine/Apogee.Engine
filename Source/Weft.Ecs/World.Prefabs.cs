@@ -13,7 +13,7 @@ using Weft.Reflection;
 
 namespace Weft.Ecs;
 
-// Prefabs: a `.aprefab` file is one entity and what is below it, as XML, like a scene (docs/manual/content/prefabs.md; Scene/prefab.xsd).
+// Prefabs: a `.wprf` file is one entity and what is below it, as XML, like a scene (docs/manual/content/prefabs.md; Scene/prefab.xsd).
 //
 //   <Prefab version="1" uid="uid://…" nextId="4">
 //     <Entity id="1" name="Lamp"><Transform …/><Entity id="2" name="Bulb">…</Entity></Entity>
@@ -172,7 +172,7 @@ public sealed unsafe partial class World
         return Create(plan, parent)[0];
     }
 
-    /// <summary>The prefab an instance root was made from, as the text of its <see cref="AssetRef"/> (<c>res://prefabs/lamp.aprefab|uid://…</c>); null for any other entity.</summary>
+    /// <summary>The prefab an instance root was made from, as the text of its <see cref="AssetRef"/> (<c>res://prefabs/lamp.wprf|uid://…</c>); null for any other entity.</summary>
     [Method]
     public string? PrefabOf(Entity entity) =>
         IsAlive(entity) && TryGet(entity, out PrefabInstance instance) ? ExistingLibrary?.RefOf(instance.Prefab)?.ToString() : null;
@@ -222,19 +222,19 @@ public sealed unsafe partial class World
     /// An instance of another prefab inside the tree is written as it is in a scene: one element with only what differs from its prefab, numbered in this file. The root itself is written as a plain
     /// entity even when it is an instance (a prefab saved from an instance of itself, or of another prefab, holds its entities).
     /// </summary>
-    /// <param name="path">A path ending in <c>.aprefab</c>, or <c>uid://…</c> for the file that has that UID.</param>
+    /// <param name="path">A path ending in <c>.wprf</c>, or <c>uid://…</c> for the file that has that UID.</param>
     /// <param name="root">The one root entity of the file.</param>
     /// <exception cref="InvalidOperationException">The world has no <see cref="Files"/>, or the tree holds an instance of the prefab being written (the file would contain itself), or what would be written is not a prefab that loads (nothing is written).</exception>
     /// <exception cref="UnauthorizedAccessException">The path is not in a writable source.</exception>
-    /// <exception cref="ArgumentException">The path does not end in <c>.aprefab</c>, or the entity is not a user entity.</exception>
+    /// <exception cref="ArgumentException">The path does not end in <c>.wprf</c>, or the entity is not a user entity.</exception>
     public void SavePrefabFile(string path, Entity root)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         VirtualFileSystem files = Files ?? throw new InvalidOperationException("this world has no files to save a prefab to");
         string resolved = ResolveScenePath(path);
-        if (!resolved.EndsWith(".aprefab", StringComparison.OrdinalIgnoreCase))
+        if (!resolved.EndsWith(".wprf", StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException($"a prefab file's name ends in .aprefab: '{resolved}'", nameof(path));
+            throw new ArgumentException($"a prefab file's name ends in .wprf: '{resolved}'", nameof(path));
         }
 
         PrefabLibrary library = Prefabs;

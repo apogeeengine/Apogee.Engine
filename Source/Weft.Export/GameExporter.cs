@@ -13,7 +13,7 @@ namespace Weft.Export;
 
 /// <summary>
 /// Exports a game: a folder that runs on its own. It holds the runtime of the target platform renamed to the game's executable name, the runtime's native libraries and compiled shaders, the game's
-/// files in <c>data/game.pack</c> (encrypted when there is a key, which is then also written into the executable, see <see cref="PackKeySlot"/>), and the game's <c>game.xml</c>. See <see cref="ExportLayout"/>
+/// files in <c>data/game.wpak</c> (encrypted when there is a key, which is then also written into the executable, see <see cref="PackKeySlot"/>), and the game's <c>game.wgam</c>. See <see cref="ExportLayout"/>
 /// for where each goes. The game folder is only read: it is copied before it is imported.
 /// </summary>
 public static class GameExporter
@@ -159,7 +159,7 @@ public static class GameExporter
         log($"Copied {count} runtime files");
     }
 
-    /// <summary>Packs the game into <c>data/game.pack</c>: the folder itself, or when cooked a copy of it that has been imported.</summary>
+    /// <summary>Packs the game into <c>data/game.wpak</c>: the folder itself, or when cooked a copy of it that has been imported.</summary>
     private static void PackGame(ExportOptions options, string gameFolder, ExportLayout layout, string[] exclude, Action<string> log)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(layout.PackPath)!);

@@ -6,7 +6,7 @@ A game made of packages, and mods that change it. See `Docs/getting-started/samp
 Weft.Runtime --game Samples/Mods/game --user /tmp/mods-user                   # in a window
 Weft.Runtime --game Samples/Mods/game --user /tmp/mods-user --watch            # edit a script, a definition or the schema while it runs
 Weft.Runtime --luau-test Samples/Mods                                          # the Luau tests (tests/)
-Weft.Runtime --pack Samples/Mods/game out/data/game.pack && Weft.Runtime --game out --user /tmp/mods-user       # shipped as a pack
+Weft.Runtime --pack Samples/Mods/game out/data/game.wpak && Weft.Runtime --game out --user /tmp/mods-user       # shipped as a pack
 ```
 
 - `game/packages/base_game`: the game's own package: a schema (`Crate`), definitions, a script with two panels.

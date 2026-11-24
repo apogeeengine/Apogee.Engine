@@ -34,7 +34,7 @@ public sealed class ModelLibraryPathTests : IDisposable
     {
         var uid = AssetUid.New();
         Write("models/car.glb", "stands in for a model");
-        Write("models/car.glb.import.xml", $"<Import uid=\"{uid}\"/>");
+        Write("models/car.glb.wimp", $"<Import uid=\"{uid}\"/>");
         using var library = new ModelLibrary(_files, new ContentLoader(_files));
 
         uint id = library.Load("res://models/car.glb");

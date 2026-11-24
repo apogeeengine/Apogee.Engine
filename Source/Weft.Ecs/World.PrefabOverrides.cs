@@ -1115,7 +1115,7 @@ public sealed unsafe partial class World
     /// what could not be written (an Entity field that names an entity outside the tree). The file is new: one that exists is not written over.
     /// </summary>
     /// <param name="root">The root of the new prefab: not an instance, not part of one (unpack that first).</param>
-    /// <param name="path">A new path ending in <c>.aprefab</c>.</param>
+    /// <param name="path">A new path ending in <c>.wprf</c>.</param>
     /// <returns><paramref name="root"/>, now the root of an instance.</returns>
     /// <exception cref="InvalidOperationException">The entity is an instance or part of one, the file exists, or the tree holds an instance of the prefab (a prefab that contains itself).</exception>
     /// <exception cref="UnauthorizedAccessException">The path is not in a writable source.</exception>

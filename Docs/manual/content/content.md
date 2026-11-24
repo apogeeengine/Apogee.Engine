@@ -25,7 +25,7 @@ vfs.Mount("user://", new DirectorySource(VirtualFileSystem.DefaultUserDirectory(
 vfs.Mount("mod://cool", new ZipSource("mods/cool.zip"));
 
 byte[] bytes = vfs.ReadAllBytes("res://textures/ground.png");
-string text = vfs.ReadAllText("mod://cool/mod.xml");                 // UTF-8, without a byte order mark
+string text = vfs.ReadAllText("mod://cool/mod.wmod");                 // UTF-8, without a byte order mark
 foreach (string file in vfs.EnumerateFiles("res://defs", "*.xml", recursive: true)) { ... }   // sorted by ordinal order
 vfs.WriteAllText("user://saves/slot1.xml", xml);                     // user:// only; res:// is read-only
 ```
@@ -52,6 +52,25 @@ refuses to replace anything; between two sources it is a copy and a delete). Too
   read through it too (cgltf is given our allocator and file reader), relative to the model, so a model in a pack or a zip loads like one on disk.
 - **Textures:** `ImageDecoder` and `Ktx2Loader` take bytes: pass them `vfs.ReadAllBytes(path)`.
 - Not yet: shaders. Slang compiles from real files and finds its imports itself, so the engine's shaders stay next to the program.
+
+## File names
+
+The engine's own formats have an extension that starts with `w`; the formats everyone knows (`.luau`, `.slang`, `.glb`, `.gltf`, `.png`, `.xsd`, `.rml`…) keep theirs. Binary formats start with a
+four-letter magic: the extension in capitals, and `WXMB` for cooked XML.
+
+| File | Holds | Form | Magic |
+| --- | --- | --- | --- |
+| `.wscn` | a [scene](scenes.md) | XML; binary XML when cooked | `WXMB` when cooked |
+| `.wprf` | a [prefab](prefabs.md) | XML; binary XML when cooked | `WXMB` when cooked |
+| `.wimp` | the [import settings](import.md#settings) of the file it sits beside (`car.glb.wimp`) and its UID | XML | none |
+| `.wgam` | a game's [manifest](game-manifest.md) (`game.wgam`, at the root of the game folder) | XML | none |
+| `.wmod` | a [package's or mod's manifest](packages.md) (`mod.wmod`, at the root of the package, also inside a zip or a Workshop folder) | XML | none |
+| `.wpak` | a [pack](packs.md) (`game.wpak`; a bigger one goes on in `game_001.wpak`…) | binary | `WPAK`, or four bytes of a hash of the key when encrypted |
+| `.wmdl` | an imported model (`imported/car.glb.wmdl`) | binary | `WMDL` |
+| `.wshd` | a compiled shader (`imported/lit.slang.wshd`) | binary | `WSHD` |
+
+A file that still has one of the names these formats had before is not read as any of them: it is a file like any other, and nothing converts it (a scene or a prefab is plain XML, so renaming it is enough;
+import and pack again for the rest).
 
 ## glTF models
 

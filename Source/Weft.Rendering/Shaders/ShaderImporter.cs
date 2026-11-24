@@ -9,8 +9,8 @@ using Weft.Graphics.Shaders;
 namespace Weft.Rendering.Shaders;
 
 /// <summary>
-/// Slang modules into <see cref="ShaderBundle"/>s (<c>.ashader</c>): each module with entry points is compiled to SPIR-V (Vulkan) and to Metal shading language (Metal), with its reflection, once without defines and once for each
-/// <c>&lt;Variant&gt;</c> its <c>.import.xml</c> lists. The files the compiler read (<c>import</c>, <c>#include</c>) are the artifact's dependencies, so editing a library re-imports every shader
+/// Slang modules into <see cref="ShaderBundle"/>s (<c>.wshd</c>): each module with entry points is compiled to SPIR-V (Vulkan) and to Metal shading language (Metal), with its reflection, once without defines and once for each
+/// <c>&lt;Variant&gt;</c> its <c>.wimp</c> lists. The files the compiler read (<c>import</c>, <c>#include</c>) are the artifact's dependencies, so editing a library re-imports every shader
 /// that uses it, and the library is not imported on its own. A module with no <c>[shader(…)]</c> entry point is not an asset: it only serves the others.
 /// </summary>
 public sealed class ShaderImporter : IAssetImporter

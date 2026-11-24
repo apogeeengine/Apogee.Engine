@@ -46,7 +46,7 @@ public sealed class SceneAssetTests : IDisposable
         _files.Mount("res://", new DirectorySource(_folder, writable: true));
         _assets = new AssetDatabase(_files);
         Write("models/car.glb", "not really a model");
-        Write("models/car.glb.import.xml", $"<Import uid=\"{_carUid}\"/>");
+        Write("models/car.glb.wimp", $"<Import uid=\"{_carUid}\"/>");
     }
 
     public void Dispose()
@@ -136,7 +136,7 @@ public sealed class SceneAssetTests : IDisposable
         // The model and its settings are renamed and moved together: the path in the scene leads nowhere, the UID leads to the file.
         Directory.CreateDirectory(Path.Combine(_folder, "props"));
         File.Move(Path.Combine(_folder, "models", "car.glb"), Path.Combine(_folder, "props", "vehicle.glb"));
-        File.Move(Path.Combine(_folder, "models", "car.glb.import.xml"), Path.Combine(_folder, "props", "vehicle.glb.import.xml"));
+        File.Move(Path.Combine(_folder, "models", "car.glb.wimp"), Path.Combine(_folder, "props", "vehicle.glb.wimp"));
         _assets.Refresh();
 
         using World loading = NewWorld();

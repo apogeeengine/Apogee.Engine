@@ -34,8 +34,8 @@ public abstract class PrefabTestBase : IDisposable
         }
     }
 
-    protected const string LampPath = "res://prefabs/lamp.aprefab";
-    protected const string CornerPath = "res://prefabs/corner.aprefab";
+    protected const string LampPath = "res://prefabs/lamp.wprf";
+    protected const string CornerPath = "res://prefabs/corner.wprf";
 
     private readonly string _folder = Directory.CreateTempSubdirectory("weft-prefab-scenes").FullName;
 
@@ -47,7 +47,7 @@ public abstract class PrefabTestBase : IDisposable
         Files.Mount("res://", Faults);
         Assets = new AssetDatabase(Files);
         World = new World { Files = Files, Assets = Assets };
-        Write("prefabs/lamp.aprefab", $"""
+        Write("prefabs/lamp.wprf", $"""
             <?xml version="1.0" encoding="utf-8"?>
             <Prefab version="1" uid="{LampUid}" nextId="4">
               <Components>
@@ -65,7 +65,7 @@ public abstract class PrefabTestBase : IDisposable
               </Entity>
             </Prefab>
             """);
-        Write("prefabs/corner.aprefab", $"""
+        Write("prefabs/corner.wprf", $"""
             <?xml version="1.0" encoding="utf-8"?>
             <Prefab version="1" uid="{CornerUid}" nextId="5">
               <Entity id="1" name="Corner">

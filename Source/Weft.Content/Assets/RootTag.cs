@@ -8,7 +8,7 @@ using Weft.Content.Xml;
 namespace Weft.Content.Assets;
 
 /// <summary>
-/// Reads and edits the start tag of a document's root element <em>as text</em>. A UID goes into a file people also edit by hand (a <c>.import.xml</c>, a scene), so it is added,
+/// Reads and edits the start tag of a document's root element <em>as text</em>. A UID goes into a file people also edit by hand (a <c>.wimp</c>, a scene), so it is added,
 /// replaced or taken out by changing only the characters of one attribute: comments, indentation, quote style, line endings and the byte order mark all stay as they were. Going through
 /// <see cref="XmlNode"/> and writing the document again would lose the comments and reformat the file.
 /// <para>

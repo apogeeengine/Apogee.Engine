@@ -34,7 +34,7 @@ Bin/publish/runtime/Weft.Runtime --luau-test Tests/Luau     # Luau tests (also S
 Bin/publish/runtime/Weft.Runtime --game <folder> [--user <dir>] [--watch]     # run a game: its packages and mods (Samples/Mods/game); --watch reloads what changes
 Bin/publish/runtime/Weft.Runtime --workshop-upload <mod folder> [--confirm]     # publish a mod to the Steam Workshop (only describes it without --confirm: it is outward-facing)
 Bin/publish/runtime/Weft.Runtime --import <folder>           # import models and images into <folder>/imported (only what changed)
-./build.sh pack <folder> <out.pack> [--cooked] [--base <pack>]   # Weft.Runtime --pack, with .env loaded: WEFT_PACK_KEY encrypts (no key = plain)
+./build.sh pack <folder> <out.wpak> [--cooked] [--base <pack>]   # Weft.Runtime --pack, with .env loaded: WEFT_PACK_KEY encrypts (no key = plain)
 ./build.sh export <game folder> <out dir> --target <rid> [--cooked]   # Weft.Runtime --export, with .env loaded (WEFT_PACK_KEY encrypts the packs and is embedded in the executable); needs ./build.sh aot first
 Bin/publish/runtime/Weft.Runtime --export <game folder> <out dir> --target <linux-x64|win-x64|osx-arm64|osx-x64> [--cooked] [--runtime <dir>]     # a folder that runs on its own
 ```

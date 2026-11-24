@@ -33,8 +33,8 @@ public sealed class PrefabExpanderTests : IDisposable
         }
     }
 
-    private const string Lamp = "res://prefabs/lamp.aprefab";
-    private const string Corner = "res://prefabs/corner.aprefab";
+    private const string Lamp = "res://prefabs/lamp.wprf";
+    private const string Corner = "res://prefabs/corner.wprf";
 
     private static readonly string[] UnusableNames = ["dups", "two", "notprefab", "newer", "variant"];
 
@@ -64,11 +64,11 @@ public sealed class PrefabExpanderTests : IDisposable
             <Prefab version="1" nextId="5">
               <Entity id="1" name="Corner">
                 <Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/>
-                <Entity id="2" name="Lamp" prefab="res://prefabs/lamp.aprefab">
+                <Entity id="2" name="Lamp" prefab="res://prefabs/lamp.wprf">
                   <Transform Position="2 0 0"/>
                   <Override entity="2"><Light Intensity="120"/></Override>
                 </Entity>
-                <Entity id="3" name="Lamp 2" prefab="res://prefabs/lamp.aprefab">
+                <Entity id="3" name="Lamp 2" prefab="res://prefabs/lamp.wprf">
                   <Transform Position="-2 0 0"/>
                   <Override entity="3" remove="true"/>
                 </Entity>
@@ -209,14 +209,14 @@ public sealed class PrefabExpanderTests : IDisposable
     {
         // The prefab author puts the latch under the lid in one version and under the root in the other: the override says "entity 3" and finds it either way.
         string latch = "<Entity id=\"3\" name=\"Latch\"><Transform Position=\"0 0 0\"/></Entity>";
-        Add("res://prefabs/crate.aprefab", $"""
+        Add("res://prefabs/crate.wprf", $"""
             <Prefab version="1" nextId="4"><Entity id="1" name="Crate">
               {(moved ? "" : latch)}
               <Entity id="2" name="Lid"><Transform Position="0 1 0"/>{(moved ? latch : "")}</Entity>
             </Entity></Prefab>
             """);
 
-        Expansion expansion = Expand(Instance("res://prefabs/crate.aprefab", "<Override entity=\"3\"><Transform Position=\"1 2 3\"/></Override>", "9"), "9");
+        Expansion expansion = Expand(Instance("res://prefabs/crate.wprf", "<Override entity=\"3\"><Transform Position=\"1 2 3\"/></Override>", "9"), "9");
 
         ExpandedEntity found = At(expansion, "9/3");
         Assert.Equal("1 2 3", Attr(found, "Transform", "Position"));
@@ -274,13 +274,13 @@ public sealed class PrefabExpanderTests : IDisposable
     [Fact]
     public void RemovingAnEntityRemovesItsBranch()
     {
-        Add("res://prefabs/tree.aprefab", """
+        Add("res://prefabs/tree.wprf", """
             <Prefab version="1" nextId="5"><Entity id="1" name="Tree">
               <Entity id="2" name="Trunk"><Entity id="3" name="Branch"><Entity id="4" name="Leaf"/></Entity></Entity>
             </Entity></Prefab>
             """);
 
-        Expansion expansion = Expand(Instance("res://prefabs/tree.aprefab", "<Override entity=\"2\" remove=\"true\"/><Override entity=\"3\" name=\"late\"/>"));
+        Expansion expansion = Expand(Instance("res://prefabs/tree.wprf", "<Override entity=\"2\" remove=\"true\"/><Override entity=\"3\" name=\"late\"/>"));
 
         Assert.Equal(["Tree"], expansion.Root.Subtree().Select(e => e.Name));
         Assert.True(At(expansion, "1/4").IsRemoved);
@@ -354,12 +354,12 @@ public sealed class PrefabExpanderTests : IDisposable
     [Fact]
     public void PrefabEntityFieldsAreRescopedAndOverrideFieldsAreNot()
     {
-        Add("res://prefabs/wired.aprefab", """
+        Add("res://prefabs/wired.wprf", """
             <Prefab version="1" nextId="6">
               <Components><Component name="Link"><Field name="to" kind="Entity"/><Field name="far" kind="Entity"/><Field name="n" kind="Int32"/></Component></Components>
               <Entity id="1" name="Wired">
                 <Link to="1" far="99" n="1"/>
-                <Entity id="2" name="Lamp" prefab="res://prefabs/lamp.aprefab">
+                <Entity id="2" name="Lamp" prefab="res://prefabs/lamp.wprf">
                   <Override entity="2"><Flicker lamp="4"/></Override>
                 </Entity>
                 <Entity id="4" name="Switch"><Link to="2" far="2/3" n="2"/></Entity>
@@ -367,7 +367,7 @@ public sealed class PrefabExpanderTests : IDisposable
             </Prefab>
             """);
 
-        Expansion expansion = Expand(Instance("res://prefabs/wired.aprefab", "<Override entity=\"4\"><Link to=\"1\"/></Override><Override entity=\"2/2\"><Link to=\"1\" append=\"true\"/></Override>", "5"), "5");
+        Expansion expansion = Expand(Instance("res://prefabs/wired.wprf", "<Override entity=\"4\"><Link to=\"1\"/></Override><Override entity=\"2/2\"><Link to=\"1\" append=\"true\"/></Override>", "5"), "5");
 
         // Inside the prefab: "1" is the instance itself, "2/3" an entity inside the nested lamp; "99" is an id nothing has (it resolves to nothing, as in a scene). Integers stay integers.
         Assert.Equal("5", Attr(expansion.Root, "Link", "to"));
@@ -388,13 +388,13 @@ public sealed class PrefabExpanderTests : IDisposable
     [Fact]
     public void AnEntityFieldPointingOutsideThePrefabNamesNothing()
     {
-        Add("res://prefabs/stray.aprefab", """
+        Add("res://prefabs/stray.wprf", """
             <Prefab version="1" nextId="3">
               <Entity id="1" name="Stray"><Marks Target="77" Other="abc" Back="../2" Up="0"/><Entity id="2" name="Kid"><Marks Target="1" Other="" Back="1/2"/></Entity></Entity>
             </Prefab>
             """);
 
-        Expansion expansion = Expand(Instance("res://prefabs/stray.aprefab", address: "3"), "3", isEntityField: (c, a) => c == "Marks" && a is "Target" or "Other" or "Back" or "Up");
+        Expansion expansion = Expand(Instance("res://prefabs/stray.wprf", address: "3"), "3", isEntityField: (c, a) => c == "Marks" && a is "Target" or "Other" or "Back" or "Up");
 
         // Rescoped under the instance (never to an address outside it), and left alone when it is no address at all; nothing ever resolves to an entity of another instance.
         ExpandedEntity root = expansion.Root;
@@ -485,8 +485,8 @@ public sealed class PrefabExpanderTests : IDisposable
 
     private void AddChain(string name, params string[] contains)
     {
-        string nested = string.Concat(contains.Select((p, i) => $"<Entity id=\"{i + 2}\" name=\"in {p}\" prefab=\"res://prefabs/{p}.aprefab\"/>"));
-        Add($"res://prefabs/{name}.aprefab", $"<Prefab version=\"1\" nextId=\"{contains.Length + 2}\"><Entity id=\"1\" name=\"{name}\">{nested}</Entity></Prefab>");
+        string nested = string.Concat(contains.Select((p, i) => $"<Entity id=\"{i + 2}\" name=\"in {p}\" prefab=\"res://prefabs/{p}.wprf\"/>"));
+        Add($"res://prefabs/{name}.wprf", $"<Prefab version=\"1\" nextId=\"{contains.Length + 2}\"><Entity id=\"1\" name=\"{name}\">{nested}</Entity></Prefab>");
     }
 
     [Fact]
@@ -494,25 +494,25 @@ public sealed class PrefabExpanderTests : IDisposable
     {
         AddChain("selfish", "selfish");
 
-        Expansion direct = Expand(Instance("res://prefabs/selfish.aprefab"));
+        Expansion direct = Expand(Instance("res://prefabs/selfish.wprf"));
 
         // The first level is expanded; the instance of itself inside it is the root alone, with the reason.
         ExpandedEntity inner = Assert.Single(direct.Root.Children);
         Assert.True(inner.IsMissing);
         Assert.Contains("contains itself", inner.MissingReason, StringComparison.Ordinal);
-        Assert.Contains("selfish.aprefab → res://prefabs/selfish.aprefab", inner.MissingReason, StringComparison.Ordinal);
+        Assert.Contains("selfish.wprf → res://prefabs/selfish.wprf", inner.MissingReason, StringComparison.Ordinal);
         Assert.Empty(inner.Children);
         Assert.Equal(2, direct.Root.Subtree().Count());
 
         // Through another: a -> b -> a.
         AddChain("a", "b");
         AddChain("b", "a");
-        Expansion through = Expand(Instance("res://prefabs/a.aprefab"));
+        Expansion through = Expand(Instance("res://prefabs/a.wprf"));
         ExpandedEntity b = through.Root.Children.Single();
         ExpandedEntity again = b.Children.Single();
         Assert.False(b.IsMissing);
         Assert.True(again.IsMissing);
-        Assert.Contains("a.aprefab contains itself (res://prefabs/a.aprefab → res://prefabs/b.aprefab → res://prefabs/a.aprefab)", again.MissingReason, StringComparison.Ordinal);
+        Assert.Contains("a.wprf contains itself (res://prefabs/a.wprf → res://prefabs/b.wprf → res://prefabs/a.wprf)", again.MissingReason, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -522,16 +522,16 @@ public sealed class PrefabExpanderTests : IDisposable
         AddChain("cb", "cc");
         AddChain("cc", "ca");
 
-        Expansion expansion = Expand(Instance("res://prefabs/ca.aprefab"));
+        Expansion expansion = Expand(Instance("res://prefabs/ca.wprf"));
 
         ExpandedEntity[] all = [.. expansion.Root.Subtree()];
         Assert.Equal(4, all.Length);
-        Assert.Contains("ca.aprefab → res://prefabs/cb.aprefab → res://prefabs/cc.aprefab → res://prefabs/ca.aprefab", all[3].MissingReason, StringComparison.Ordinal);
+        Assert.Contains("ca.wprf → res://prefabs/cb.wprf → res://prefabs/cc.wprf → res://prefabs/ca.wprf", all[3].MissingReason, StringComparison.Ordinal);
         Assert.Equal([false, false, false, true], all.Select(e => e.IsMissing));
 
         // A prefab that is not in the cycle expands in full next to them: the stack is per chain, not per expansion.
         AddChain("pair", "lamp", "lamp");
-        Assert.Equal(1 + 2 * 3, Expand(Instance("res://prefabs/pair.aprefab")).Root.Subtree().Count());
+        Assert.Equal(1 + 2 * 3, Expand(Instance("res://prefabs/pair.wprf")).Root.Subtree().Count());
     }
 
     [Fact]
@@ -546,11 +546,11 @@ public sealed class PrefabExpanderTests : IDisposable
             }
             else
             {
-                Add("res://prefabs/p17.aprefab", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"p17\"><Transform Position=\"0 0 0\"/></Entity></Prefab>");
+                Add("res://prefabs/p17.wprf", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"p17\"><Transform Position=\"0 0 0\"/></Entity></Prefab>");
             }
         }
 
-        Expansion expansion = Expand(Instance("res://prefabs/p1.aprefab"));
+        Expansion expansion = Expand(Instance("res://prefabs/p1.wprf"));
 
         ExpandedEntity[] chain = [.. expansion.Root.Subtree()];
         Assert.Equal(17, chain.Length);
@@ -562,8 +562,8 @@ public sealed class PrefabExpanderTests : IDisposable
         Assert.Equal(17, chain[16].Address.Split('/').Length);
 
         // Sixteen deep is fine: end the chain at the sixteenth.
-        Add("res://prefabs/p16.aprefab", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"p16\"/></Prefab>");
-        ExpandedEntity[] sixteen = [.. Expand(Instance("res://prefabs/p1.aprefab")).Root.Subtree()];
+        Add("res://prefabs/p16.wprf", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"p16\"/></Prefab>");
+        ExpandedEntity[] sixteen = [.. Expand(Instance("res://prefabs/p1.wprf")).Root.Subtree()];
         Assert.Equal(16, sixteen.Length);
         Assert.DoesNotContain(sixteen, e => e.IsMissing);
     }
@@ -574,8 +574,8 @@ public sealed class PrefabExpanderTests : IDisposable
         {
             string nested = level == levels - 1
                 ? ""
-                : string.Concat(Enumerable.Range(2, fan).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/bomb{level + 1}.aprefab\"/>"));
-            Add($"res://prefabs/bomb{level}.aprefab", $"<Prefab version=\"1\" nextId=\"{fan + 2}\"><Entity id=\"1\" name=\"bomb{level}\">{nested}</Entity></Prefab>");
+                : string.Concat(Enumerable.Range(2, fan).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/bomb{level + 1}.wprf\"/>"));
+            Add($"res://prefabs/bomb{level}.wprf", $"<Prefab version=\"1\" nextId=\"{fan + 2}\"><Entity id=\"1\" name=\"bomb{level}\">{nested}</Entity></Prefab>");
         }
     }
 
@@ -585,14 +585,14 @@ public sealed class PrefabExpanderTests : IDisposable
         AddBomb(5, 10); // 1 + 10 + 100 + 1000 + 10000 = 11111 entities, from five small files
 
         var small = new ExpansionBudget(500);
-        FormatException e = Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/bomb0.aprefab"), budget: small));
+        FormatException e = Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/bomb0.wprf"), budget: small));
         Assert.Contains("more than 500 entities", e.Message, StringComparison.Ordinal);
         Assert.Equal(500, small.Used); // counted as each entity was about to be made: never one over
 
         var exact = new ExpansionBudget(11111);
-        Assert.Equal(11111, Expand(Instance("res://prefabs/bomb0.aprefab"), budget: exact).Root.Subtree().Count());
+        Assert.Equal(11111, Expand(Instance("res://prefabs/bomb0.wprf"), budget: exact).Root.Subtree().Count());
         Assert.Equal(11111, exact.Used);
-        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/bomb0.aprefab"), budget: new ExpansionBudget(11110)));
+        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/bomb0.wprf"), budget: new ExpansionBudget(11110)));
     }
 
     [Fact]
@@ -601,7 +601,7 @@ public sealed class PrefabExpanderTests : IDisposable
         AddBomb(16, 10); // 10^15 entities if it were expanded
 
         var budget = new ExpansionBudget();
-        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/bomb0.aprefab"), budget: budget));
+        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/bomb0.wprf"), budget: budget));
         Assert.Equal(ExpansionBudget.DefaultLimit, budget.Used);
     }
 
@@ -621,34 +621,34 @@ public sealed class PrefabExpanderTests : IDisposable
     {
         var budget = new ExpansionBudget();
         Expansion expansion = Expand(
-            Instance("res://prefabs/ghost.aprefab", "<Transform Position=\"1 0 0\"/><Override entity=\"2\"><Light Intensity=\"1\"/></Override><Entity id=\"9\" name=\"Kept\"/>", "4"),
+            Instance("res://prefabs/ghost.wprf", "<Transform Position=\"1 0 0\"/><Override entity=\"2\"><Light Intensity=\"1\"/></Override><Entity id=\"9\" name=\"Kept\"/>", "4"),
             "4",
             budget);
 
         ExpandedEntity root = expansion.Root;
         Assert.True(root.IsMissing);
-        Assert.Equal("res://prefabs/ghost.aprefab", root.InstancePrefab);
+        Assert.Equal("res://prefabs/ghost.wprf", root.InstancePrefab);
         Assert.Equal(0, root.InstanceRootId);
         Assert.Empty(root.Children);
         Assert.Empty(root.Components);
         Assert.Equal(["Transform", "Override", "Entity"], root.Unapplied.Select(u => u.Name));
         Assert.Equal(1, budget.Used);
         Assert.False(expansion.Index.ContainsKey("9")); // the entity it holds was not made
-        Assert.True(Warned("ghost.aprefab, which cannot be used: there is no such file"));
+        Assert.True(Warned("ghost.wprf, which cannot be used: there is no such file"));
     }
 
     [Fact]
     public void APrefabThatIsNotUsableLeavesTheInstanceEmptyWithTheReason()
     {
-        Add("res://prefabs/dups.aprefab", "<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\"><Entity id=\"2\"/><Entity id=\"2\"/></Entity></Prefab>");
-        Add("res://prefabs/two.aprefab", "<Prefab version=\"1\"><Entity id=\"1\"/><Entity id=\"2\"/></Prefab>");
-        Add("res://prefabs/notprefab.aprefab", "<Scene version=\"1\"><Entity id=\"1\"/></Scene>");
-        Add("res://prefabs/newer.aprefab", "<Prefab version=\"2\"><Entity id=\"1\"/></Prefab>");
-        Add("res://prefabs/variant.aprefab", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" prefab=\"{Lamp}\"/></Prefab>");
+        Add("res://prefabs/dups.wprf", "<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\"><Entity id=\"2\"/><Entity id=\"2\"/></Entity></Prefab>");
+        Add("res://prefabs/two.wprf", "<Prefab version=\"1\"><Entity id=\"1\"/><Entity id=\"2\"/></Prefab>");
+        Add("res://prefabs/notprefab.wprf", "<Scene version=\"1\"><Entity id=\"1\"/></Scene>");
+        Add("res://prefabs/newer.wprf", "<Prefab version=\"2\"><Entity id=\"1\"/></Prefab>");
+        Add("res://prefabs/variant.wprf", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" prefab=\"{Lamp}\"/></Prefab>");
 
         string[] reasons = [.. UnusableNames.Select(n =>
         {
-            ExpandedEntity root = Expand(Instance($"res://prefabs/{n}.aprefab", "<Transform Position=\"1 1 1\"/>")).Root;
+            ExpandedEntity root = Expand(Instance($"res://prefabs/{n}.wprf", "<Transform Position=\"1 1 1\"/>")).Root;
             Assert.True(root.IsMissing, n);
             Assert.Single(root.Unapplied);
             return root.MissingReason!;
@@ -670,8 +670,8 @@ public sealed class PrefabExpanderTests : IDisposable
               <Entity id="1" name="Holder"><Entity id="2" name="Lamp" prefab="{Lamp}"><Override entity="3"><Entity id="{signId}" name="Sign"/></Override></Entity></Entity>
             </Prefab>
             """;
-        Add("res://prefabs/holder.aprefab", Holder(2));
-        ExpandedEntity broken = Expand(Instance("res://prefabs/holder.aprefab")).Root;
+        Add("res://prefabs/holder.wprf", Holder(2));
+        ExpandedEntity broken = Expand(Instance("res://prefabs/holder.wprf")).Root;
         Assert.True(broken.IsMissing);
         Assert.Contains("used twice", broken.MissingReason, StringComparison.Ordinal);
 
@@ -701,12 +701,12 @@ public sealed class PrefabExpanderTests : IDisposable
             return text.Append("</Entity></Prefab>").ToString();
         }
 
-        Add("res://prefabs/tall1.aprefab", Tall("tall1", "<Entity id=\"150\" prefab=\"res://prefabs/tall2.aprefab\"/>"));
-        Add("res://prefabs/tall2.aprefab", Tall("tall2", ""));
-        FormatException e = Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/tall1.aprefab")));
+        Add("res://prefabs/tall1.wprf", Tall("tall1", "<Entity id=\"150\" prefab=\"res://prefabs/tall2.wprf\"/>"));
+        Add("res://prefabs/tall2.wprf", Tall("tall2", ""));
+        FormatException e = Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/tall1.wprf")));
         Assert.Contains("nested more than 128 deep", e.Message, StringComparison.Ordinal);
 
-        Assert.Equal(99, Expand(Instance("res://prefabs/tall2.aprefab")).Root.Subtree().Count());
+        Assert.Equal(99, Expand(Instance("res://prefabs/tall2.wprf")).Root.Subtree().Count());
     }
 
     // ---- Hostile text in overrides ---------------------------------------------------------------------------------------------------
@@ -739,14 +739,14 @@ public sealed class PrefabExpanderTests : IDisposable
     [Fact]
     public void SiblingNamesAreMadeUniqueAsTheLoaderDoes()
     {
-        Add("res://prefabs/parts.aprefab", """
+        Add("res://prefabs/parts.wprf", """
             <Prefab version="1" nextId="6"><Entity id="1" name="Parts">
               <Entity id="2" name="Part"/><Entity id="3" name="Part"/><Entity id="4" name="Part 2"/><Entity id="5"/>
             </Entity></Prefab>
             """);
 
         Expansion expansion = Expand(Instance(
-            "res://prefabs/parts.aprefab",
+            "res://prefabs/parts.wprf",
             "<Override entity=\"5\" name=\"Part\"/><Entity id=\"20\" name=\"Part\"/><Entity id=\"21\" name=\"Other\"/><Entity id=\"22\" name=\"Other\"/>"));
 
         string[] names = [.. expansion.Root.Children.Concat(expansion.Root.Added).Select(c => c.Name!)];
@@ -765,14 +765,14 @@ public sealed class PrefabExpanderTests : IDisposable
     [Fact]
     public void ReservedAttributesAreNotKept()
     {
-        Add("res://prefabs/reserved.aprefab", """
+        Add("res://prefabs/reserved.wprf", """
             <Prefab version="1" nextId="3"><Entity id="1" name="Reserved">
               <Health Max="1" append="true" patch="true" remove="false"/><PrefabInstance Prefab="1"/><PrefabMember Id="4"/>
               <Entity id="2" name="Kid"><Transform Position="1 1 1" append="true"/></Entity>
             </Entity></Prefab>
             """);
 
-        Expansion expansion = Expand(Instance("res://prefabs/reserved.aprefab", "<Health Max=\"2\" patch=\"true\"/><Override entity=\"2\"><Transform Position=\"2 2 2\" remove=\"false\"/><Light Intensity=\"1\" append=\"true\"/></Override>"));
+        Expansion expansion = Expand(Instance("res://prefabs/reserved.wprf", "<Health Max=\"2\" patch=\"true\"/><Override entity=\"2\"><Transform Position=\"2 2 2\" remove=\"false\"/><Light Intensity=\"1\" append=\"true\"/></Override>"));
 
         Assert.Equal(["Health"], expansion.Root.Components.Select(c => c.Name)); // the engine's own components are never read from a file
         foreach (ExpandedEntity entity in expansion.Root.Subtree())
@@ -840,15 +840,15 @@ public sealed class PrefabExpanderTests : IDisposable
     public void TheWorkOfOverridesIsBoundedAcrossNestedInstances()
     {
         // L is one entity. M is a root with an instance of L and thousands of overrides of it. N holds many M. Few entities, but an override applies once for every instance of its file.
-        Add("res://prefabs/l.aprefab", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"L\"><Transform Position=\"0 0 0\"/></Entity></Prefab>");
+        Add("res://prefabs/l.wprf", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"L\"><Transform Position=\"0 0 0\"/></Entity></Prefab>");
         string overrides = string.Concat(Enumerable.Repeat("<Override entity=\"1\"><Transform Position=\"1 1 1\"/></Override>", 2000));
-        Add("res://prefabs/m.aprefab", $"<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\" name=\"M\"><Entity id=\"2\" name=\"in L\" prefab=\"res://prefabs/l.aprefab\">{overrides}</Entity></Entity></Prefab>");
-        string many = string.Concat(Enumerable.Range(2, 200).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/m.aprefab\"/>"));
-        Add("res://prefabs/n.aprefab", $"<Prefab version=\"1\" nextId=\"300\"><Entity id=\"1\" name=\"N\">{many}</Entity></Prefab>");
+        Add("res://prefabs/m.wprf", $"<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\" name=\"M\"><Entity id=\"2\" name=\"in L\" prefab=\"res://prefabs/l.wprf\">{overrides}</Entity></Entity></Prefab>");
+        string many = string.Concat(Enumerable.Range(2, 200).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/m.wprf\"/>"));
+        Add("res://prefabs/n.wprf", $"<Prefab version=\"1\" nextId=\"300\"><Entity id=\"1\" name=\"N\">{many}</Entity></Prefab>");
 
         var budget = new ExpansionBudget(5000);
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        FormatException e = Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/n.aprefab"), budget: budget));
+        FormatException e = Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/n.wprf"), budget: budget));
 
         Assert.Contains("steps of work", e.Message, StringComparison.Ordinal);
         Assert.True(budget.Used < budget.Limit, "the entities were not the problem"); // 401 would fit
@@ -856,17 +856,17 @@ public sealed class PrefabExpanderTests : IDisposable
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), watch.Elapsed.ToString());
 
         // The same, as the file would be with a budget to match its size, expands.
-        Assert.Equal(401, Expand(Instance("res://prefabs/n.aprefab"), budget: new ExpansionBudget(2_000_000)).Root.Subtree().Count(c => !c.IsMissing));
+        Assert.Equal(401, Expand(Instance("res://prefabs/n.wprf"), budget: new ExpansionBudget(2_000_000)).Root.Subtree().Count(c => !c.IsMissing));
     }
 
     [Fact]
     public void StaleOverridesInManyInstancesAreBoundedToo()
     {
-        Add("res://prefabs/m.aprefab", $"<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\" name=\"M\"><Entity id=\"2\" name=\"in lamp\" prefab=\"{Lamp}\">{string.Concat(Enumerable.Range(100, 2000).Select(i => $"<Override entity=\"{i}\"/>"))}</Entity></Entity></Prefab>");
-        string many = string.Concat(Enumerable.Range(2, 200).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/m.aprefab\"/>"));
-        Add("res://prefabs/n.aprefab", $"<Prefab version=\"1\" nextId=\"300\"><Entity id=\"1\" name=\"N\">{many}</Entity></Prefab>");
+        Add("res://prefabs/m.wprf", $"<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\" name=\"M\"><Entity id=\"2\" name=\"in lamp\" prefab=\"{Lamp}\">{string.Concat(Enumerable.Range(100, 2000).Select(i => $"<Override entity=\"{i}\"/>"))}</Entity></Entity></Prefab>");
+        string many = string.Concat(Enumerable.Range(2, 200).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/m.wprf\"/>"));
+        Add("res://prefabs/n.wprf", $"<Prefab version=\"1\" nextId=\"300\"><Entity id=\"1\" name=\"N\">{many}</Entity></Prefab>");
 
-        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/n.aprefab"), budget: new ExpansionBudget(5000)));
+        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/n.wprf"), budget: new ExpansionBudget(5000)));
         Assert.True(Count("the instance has no entity") <= PrefabExpander.MaxWarnings + 1); // and the log is not flooded on the way
     }
 
@@ -874,11 +874,11 @@ public sealed class PrefabExpanderTests : IDisposable
     public void AnEntityWithVeryManyComponentsIsExpandedInLinearTime()
     {
         string components = string.Concat(Enumerable.Range(0, 50_000).Select(i => $"<C{i}/>"));
-        Add("res://prefabs/wide.aprefab", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Wide\">{components}</Entity></Prefab>");
+        Add("res://prefabs/wide.wprf", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Wide\">{components}</Entity></Prefab>");
         string removals = string.Concat(Enumerable.Range(0, 20_000).Select(i => $"<C{i} remove=\"true\"/>"));
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        Expansion expansion = Expand(Instance("res://prefabs/wide.aprefab", removals + "<Extra append=\"true\"/>"));
+        Expansion expansion = Expand(Instance("res://prefabs/wide.wprf", removals + "<Extra append=\"true\"/>"));
 
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), watch.Elapsed.ToString());
         ExpandedEntity root = expansion.Root;
@@ -890,16 +890,16 @@ public sealed class PrefabExpanderTests : IDisposable
         Assert.Empty(root.Unapplied);
 
         // Many instances of it hit the budget instead of building 50,000 references each.
-        Add("res://prefabs/crowd.aprefab", $"<Prefab version=\"1\" nextId=\"9\"><Entity id=\"1\" name=\"Crowd\">{string.Concat(Enumerable.Range(2, 8).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/wide.aprefab\"/>"))}</Entity></Prefab>");
+        Add("res://prefabs/crowd.wprf", $"<Prefab version=\"1\" nextId=\"9\"><Entity id=\"1\" name=\"Crowd\">{string.Concat(Enumerable.Range(2, 8).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/wide.wprf\"/>"))}</Entity></Prefab>");
         var budget = new ExpansionBudget(1000);
-        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/crowd.aprefab"), budget: budget));
+        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/crowd.wprf"), budget: budget));
         Assert.True(budget.WorkUsed <= budget.WorkLimit);
     }
 
     [Fact]
     public void ACopiedComponentSharesItsChildrenWithTheDocument()
     {
-        const string path = "res://prefabs/blob.aprefab";
+        const string path = "res://prefabs/blob.wprf";
         Add(path, "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Blob\"><Marks Target=\"1\" patch=\"x\"><Extra a=\"1\"><Deep b=\"2\"/></Extra></Marks></Entity></Prefab>");
         string before = _docs[path].ToXml();
         XmlNode original = _docs[path].Child("Entity")!.Child("Marks")!;
@@ -919,11 +919,11 @@ public sealed class PrefabExpanderTests : IDisposable
     [Fact]
     public void TheSameStaleOverrideInManyInstancesIsLoggedOnce()
     {
-        Add("res://prefabs/stale.aprefab", $"<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\" name=\"Stale\"><Entity id=\"2\" name=\"in lamp\" prefab=\"{Lamp}\"><Override entity=\"777\" name=\"x\"/></Entity></Entity></Prefab>");
-        Add("res://prefabs/crowd.aprefab", $"<Prefab version=\"1\" nextId=\"2000\"><Entity id=\"1\" name=\"Crowd\">{string.Concat(Enumerable.Range(2, 1000).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/stale.aprefab\"/>"))}</Entity></Prefab>");
+        Add("res://prefabs/stale.wprf", $"<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\" name=\"Stale\"><Entity id=\"2\" name=\"in lamp\" prefab=\"{Lamp}\"><Override entity=\"777\" name=\"x\"/></Entity></Entity></Prefab>");
+        Add("res://prefabs/crowd.wprf", $"<Prefab version=\"1\" nextId=\"2000\"><Entity id=\"1\" name=\"Crowd\">{string.Concat(Enumerable.Range(2, 1000).Select(i => $"<Entity id=\"{i}\" prefab=\"res://prefabs/stale.wprf\"/>"))}</Entity></Prefab>");
         int before = Count("the instance has no entity 777");
 
-        Expansion expansion = Expand(Instance("res://prefabs/crowd.aprefab"));
+        Expansion expansion = Expand(Instance("res://prefabs/crowd.wprf"));
 
         Assert.Equal(1 + 1000 * 4, expansion.Root.Subtree().Count());
         Assert.True(Count("the instance has no entity 777") - before <= 1);
@@ -948,15 +948,15 @@ public sealed class PrefabExpanderTests : IDisposable
     [Fact]
     public void NoFieldTextCanSpellAMadeUpAddress()
     {
-        Add("res://prefabs/tilde.aprefab", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Tilde\"><Marks Target=\"~1\"/></Entity></Prefab>");
+        Add("res://prefabs/tilde.wprf", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Tilde\"><Marks Target=\"~1\"/></Entity></Prefab>");
         Func<string, string, bool> isEntity = (c, a) => c == "Marks" && a == "Target";
 
-        Expansion plain = Expand(Instance("res://prefabs/tilde.aprefab", "<Entity name=\"No id\"/>"), isEntityField: isEntity);
+        Expansion plain = Expand(Instance("res://prefabs/tilde.wprf", "<Entity name=\"No id\"/>"), isEntityField: isEntity);
         Assert.Equal("", Attr(plain.Root, "Marks", "Target"));
         Assert.StartsWith("~", plain.Root.Added.Single().Address, StringComparison.Ordinal);
 
         // Written in the scene's own scope, the same.
-        Expansion scene = Expand(Instance("res://prefabs/tilde.aprefab", "<Marks Target=\"~1\"/><Override entity=\"1\"><Marks Target=\"~2\"/></Override>"), isEntityField: isEntity);
+        Expansion scene = Expand(Instance("res://prefabs/tilde.wprf", "<Marks Target=\"~1\"/><Override entity=\"1\"><Marks Target=\"~2\"/></Override>"), isEntityField: isEntity);
         Assert.Equal("", Attr(scene.Root, "Marks", "Target"));
         Assert.All(scene.Root.Subtree().SelectMany(e => e.Components).SelectMany(c => c.Attributes), a => Assert.False(a.Value.StartsWith('~')));
     }
@@ -964,20 +964,20 @@ public sealed class PrefabExpanderTests : IDisposable
     [Fact]
     public void WhatAPrefabFilesOwnInstancesCouldNotApplyIsNotTheScenes()
     {
-        Add("res://prefabs/leaky.aprefab", $"""
+        Add("res://prefabs/leaky.wprf", $"""
             <Prefab version="1" nextId="5"><Entity id="1" name="Leaky">
               <Entity id="2" name="in lamp" prefab="{Lamp}"><Override entity="99"/><Health Max="1"/></Entity>
-              <Entity id="3" name="ghost" prefab="res://prefabs/ghost.aprefab"><Transform Position="1 1 1"/></Entity>
+              <Entity id="3" name="ghost" prefab="res://prefabs/ghost.wprf"><Transform Position="1 1 1"/></Entity>
             </Entity></Prefab>
             """);
 
-        Expansion expansion = Expand(Instance("res://prefabs/leaky.aprefab", "<Override entity=\"98\"/>"));
+        Expansion expansion = Expand(Instance("res://prefabs/leaky.wprf", "<Override entity=\"98\"/>"));
 
         Assert.Equal("98", Assert.Single(expansion.Root.Unapplied).Attribute("entity")); // the scene's own
         ExpandedEntity[] below = [.. expansion.Root.Subtree().Skip(1)];
         Assert.All(below, e => Assert.Empty(e.Unapplied));
         Assert.Contains(below, e => e.IsMissing);
-        Assert.Equal(["res://prefabs/leaky.aprefab", Lamp, "res://prefabs/ghost.aprefab"], expansion.Prefabs); // the missing one is a dependency too
+        Assert.Equal(["res://prefabs/leaky.wprf", Lamp, "res://prefabs/ghost.wprf"], expansion.Prefabs); // the missing one is a dependency too
     }
 
     // ---- Where an instance is, and what depends on what ---------------------------------------------------------------------------------
@@ -1005,8 +1005,8 @@ public sealed class PrefabExpanderTests : IDisposable
     [Fact]
     public void TheDepthLimitCountsFromTheTopOfTheWholeExpansion()
     {
-        Add("res://prefabs/tree.aprefab", "<Prefab version=\"1\" nextId=\"5\"><Entity id=\"1\" name=\"Tree\"><Entity id=\"2\"><Entity id=\"3\"><Entity id=\"4\"/></Entity></Entity></Entity></Prefab>");
-        XmlNode instance = XmlNode.Parse(Instance("res://prefabs/tree.aprefab"));
+        Add("res://prefabs/tree.wprf", "<Prefab version=\"1\" nextId=\"5\"><Entity id=\"1\" name=\"Tree\"><Entity id=\"2\"><Entity id=\"3\"><Entity id=\"4\"/></Entity></Entity></Entity></Prefab>");
+        XmlNode instance = XmlNode.Parse(Instance("res://prefabs/tree.wprf"));
 
         Assert.Equal(4, Expander().Expand(instance, "1", options: new ExpandOptions { StartDepth = 125 }).Root.Subtree().Count()); // the deepest is the 128th
         Assert.Throws<FormatException>(() => Expander().Expand(instance, "1", options: new ExpandOptions { StartDepth = 126 }));
@@ -1017,38 +1017,38 @@ public sealed class PrefabExpanderTests : IDisposable
     {
         AddChain("outer", "inner", "inner", "outer");
 
-        Expansion expansion = Expand(Instance("res://prefabs/outer.aprefab"));
+        Expansion expansion = Expand(Instance("res://prefabs/outer.wprf"));
 
         // The one it contains itself through shows up once, and a missing file would too.
-        Assert.Equal(["res://prefabs/outer.aprefab", "res://prefabs/inner.aprefab"], expansion.Prefabs);
+        Assert.Equal(["res://prefabs/outer.wprf", "res://prefabs/inner.wprf"], expansion.Prefabs);
     }
 
     [Fact]
     public void TwoSpellingsOfOneFileAreOnePrefab()
     {
-        const string path = "res://prefabs/spelled.aprefab";
+        const string path = "res://prefabs/spelled.wprf";
         XmlNode loop = XmlNode.Parse("<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\" name=\"S\"><Entity id=\"2\" name=\"again\" prefab=\"uid://a\"/></Entity></Prefab>", path);
-        XmlNode broken = XmlNode.Parse("<Prefab version=\"1\"><Entity id=\"1\"/><Entity id=\"2\"/></Prefab>", "res://prefabs/broken.aprefab");
+        XmlNode broken = XmlNode.Parse("<Prefab version=\"1\"><Entity id=\"1\"/><Entity id=\"2\"/></Prefab>", "res://prefabs/broken.wprf");
         ResolvedPrefab Resolver(string reference) => reference switch
         {
-            "uid://a" or "res://prefabs/spelled.aprefab|uid://a" => new ResolvedPrefab(path, loop),
-            "uid://b" or "res://prefabs/broken.aprefab|uid://b" => new ResolvedPrefab("res://prefabs/broken.aprefab", broken),
+            "uid://a" or "res://prefabs/spelled.wprf|uid://a" => new ResolvedPrefab(path, loop),
+            "uid://b" or "res://prefabs/broken.wprf|uid://b" => new ResolvedPrefab("res://prefabs/broken.wprf", broken),
             _ => new ResolvedPrefab(reference, null, "no such file"),
         };
         var expander = new PrefabExpander(Resolver, (_, _) => false, new ExpansionBudget());
 
         // The loop is found whichever way the file is spelled on the way in and on the way round.
-        Expansion cycle = expander.Expand(XmlNode.Parse("<Entity id=\"1\" prefab=\"res://prefabs/spelled.aprefab|uid://a\"/>"), "1");
+        Expansion cycle = expander.Expand(XmlNode.Parse("<Entity id=\"1\" prefab=\"res://prefabs/spelled.wprf|uid://a\"/>"), "1");
         ExpandedEntity again = cycle.Root.Children.Single();
         Assert.True(again.IsMissing);
         Assert.Contains("contains itself", again.MissingReason, StringComparison.Ordinal);
         Assert.Equal([path], cycle.Prefabs);
 
         // A file that is there but cannot be used has the one key too, so a refresh finds both instances.
-        Expansion twice = expander.Expand(XmlNode.Parse("<Entity id=\"1\" prefab=\"uid://b\"><Entity id=\"2\" prefab=\"res://prefabs/broken.aprefab|uid://b\"/></Entity>"), "1");
+        Expansion twice = expander.Expand(XmlNode.Parse("<Entity id=\"1\" prefab=\"uid://b\"><Entity id=\"2\" prefab=\"res://prefabs/broken.wprf|uid://b\"/></Entity>"), "1");
         Assert.True(twice.Root.IsMissing);
-        Assert.Equal("res://prefabs/broken.aprefab", twice.Root.InstancePrefab);
-        Assert.Equal(["res://prefabs/broken.aprefab"], twice.Prefabs);
+        Assert.Equal("res://prefabs/broken.wprf", twice.Root.InstancePrefab);
+        Assert.Equal(["res://prefabs/broken.wprf"], twice.Prefabs);
     }
 
     // ---- Work that is quadratic in a list ---------------------------------------------------------------------------------------------
@@ -1058,24 +1058,24 @@ public sealed class PrefabExpanderTests : IDisposable
     {
         string Parts(int count) => $"<Prefab version=\"1\" nextId=\"{count + 5}\"><Entity id=\"1\" name=\"Parts\">{string.Concat(Enumerable.Range(2, count).Select(i => $"<Entity id=\"{i}\" name=\"x\"/>"))}</Entity></Prefab>";
 
-        Add("res://prefabs/parts.aprefab", Parts(300));
-        ExpandedEntity[] fine = [.. Expand(Instance("res://prefabs/parts.aprefab")).Root.Children];
+        Add("res://prefabs/parts.wprf", Parts(300));
+        ExpandedEntity[] fine = [.. Expand(Instance("res://prefabs/parts.wprf")).Root.Children];
         Assert.Equal("x 300", fine[^1].Name);
 
-        Add("res://prefabs/parts.aprefab", Parts(20_000));
+        Add("res://prefabs/parts.wprf", Parts(20_000));
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/parts.aprefab"), budget: new ExpansionBudget(30_000))); // 2*10^8 names tried, if it were allowed
+        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/parts.wprf"), budget: new ExpansionBudget(30_000))); // 2*10^8 names tried, if it were allowed
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), watch.Elapsed.ToString());
     }
 
     [Fact]
     public void ManyRemovalsFromOneParentAreCountedAsWork()
     {
-        Add("res://prefabs/flat.aprefab", $"<Prefab version=\"1\" nextId=\"20010\"><Entity id=\"1\" name=\"Flat\">{string.Concat(Enumerable.Range(2, 20_000).Select(i => $"<Entity id=\"{i}\"/>"))}</Entity></Prefab>");
+        Add("res://prefabs/flat.wprf", $"<Prefab version=\"1\" nextId=\"20010\"><Entity id=\"1\" name=\"Flat\">{string.Concat(Enumerable.Range(2, 20_000).Select(i => $"<Entity id=\"{i}\"/>"))}</Entity></Prefab>");
         string removals = string.Concat(Enumerable.Range(2, 20_000).Select(i => $"<Override entity=\"{i}\" remove=\"true\"/>"));
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/flat.aprefab", removals), budget: new ExpansionBudget(30_000)));
+        Assert.Throws<FormatException>(() => Expand(Instance("res://prefabs/flat.wprf", removals), budget: new ExpansionBudget(30_000)));
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), watch.Elapsed.ToString());
     }
 
@@ -1161,10 +1161,10 @@ public sealed class PrefabExpanderTests : IDisposable
             (_, _) => false,
             new ExpansionBudget());
 
-        ExpandedEntity root = expander.Expand(XmlNode.Parse(Instance("res://prefabs/broken.aprefab", "<Transform/>")), "1").Root;
+        ExpandedEntity root = expander.Expand(XmlNode.Parse(Instance("res://prefabs/broken.wprf", "<Transform/>")), "1").Root;
 
         Assert.True(root.IsMissing);
-        Assert.Contains("cannot read res://prefabs/broken.aprefab", root.MissingReason, StringComparison.Ordinal);
+        Assert.Contains("cannot read res://prefabs/broken.wprf", root.MissingReason, StringComparison.Ordinal);
         Assert.Single(root.Unapplied);
     }
 

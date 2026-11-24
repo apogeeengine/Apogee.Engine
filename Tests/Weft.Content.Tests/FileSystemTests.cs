@@ -262,16 +262,16 @@ public class DirectorySourceWriteTests
     public void AWriteNeverTouchesAFileOfTheUsersThatLooksLikeItsTemporaryFile()
     {
         using var folder = new TempFolder();
-        folder.Write("scene.ascene", "old");
-        folder.Write("scene.ascene.tmp", "mine");
-        folder.Write(".scene.ascene.tmp", "also mine");
+        folder.Write("scene.wscn", "old");
+        folder.Write("scene.wscn.tmp", "mine");
+        folder.Write(".scene.wscn.tmp", "also mine");
         var source = new DirectorySource(folder.Root, writable: true);
 
-        source.WriteAllBytes("scene.ascene", "new"u8);
+        source.WriteAllBytes("scene.wscn", "new"u8);
 
-        Assert.Equal("new", File.ReadAllText(Path.Combine(folder.Root, "scene.ascene")));
-        Assert.Equal("mine", File.ReadAllText(Path.Combine(folder.Root, "scene.ascene.tmp")));
-        Assert.Equal("also mine", File.ReadAllText(Path.Combine(folder.Root, ".scene.ascene.tmp")));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(folder.Root, "scene.wscn")));
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(folder.Root, "scene.wscn.tmp")));
+        Assert.Equal("also mine", File.ReadAllText(Path.Combine(folder.Root, ".scene.wscn.tmp")));
         Assert.Equal(3, Directory.GetFiles(folder.Root).Length); // no temporary file is left
     }
 
@@ -352,14 +352,14 @@ public class ZipSourceTests
     [Fact]
     public void ItReadsFilesAndMakesTheFoldersTheZipImplies()
     {
-        using ZipSource zip = MakeZip(("mod.xml", "<Mod/>"), ("scripts/ui/main.luau", "print(1)"), ("scripts/util.luau", "return 1"));
+        using ZipSource zip = MakeZip(("mod.wmod", "<Mod/>"), ("scripts/ui/main.luau", "print(1)"), ("scripts/util.luau", "return 1"));
 
-        Assert.Equal(FileKind.File, zip.Kind("mod.xml"));
+        Assert.Equal(FileKind.File, zip.Kind("mod.wmod"));
         Assert.Equal(FileKind.Directory, zip.Kind("scripts"));
         Assert.Equal(FileKind.Directory, zip.Kind("scripts/ui"));
         Assert.Equal(FileKind.None, zip.Kind("scripts/missing"));
         Assert.Equal("print(1)", Encoding.UTF8.GetString(zip.ReadAllBytes("scripts/ui/main.luau")));
-        using (var reader = new StreamReader(zip.OpenRead("mod.xml")))
+        using (var reader = new StreamReader(zip.OpenRead("mod.wmod")))
         {
             Assert.Equal("<Mod/>", reader.ReadToEnd());
         }
@@ -541,22 +541,22 @@ public class VirtualFileSystemTests
     {
         using var alpha = new TempFolder();
         using var beta = new TempFolder();
-        alpha.Write("mod.xml", "a");
-        beta.Write("mod.xml", "b");
+        alpha.Write("mod.wmod", "a");
+        beta.Write("mod.wmod", "b");
         beta.Write("scripts/main.luau", "return 1");
         var vfs = new VirtualFileSystem();
         vfs.Mount("mod://alpha", new DirectorySource(alpha.Root));
         vfs.Mount("mod://beta", new DirectorySource(beta.Root));
 
-        Assert.Equal("a", vfs.ReadAllText("mod://alpha/mod.xml"));
-        Assert.Equal("b", vfs.ReadAllText("mod://beta/mod.xml"));
+        Assert.Equal("a", vfs.ReadAllText("mod://alpha/mod.wmod"));
+        Assert.Equal("b", vfs.ReadAllText("mod://beta/mod.wmod"));
         Assert.Equal("return 1", vfs.ReadAllText("mod://beta/scripts/main.luau"));
         Assert.True(vfs.DirectoryExists("mod://"));
         Assert.True(vfs.DirectoryExists("mod://alpha"));
         Assert.Equal(["mod://alpha", "mod://beta"], vfs.EnumerateDirectories("mod://"));
-        Assert.Equal(["mod://alpha/mod.xml"], vfs.EnumerateFiles("mod://alpha"));
+        Assert.Equal(["mod://alpha/mod.wmod"], vfs.EnumerateFiles("mod://alpha"));
         Assert.False(vfs.Exists("mod://gamma"));
-        Assert.False(vfs.Exists("res://mod.xml")); // nothing is mounted at res://
+        Assert.False(vfs.Exists("res://mod.wmod")); // nothing is mounted at res://
     }
 
     [Fact]

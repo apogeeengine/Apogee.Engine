@@ -25,7 +25,7 @@ public class MacPackagingTests
     /// <summary>A game folder with a manifest and a <paramref name="iconSize"/> pixel icon, and a published runtime for <paramref name="target"/> whose program is <paramref name="program"/>.</summary>
     private static (string Game, string Runtime) Make(Scratch scratch, ExportTarget target, byte[] program, int iconSize = 256)
     {
-        scratch.Write("game/game.xml", GameXml);
+        scratch.Write("game/game.wgam", GameXml);
         scratch.Write("game/icon.png", Png.Encode(iconSize, iconSize, Enumerable.Repeat((byte)200, iconSize * iconSize * 4).ToArray()));
         scratch.Write("game/main.luau", "print('hi')");
         string runtime = FakeRuntime.Make(scratch, target);
@@ -42,7 +42,7 @@ public class MacPackagingTests
     private static PlatformPackagingContext ContextFor(Scratch scratch, ExportTarget target, byte[] program, byte[]? icon = null)
     {
         string output = scratch.Path("out");
-        Assert.True(GameManifest.TryParse(GameXml, "game.xml", out GameManifest? manifest, out _));
+        Assert.True(GameManifest.TryParse(GameXml, "game.wgam", out GameManifest? manifest, out _));
         ExportLayout layout = ExportLayout.For(target, manifest!, output);
         Directory.CreateDirectory(layout.GameRoot);
         Directory.CreateDirectory(layout.ExecutableDirectory);
@@ -75,15 +75,15 @@ public class MacPackagingTests
                 "Fixture Game.app/Contents/MacOS/Shaders/imported/x.spv",
                 "Fixture Game.app/Contents/MacOS/libflecs.dylib",
                 "Fixture Game.app/Contents/PkgInfo",
-                "Fixture Game.app/Contents/Resources/data/game.pack",
+                "Fixture Game.app/Contents/Resources/data/game.wpak",
                 "Fixture Game.app/Contents/Resources/game.icns",
-                "Fixture Game.app/Contents/Resources/game.xml",
+                "Fixture Game.app/Contents/Resources/game.wgam",
             ],
             result.Files);
         Assert.Equal("APPL????", File.ReadAllText(Path.Combine(contents, "PkgInfo")));
         Assert.Contains("<key>CFBundleIconFile</key>", File.ReadAllText(Path.Combine(contents, "Info.plist")), StringComparison.Ordinal);
 
-        // The bundle holds the icon, so the exported game.xml names none (the runtime draws no window icon on macOS, the bundle's is the app's).
+        // The bundle holds the icon, so the exported game.wgam names none (the runtime draws no window icon on macOS, the bundle's is the app's).
         GameManifest exported = GameManifest.Load(result.GameRoot, out IReadOnlyList<string> problems)!;
         Assert.Empty(problems);
         Assert.Null(exported.Icon);

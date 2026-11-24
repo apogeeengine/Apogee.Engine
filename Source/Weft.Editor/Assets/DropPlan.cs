@@ -15,7 +15,7 @@ public enum ClashPolicy
     /// <summary>The dropped file gets a free name (<c>car 2.glb</c>); a model with files of its own goes into a new folder. Nothing that exists is touched. The default.</summary>
     KeepBoth,
 
-    /// <summary>The dropped file replaces the one in the project. Only when the user chose it, and only for a file (never a folder); the project's own <c>.import.xml</c> stays, so the asset keeps its UID.</summary>
+    /// <summary>The dropped file replaces the one in the project. Only when the user chose it, and only for a file (never a folder); the project's own <c>.wimp</c> stays, so the asset keeps its UID.</summary>
     Replace,
 
     /// <summary>The dropped file is left out.</summary>
@@ -42,7 +42,7 @@ public interface IDropTargets
 /// <param name="Source">The file on the disk (a full operating system path).</param>
 /// <param name="Target">Where it goes: a virtual path under <c>res://</c>.</param>
 /// <param name="IsImportable">An importer takes it and it is not part of another file: the job imports it after the copy.</param>
-/// <param name="IsCompanion">It comes with another file (a glTF's buffers and images, a file's <c>.import.xml</c>): it is copied, and not imported on its own.</param>
+/// <param name="IsCompanion">It comes with another file (a glTF's buffers and images, a file's <c>.wimp</c>): it is copied, and not imported on its own.</param>
 /// <param name="Replaces">It overwrites a file the project has (the user chose <see cref="ClashPolicy.Replace"/>).</param>
 /// <param name="Length">Its size in bytes when the plan was made.</param>
 public sealed record PlannedFile(string Source, string Target, bool IsImportable, bool IsCompanion, bool Replaces, long Length);
@@ -57,7 +57,7 @@ public sealed record RefusedFile(string Path, string Reason);
 /// <item>Files go into the target folder, a dropped folder is recreated under it. Only the target folder's own root, <c>res://</c> and writable, is accepted: never a package's folder or a pack.</item>
 /// <item>Only files the game uses are taken: what an importer takes (models, images, shaders), scenes and prefabs, and a short list of plain files (scripts, definitions, sounds, fonts, UI documents). Anything else is refused by name.</item>
 /// <item>A name the project cannot use (see <see cref="VfsPath.IsValidSegment"/>: a colon, a Windows device name, a trailing dot), a hidden file, a link (symbolic link or junction), an empty file, a file over <see cref="MaxFileBytes"/> or one that pushes the drop over <see cref="MaxTotalBytes"/> is refused. The target path is made only of validated names, so no dropped name can climb out of the folder.</item>
-/// <item>A glTF brings the files its <c>uri</c>s name (beside it or below it, never above); one that names a missing file, an absolute path or a path that climbs is refused whole. A file's <c>.import.xml</c> beside it comes along.</item>
+/// <item>A glTF brings the files its <c>uri</c>s name (beside it or below it, never above); one that names a missing file, an absolute path or a path that climbs is refused whole. A file's <c>.wimp</c> beside it comes along.</item>
 /// <item>A name the project already has is never overwritten unless <see cref="ClashPolicy.Replace"/> was chosen (see there).</item>
 /// <item>A folder drop reads at most <see cref="MaxFiles"/> files and <see cref="MaxDepth"/> levels.</item>
 /// </list>
@@ -79,7 +79,7 @@ public sealed class DropPlan
     // A .gltf is text. One bigger than this is a mistake or has its data embedded: the .glb form is the one for that.
     private const long MaxGltfBytes = 64L * 1024 * 1024;
 
-    private static readonly string[] s_plainExtensions = [".luau", ".xml", ".wav", ".ogg", ".flac", ".mp3", ".ttf", ".otf", ".rml", ".rcss"];
+    private static readonly string[] s_plainExtensions = [".luau", ".xml", ".wgam", ".wmod", ".wav", ".ogg", ".flac", ".mp3", ".ttf", ".otf", ".rml", ".rcss"];
 
     private static readonly string[] s_companionExtensions = [".bin", ".png", ".jpg", ".jpeg"];
 
@@ -363,7 +363,7 @@ public sealed class DropPlan
 
         private static bool IsGltf(string path) => path.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>A file that is not a glTF: itself, and its <c>.import.xml</c> when it has one beside it.</summary>
+        /// <summary>A file that is not a glTF: itself, and its <c>.wimp</c> when it has one beside it.</summary>
         private Unit? Single(string source, string folder)
         {
             string name = Path.GetFileName(source);

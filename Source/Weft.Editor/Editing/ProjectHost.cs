@@ -25,7 +25,7 @@ public sealed class ProjectHost : IDisposable
     /// <summary>Raised with the new project once it is open (also when a project that failed to open is replaced by the one that was open before).</summary>
     public event Action<EditorProject>? Opened;
 
-    /// <summary>Why <paramref name="folder"/> cannot be taken for a game folder, or null when it can: it has to exist and hold a <c>game.xml</c> or a <c>packages</c> folder. Opening anything else would close the open project for nothing.</summary>
+    /// <summary>Why <paramref name="folder"/> cannot be taken for a game folder, or null when it can: it has to exist and hold a <c>game.wgam</c> or a <c>packages</c> folder. Opening anything else would close the open project for nothing.</summary>
     public static string? CheckGameFolder(string folder)
     {
         ArgumentNullException.ThrowIfNull(folder);
@@ -44,7 +44,7 @@ public sealed class ProjectHost : IDisposable
 
     /// <summary>
     /// Closes the open project (its session is disposed) and opens the game folder <paramref name="folder"/>. <paramref name="userFolder"/> is the <c>--user</c> folder of the command line, for the folder the
-    /// editor was started with; a project chosen later passes null and gets its own default (what <c>game.xml</c> says), so two games never share a <c>user://</c>. When the folder cannot be opened (no such folder, a
+    /// editor was started with; a project chosen later passes null and gets its own default (what <c>game.wgam</c> says), so two games never share a <c>user://</c>. When the folder cannot be opened (no such folder, a
     /// game that fails to start) the previous project is opened again with the user folder it had, and the reason is in <paramref name="error"/>; with no previous project (or one that does not reopen either) the host ends
     /// with none. Unsaved changes are the caller's to ask about before: they are lost here.
     /// </summary>

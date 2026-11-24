@@ -8,7 +8,7 @@ using Weft.Core.Logging;
 namespace Weft.Steam;
 
 /// <summary>
-/// The Workshop items Steam installed, as a folder of mod folders for the package finder: each is listed under the id its <c>mod.xml</c> gives (a package's id is the name of its folder), and
+/// The Workshop items Steam installed, as a folder of mod folders for the package finder: each is listed under the id its <c>mod.wmod</c> gives (a package's id is the name of its folder), and
 /// the files are Steam's own, read-only, where Steam put them. The list is made when the game starts, so an item installed later is found at the next start.
 /// </summary>
 public sealed class WorkshopSource : IFileSource
@@ -20,10 +20,10 @@ public sealed class WorkshopSource : IFileSource
     {
         foreach ((string item, string folder) in items)
         {
-            string? id = ReadId(Path.Combine(folder, "mod.xml"));
+            string? id = ReadId(Path.Combine(folder, "mod.wmod"));
             if (id is null)
             {
-                Log.Warn("Steam", $"Workshop item {item} ({folder}) has no mod.xml with an id: it is not a mod.");
+                Log.Warn("Steam", $"Workshop item {item} ({folder}) has no mod.wmod with an id: it is not a mod.");
             }
             else if (!_mods.TryAdd(id, new DirectorySource(folder)))
             {

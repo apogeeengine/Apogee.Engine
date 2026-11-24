@@ -71,7 +71,7 @@ public class OptionsTests
         sized.ApplyWindow(window);
         Assert.Equal((640, 360, true, false), (sized.Width, sized.Height, sized.Fullscreen, sized.Resizable));
 
-        // Without a game.xml the window is as it always was.
+        // Without a game.wgam the window is as it always was.
         RuntimeOptions none = Parse();
         Assert.Equal((1280, 720, false, true), (none.Width, none.Height, none.Fullscreen, none.Resizable));
     }
@@ -144,9 +144,9 @@ public class OptionsTests
     [Fact]
     public void PackingTakesAFolderAnOutputAndItsOptions()
     {
-        RuntimeOptions pack = Parse("--pack", "Content", "data/game.pack", "--split-mb", "64", "--level", "15", "--base", "a.pack", "--base", "b.pack");
-        Assert.Equal((RuntimeCommand.Pack, "Content", "data/game.pack", 64L, 15), (pack.Command, pack.Path, pack.Output, pack.SplitMegabytes, pack.Level));
-        Assert.Equal(["a.pack", "b.pack"], pack.Bases);
+        RuntimeOptions pack = Parse("--pack", "Content", "data/game.wpak", "--split-mb", "64", "--level", "15", "--base", "a.wpak", "--base", "b.wpak");
+        Assert.Equal((RuntimeCommand.Pack, "Content", "data/game.wpak", 64L, 15), (pack.Command, pack.Path, pack.Output, pack.SplitMegabytes, pack.Level));
+        Assert.Equal(["a.wpak", "b.wpak"], pack.Bases);
         Assert.Equal("--pack needs a folder and the pack file to write.", Fail("--pack", "Content"));
         Assert.Equal("--level expects 1 to 22, not '30'.", Fail("--pack", "a", "b", "--level", "30"));
         Assert.Equal("--split-mb expects a number of megabytes, not '0'.", Fail("--pack", "a", "b", "--split-mb", "0"));
@@ -218,7 +218,7 @@ public class CommandTests
     private static void Game(Scratch scratch, string id, string manifestInner, bool user, params (string Path, string Text)[] files)
     {
         string folder = user ? $"user/mods/{id}" : $"game/packages/{id}";
-        scratch.Write($"{folder}/mod.xml", $"<Mod id=\"{id}\" version=\"1.0.0\">{manifestInner}</Mod>");
+        scratch.Write($"{folder}/mod.wmod", $"<Mod id=\"{id}\" version=\"1.0.0\">{manifestInner}</Mod>");
         foreach ((string path, string text) in files)
         {
             scratch.Write($"{folder}/{path}", text);
@@ -286,7 +286,7 @@ public class CommandTests
         using var scratch = new Scratch();
         var uid = Weft.Core.Assets.AssetUid.New();
         scratch.Write("game/models/thing.glb", "stands in for a model: loading one only needs the file");
-        scratch.Write("game/models/thing.glb.import.xml", $"<Import uid=\"{uid}\"/>");
+        scratch.Write("game/models/thing.glb.wimp", $"<Import uid=\"{uid}\"/>");
         Game(scratch, "scene", "<Script path=\"main.luau\"/>", user: false, ("main.luau", $$"""
             local ModelRenderer = world:component("ModelRenderer")
             local id = models:load("res://models/thing.glb")
@@ -315,7 +315,7 @@ public class CommandTests
 
         Directory.CreateDirectory(System.IO.Path.Combine(game, "props"));
         File.Move(System.IO.Path.Combine(game, "models", "thing.glb"), System.IO.Path.Combine(game, "props", "vehicle.glb"));
-        File.Move(System.IO.Path.Combine(game, "models", "thing.glb.import.xml"), System.IO.Path.Combine(game, "props", "vehicle.glb.import.xml"));
+        File.Move(System.IO.Path.Combine(game, "models", "thing.glb.wimp"), System.IO.Path.Combine(game, "props", "vehicle.glb.wimp"));
         Directory.Delete(System.IO.Path.Combine(game, "packages", "scene"), recursive: true);
         Game(scratch, "check", "<Script path=\"main.luau\"/>", user: false, ("main.luau", """
             local ModelRenderer = world:component("ModelRenderer")
@@ -333,8 +333,8 @@ public class CommandTests
         using var scratch = new Scratch();
         var modelUid = Weft.Core.Assets.AssetUid.New();
         scratch.Write("game/models/thing.glb", "stands in for a model: loading one only needs the file");
-        scratch.Write("game/models/thing.glb.import.xml", $"<Import uid=\"{modelUid}\"/>");
-        scratch.Write("game/scenes/level.ascene", $"""
+        scratch.Write("game/models/thing.glb.wimp", $"<Import uid=\"{modelUid}\"/>");
+        scratch.Write("game/scenes/level.wscn", $"""
             <?xml version="1.0" encoding="utf-8"?>
             <Scene version="1">
               <Entity id="1" name="thing"><ModelRenderer Model="res://models/thing.glb|{modelUid}"/></Entity>
@@ -345,18 +345,18 @@ public class CommandTests
 
         // The import gives the scene its UID (it fails on the stand-in model, which is no glTF: that does not stop the UIDs).
         Assert.Equal(2, Commands.Import(Options("--import", game)));
-        Weft.Core.Assets.AssetUid sceneUid = Weft.Content.Assets.AuthoredAssets.ReadUid(File.ReadAllBytes(System.IO.Path.Combine(game, "scenes", "level.ascene")));
+        Weft.Core.Assets.AssetUid sceneUid = Weft.Content.Assets.AuthoredAssets.ReadUid(File.ReadAllBytes(System.IO.Path.Combine(game, "scenes", "level.wscn")));
         Assert.False(sceneUid.IsNone);
 
         // The scene and the model are both renamed and moved: nothing at the old paths, only the UIDs lead on.
         Directory.CreateDirectory(System.IO.Path.Combine(game, "props"));
         Directory.CreateDirectory(System.IO.Path.Combine(game, "levels"));
         File.Move(System.IO.Path.Combine(game, "models", "thing.glb"), System.IO.Path.Combine(game, "props", "vehicle.glb"));
-        File.Move(System.IO.Path.Combine(game, "models", "thing.glb.import.xml"), System.IO.Path.Combine(game, "props", "vehicle.glb.import.xml"));
-        File.Move(System.IO.Path.Combine(game, "scenes", "level.ascene"), System.IO.Path.Combine(game, "levels", "first.ascene"));
+        File.Move(System.IO.Path.Combine(game, "models", "thing.glb.wimp"), System.IO.Path.Combine(game, "props", "vehicle.glb.wimp"));
+        File.Move(System.IO.Path.Combine(game, "scenes", "level.wscn"), System.IO.Path.Combine(game, "levels", "first.wscn"));
         Game(scratch, "check", "<Script path=\"main.luau\"/>", user: false, ("main.luau", $$"""
             local ModelRenderer = world:component("ModelRenderer")
-            assert(not pcall(function() world:load_scene_file("res://scenes/level.ascene") end), "the old path leads nowhere")
+            assert(not pcall(function() world:load_scene_file("res://scenes/level.wscn") end), "the old path leads nowhere")
             assert(not pcall(function() world:load_scene_file("uid://0000000000zzz") end), "an unknown uid is an error")
             local made = world:load_scene_file("{{sceneUid}}")
             local model = world:get(world:lookup("thing"), ModelRenderer).Model
@@ -371,7 +371,7 @@ public class CommandTests
     public void AGameInstantiatesAPrefabFromLuau()
     {
         using var scratch = new Scratch();
-        scratch.Write("game/prefabs/lamp.aprefab", """
+        scratch.Write("game/prefabs/lamp.wprf", """
             <?xml version="1.0" encoding="utf-8"?>
             <Prefab version="1" nextId="4">
               <Entity id="1" name="Lamp">
@@ -386,14 +386,14 @@ public class CommandTests
 
         // The import gives the prefab its UID: it is authored, so it has no sidecar.
         Assert.Equal(0, Commands.Import(Options("--import", game)));
-        Weft.Core.Assets.AssetUid uid = Weft.Content.Assets.AuthoredAssets.ReadUid(File.ReadAllBytes(System.IO.Path.Combine(game, "prefabs", "lamp.aprefab")));
+        Weft.Core.Assets.AssetUid uid = Weft.Content.Assets.AuthoredAssets.ReadUid(File.ReadAllBytes(System.IO.Path.Combine(game, "prefabs", "lamp.wprf")));
         Assert.False(uid.IsNone);
         Game(scratch, "check", "<Script path=\"main.luau\"/>", user: false, ("main.luau", $$"""
-            assert(not pcall(function() world:instantiate("res://prefabs/none.aprefab") end), "a missing prefab is an error")
+            assert(not pcall(function() world:instantiate("res://prefabs/none.wprf") end), "a missing prefab is an error")
             assert(not pcall(function() world:instantiate("uid://4k2m9x7q1w3ze") end), "an unknown uid is an error")
             local lamp = world:instantiate("{{uid}}")
-            local again = world:instantiate("res://prefabs/lamp.aprefab", lamp)
-            fs.write_text("user://prefab.txt", #world:children(lamp) .. " " .. tostring(world:prefab_of(lamp) == "res://prefabs/lamp.aprefab|{{uid}}") .. " " .. tostring(world:prefab_of(world:children(lamp)[1])) .. " " .. #world:children(again))
+            local again = world:instantiate("res://prefabs/lamp.wprf", lamp)
+            fs.write_text("user://prefab.txt", #world:children(lamp) .. " " .. tostring(world:prefab_of(lamp) == "res://prefabs/lamp.wprf|{{uid}}") .. " " .. tostring(world:prefab_of(world:children(lamp)[1])) .. " " .. #world:children(again))
             """));
 
         Assert.Equal(0, Commands.Run(Options("--game", game, "--user", user, "--headless", "--frames", "1")));
@@ -438,9 +438,9 @@ public class CommandTests
     {
         string data = System.IO.Path.Combine(scratch.Root, "game", "data");
         Directory.CreateDirectory(data);
-        using (var writer = new Weft.Content.Packs.PackWriter(System.IO.Path.Combine(data, "game.pack"), new Weft.Content.Packs.PackWriterOptions { Key = key }))
+        using (var writer = new Weft.Content.Packs.PackWriter(System.IO.Path.Combine(data, "game.wpak"), new Weft.Content.Packs.PackWriterOptions { Key = key }))
         {
-            writer.Add("packages/core/mod.xml", System.Text.Encoding.UTF8.GetBytes("<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>"));
+            writer.Add("packages/core/mod.wmod", System.Text.Encoding.UTF8.GetBytes("<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>"));
             writer.Add("packages/core/main.luau", System.Text.Encoding.UTF8.GetBytes($"fs.write_text('user://report.txt', '{reportText}')"));
             writer.Finish();
         }
@@ -458,7 +458,7 @@ public class CommandTests
         Assert.Equal(0, Commands.Run(Options("--game", game, "--user", user, "--headless")));
         Assert.Equal("from the base pack", File.ReadAllText(System.IO.Path.Combine(user, "report.txt")));
 
-        using (var patch = new Weft.Content.Packs.PackWriter(System.IO.Path.Combine(game, "data", "patch.pack")))
+        using (var patch = new Weft.Content.Packs.PackWriter(System.IO.Path.Combine(game, "data", "patch.wpak")))
         {
             patch.Add("packages/core/main.luau", "fs.write_text('user://report.txt', 'from the patch pack')"u8.ToArray());
             patch.Finish();
@@ -472,23 +472,23 @@ public class CommandTests
     public void AFolderIsPackedAndAPatchPackHoldsOnlyWhatChanged()
     {
         using var scratch = new Scratch();
-        scratch.Write("src/packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        scratch.Write("src/packages/core/mod.wmod", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
         scratch.Write("src/packages/core/main.luau", "fs.write_text('user://report.txt', 'version one')");
         scratch.Write("src/packages/core/old.txt", "to be removed");
         scratch.Write("src/.hidden/secret.txt", "left out");
         string data = System.IO.Path.Combine(scratch.Root, "game", "data");
         string user = System.IO.Path.Combine(scratch.Root, "user");
 
-        Assert.Equal(0, Commands.Pack(Options("--pack", System.IO.Path.Combine(scratch.Root, "src"), System.IO.Path.Combine(data, "game.pack"))));
-        using (var pack = Weft.Content.Packs.PackSource.Open(System.IO.Path.Combine(data, "game.pack")))
+        Assert.Equal(0, Commands.Pack(Options("--pack", System.IO.Path.Combine(scratch.Root, "src"), System.IO.Path.Combine(data, "game.wpak"))));
+        using (var pack = Weft.Content.Packs.PackSource.Open(System.IO.Path.Combine(data, "game.wpak")))
         {
             Assert.Equal(3, pack.FileCount);
         }
 
         File.WriteAllText(System.IO.Path.Combine(scratch.Root, "src", "packages", "core", "main.luau"), "fs.write_text('user://report.txt', 'version two')");
         File.Delete(System.IO.Path.Combine(scratch.Root, "src", "packages", "core", "old.txt"));
-        Assert.Equal(0, Commands.Pack(Options("--pack", System.IO.Path.Combine(scratch.Root, "src"), System.IO.Path.Combine(data, "patch.pack"), "--base", System.IO.Path.Combine(data, "game.pack"))));
-        using (var patch = Weft.Content.Packs.PackSource.Open(System.IO.Path.Combine(data, "patch.pack")))
+        Assert.Equal(0, Commands.Pack(Options("--pack", System.IO.Path.Combine(scratch.Root, "src"), System.IO.Path.Combine(data, "patch.wpak"), "--base", System.IO.Path.Combine(data, "game.wpak"))));
+        using (var patch = Weft.Content.Packs.PackSource.Open(System.IO.Path.Combine(data, "patch.wpak")))
         {
             Assert.Equal(1, patch.FileCount); // only main.luau changed
             Assert.Equal(Weft.Content.FileSystem.FileKind.Removed, ((Weft.Content.FileSystem.IFileSource)patch).Kind("packages/core/old.txt"));
@@ -496,7 +496,7 @@ public class CommandTests
 
         Assert.Equal(0, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", user, "--headless")));
         Assert.Equal("version two", File.ReadAllText(System.IO.Path.Combine(user, "report.txt")));
-        Assert.Equal(1, Commands.Pack(Options("--pack", System.IO.Path.Combine(scratch.Root, "nope"), System.IO.Path.Combine(data, "x.pack"))));
+        Assert.Equal(1, Commands.Pack(Options("--pack", System.IO.Path.Combine(scratch.Root, "nope"), System.IO.Path.Combine(data, "x.wpak"))));
     }
 
     [Fact]
@@ -509,7 +509,7 @@ public class CommandTests
         File.WriteAllBytes(System.IO.Path.Combine(scratch.Root, "src", "textures", "ground.png"), Weft.Content.Png.Encode(16, 16, rgba));
         scratch.Write("src/readme.txt", "kept");
         string src = System.IO.Path.Combine(scratch.Root, "src");
-        string pack = System.IO.Path.Combine(scratch.Root, "out", "game.pack");
+        string pack = System.IO.Path.Combine(scratch.Root, "out", "game.wpak");
 
         Assert.Equal(1, Commands.Pack(Options("--pack", src, pack, "--cooked"))); // nothing imported yet
         Assert.Equal(0, Commands.Import(Options("--import", src)));
@@ -537,9 +537,9 @@ public class CommandTests
         byte[] rgba = new byte[16 * 16 * 4];
         Directory.CreateDirectory(System.IO.Path.Combine(scratch.Root, "src", "textures"));
         File.WriteAllBytes(System.IO.Path.Combine(scratch.Root, "src", "textures", "ground.png"), Weft.Content.Png.Encode(16, 16, rgba));
-        scratch.Write("src/scenes/start.ascene", "<Scene version=\"1\"><Entity id=\"1\" name=\"ground\"/></Scene>");
+        scratch.Write("src/scenes/start.wscn", "<Scene version=\"1\"><Entity id=\"1\" name=\"ground\"/></Scene>");
         string src = System.IO.Path.Combine(scratch.Root, "src");
-        string pack = System.IO.Path.Combine(scratch.Root, "out", "game.pack");
+        string pack = System.IO.Path.Combine(scratch.Root, "out", "game.wpak");
 
         Assert.Equal(0, Commands.Import(Options("--import", src)));
         Assert.Equal(0, Commands.Pack(Options("--pack", src, pack, "--cooked")));
@@ -547,9 +547,9 @@ public class CommandTests
         using var packed = Weft.Content.Packs.PackSource.Open(pack);
         var files = new Weft.Content.FileSystem.VirtualFileSystem();
         files.Mount("res://", packed);
-        Assert.True(Weft.Content.Xml.XmlBinary.IsBinary(files.ReadAllBytes("res://scenes/start.ascene")));
-        Assert.Equal("ground", Weft.Content.Xml.XmlFile.Read(files, "res://scenes/start.ascene").Children[0].Attribute("name"));
-        Assert.NotEqual(Weft.Core.Assets.AssetUid.None, Weft.Content.Assets.AuthoredAssets.ReadUid(files.ReadAllBytes("res://scenes/start.ascene")));
+        Assert.True(Weft.Content.Xml.XmlBinary.IsBinary(files.ReadAllBytes("res://scenes/start.wscn")));
+        Assert.Equal("ground", Weft.Content.Xml.XmlFile.Read(files, "res://scenes/start.wscn").Children[0].Attribute("name"));
+        Assert.NotEqual(Weft.Core.Assets.AssetUid.None, Weft.Content.Assets.AuthoredAssets.ReadUid(files.ReadAllBytes("res://scenes/start.wscn")));
     }
 
     private static string FixtureFolder(string name)
@@ -605,8 +605,8 @@ public class CommandTests
         // Import, pack cooked and encrypted, and ship only the pack with the manifest.
         string shipped = System.IO.Path.Combine(scratch.Root, "shipped");
         Directory.CreateDirectory(System.IO.Path.Combine(shipped, "data"));
-        File.Copy(System.IO.Path.Combine(game, "game.xml"), System.IO.Path.Combine(shipped, "game.xml"));
-        string pack = System.IO.Path.Combine(shipped, "data", "game.pack");
+        File.Copy(System.IO.Path.Combine(game, "game.wgam"), System.IO.Path.Combine(shipped, "game.wgam"));
+        string pack = System.IO.Path.Combine(shipped, "data", "game.wpak");
         string? before = Environment.GetEnvironmentVariable("WEFT_PACK_KEY");
         try
         {
@@ -625,17 +625,17 @@ public class CommandTests
         {
             var files = new Weft.Content.FileSystem.VirtualFileSystem();
             files.Mount("res://", packed);
-            string[] cooked = ["res://packages/core/scenes/start.ascene", "res://packages/core/prefabs/crate.aprefab", "res://packages/core/prefabs/lid.aprefab", "res://packages/core/data/crates.xml", "res://imported/assets.xml"];
+            string[] cooked = ["res://packages/core/scenes/start.wscn", "res://packages/core/prefabs/crate.wprf", "res://packages/core/prefabs/lid.wprf", "res://packages/core/data/crates.xml", "res://imported/assets.xml"];
             foreach (string path in files.EnumerateFiles("res://", recursive: true))
             {
-                bool isDocument = path.EndsWith(".ascene", StringComparison.Ordinal) || path.EndsWith(".aprefab", StringComparison.Ordinal) || (path.StartsWith("res://packages/core/data/", StringComparison.Ordinal) && path.EndsWith(".xml", StringComparison.Ordinal));
+                bool isDocument = path.EndsWith(".wscn", StringComparison.Ordinal) || path.EndsWith(".wprf", StringComparison.Ordinal) || (path.StartsWith("res://packages/core/data/", StringComparison.Ordinal) && path.EndsWith(".xml", StringComparison.Ordinal));
                 Assert.Equal(isDocument || path == "res://imported/assets.xml", Weft.Content.Xml.XmlBinary.IsBinary(files.ReadAllBytes(path)));
             }
 
             Assert.All(cooked, path => Assert.True(Weft.Content.Xml.XmlBinary.IsBinary(files.ReadAllBytes(path)), path));
-            Assert.StartsWith("<Mod ", files.ReadAllText("res://packages/core/mod.xml"), StringComparison.Ordinal);
+            Assert.StartsWith("<Mod ", files.ReadAllText("res://packages/core/mod.wmod"), StringComparison.Ordinal);
             Assert.StartsWith("<rml>", files.ReadAllText("res://packages/core/ui/fixture.rml"), StringComparison.Ordinal);
-            Assert.StartsWith("<Mod ", files.ReadAllText("res://dev_mods/patcher/mod.xml"), StringComparison.Ordinal);
+            Assert.StartsWith("<Mod ", files.ReadAllText("res://dev_mods/patcher/mod.wmod"), StringComparison.Ordinal);
             Assert.False(files.FileExists("res://icon.png")); // the source of an imported asset is not in a cooked pack
         }
 
@@ -666,8 +666,8 @@ public class CommandTests
         // Import and pack cooked (the import gives a prefab its UID; the fixture's have one already), then ship the pack with the manifest alone: the game's sources are deleted.
         string shipped = System.IO.Path.Combine(scratch.Root, "shipped");
         Directory.CreateDirectory(System.IO.Path.Combine(shipped, "data"));
-        File.Copy(System.IO.Path.Combine(game, "game.xml"), System.IO.Path.Combine(shipped, "game.xml"));
-        string pack = System.IO.Path.Combine(shipped, "data", "game.pack");
+        File.Copy(System.IO.Path.Combine(game, "game.wgam"), System.IO.Path.Combine(shipped, "game.wgam"));
+        string pack = System.IO.Path.Combine(shipped, "data", "game.wpak");
         Assert.Equal(0, Commands.Import(Options("--import", game)));
         Assert.Equal(0, Commands.Pack(Options("--pack", game, pack, "--cooked")));
         Directory.Delete(game, recursive: true);
@@ -677,17 +677,17 @@ public class CommandTests
         {
             var files = new Weft.Content.FileSystem.VirtualFileSystem();
             files.Mount("res://", packed);
-            foreach (string path in new[] { "res://packages/core/prefabs/crate.aprefab", "res://packages/core/prefabs/lid.aprefab" })
+            foreach (string path in new[] { "res://packages/core/prefabs/crate.wprf", "res://packages/core/prefabs/lid.wprf" })
             {
                 byte[] bytes = files.ReadAllBytes(path);
                 Assert.True(Weft.Content.Xml.XmlBinary.IsBinary(bytes), path);
-                Assert.Equal("APXB", System.Text.Encoding.ASCII.GetString(bytes, 0, 4));
+                Assert.Equal("WXMB", System.Text.Encoding.ASCII.GetString(bytes, 0, 4));
                 Assert.NotEqual(Weft.Core.Assets.AssetUid.None, Weft.Content.Assets.AuthoredAssets.ReadUid(bytes));
             }
 
-            Weft.Content.Xml.XmlNode crate = Weft.Content.Xml.XmlFile.Read(files, "res://packages/core/prefabs/crate.aprefab");
+            Weft.Content.Xml.XmlNode crate = Weft.Content.Xml.XmlFile.Read(files, "res://packages/core/prefabs/crate.wprf");
             Assert.Equal("Prefab", crate.Name);
-            Assert.Equal("mod://core/prefabs/lid.aprefab|uid://4n6v1c8t2m7zh", crate.Children.First(c => c.Name == "Entity").Children.First(c => c.Name == "Entity").Attribute("prefab"));
+            Assert.Equal("mod://core/prefabs/lid.wprf|uid://4n6v1c8t2m7zh", crate.Children.First(c => c.Name == "Entity").Children.First(c => c.Name == "Entity").Attribute("prefab"));
         }
 
         // The cooked game, from the pack alone, makes the same entities.
@@ -701,19 +701,19 @@ public class CommandTests
         Weft.Native.Tests.NativeRequirements.Require(typeof(Weft.Native.Slang.Slang).Assembly, "slang_c");
         using var scratch = new Scratch();
         string src = System.IO.Path.Combine(scratch.Root, "src");
-        string pack = System.IO.Path.Combine(scratch.Root, "out", "game.pack");
+        string pack = System.IO.Path.Combine(scratch.Root, "out", "game.wpak");
         scratch.Write("src/shaders/library.slang", "float scale() { return 2.0; }\n");
         scratch.Write("src/shaders/run.slang", "import library;\nRWStructuredBuffer<float> output;\n[shader(\"compute\")] [numthreads(8, 1, 1)]\nvoid run(uint3 id : SV_DispatchThreadID) { output[id.x] = scale(); }\n");
 
         Assert.Equal(0, Commands.Import(Options("--import", src)));
-        Assert.True(File.Exists(System.IO.Path.Combine(src, "imported", "shaders", "run.slang.ashader")));
-        Assert.False(File.Exists(System.IO.Path.Combine(src, "imported", "shaders", "library.slang.ashader")));
+        Assert.True(File.Exists(System.IO.Path.Combine(src, "imported", "shaders", "run.slang.wshd")));
+        Assert.False(File.Exists(System.IO.Path.Combine(src, "imported", "shaders", "library.slang.wshd")));
         Assert.Equal(0, Commands.Pack(Options("--pack", src, pack, "--cooked")));
 
         using var packed = Weft.Content.Packs.PackSource.Open(pack);
         var files = new Weft.Content.FileSystem.VirtualFileSystem();
         files.Mount("res://", packed);
-        Assert.Equal(["res://imported/assets.xml", "res://imported/index.xml", "res://imported/shaders/run.slang.ashader"], files.EnumerateFiles("res://", recursive: true));
+        Assert.Equal(["res://imported/assets.xml", "res://imported/index.xml", "res://imported/shaders/run.slang.wshd"], files.EnumerateFiles("res://", recursive: true));
         var library = new Weft.Rendering.Shaders.ShaderLibrary(files, createCompiler: _ => throw new InvalidOperationException("the compiler was started"));
         Assert.Equal(["run"], library.Load("res://shaders/run.slang").EntryPoints);
     }
@@ -824,7 +824,7 @@ public class CommandTests
     public void AGameKeepsItsSettingsInItsUserFolder()
     {
         using var scratch = new Scratch();
-        scratch.Write("game/game.xml", "<Game name=\"Settled\" organization=\"Test\" version=\"1.0.0\"><Window width=\"1024\" height=\"600\"/></Game>");
+        scratch.Write("game/game.wgam", "<Game name=\"Settled\" organization=\"Test\" version=\"1.0.0\"><Window width=\"1024\" height=\"600\"/></Game>");
         Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", """
             settings:define("game.difficulty", { type = "choice", default = "normal", choices = { "easy", "normal", "hard" } })
             input.map:add_action("jump", { "world" }, { "Space" })
@@ -839,7 +839,7 @@ public class CommandTests
 
         using (ScriptSession first = ScriptSession.StartGame(game, user))
         {
-            Assert.Equal("normal 1024 Space", File.ReadAllText(System.IO.Path.Combine(user, "report.txt"))); // game.xml's window is the default
+            Assert.Equal("normal 1024 Space", File.ReadAllText(System.IO.Path.Combine(user, "report.txt"))); // game.wgam's window is the default
             Assert.Equal(0.4f, first.Audio.Volume);
             Assert.True(first.Settings.IsDirty);
         }
@@ -881,11 +881,11 @@ public class CommandTests
     public void AGameXmlSetsTheGameVersionThatModsAreCheckedAgainst()
     {
         using var scratch = new Scratch();
-        scratch.Write("game/game.xml", "<Game name=\"Versioned\" organization=\"Test\" version=\"1.4.0\"/>");
+        scratch.Write("game/game.wgam", "<Game name=\"Versioned\" organization=\"Test\" version=\"1.4.0\"/>");
         Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "fs.write_text('user://core.txt', 'core')"));
         foreach ((string id, string range) in new[] { ("future", "^2.0"), ("current", "^1.0") })
         {
-            scratch.Write($"user/mods/{id}/mod.xml", $"<Mod id=\"{id}\" version=\"1.0.0\" gameVersion=\"{range}\"><Dependency id=\"core\"/><Script path=\"main.luau\"/></Mod>");
+            scratch.Write($"user/mods/{id}/mod.wmod", $"<Mod id=\"{id}\" version=\"1.0.0\" gameVersion=\"{range}\"><Dependency id=\"core\"/><Script path=\"main.luau\"/></Mod>");
             scratch.Write($"user/mods/{id}/main.luau", $"fs.write_text('user://moddata/{id}/ran.txt', 'ran')");
         }
 
@@ -919,7 +919,7 @@ public class CommandTests
         string folder = System.IO.Path.Combine(scratch.Root, "game");
         Directory.CreateDirectory(folder);
         Weft.Content.Packages.GameManifest WithId(string id) =>
-            Weft.Content.Packages.GameManifest.TryParse($"<Game name=\"a\" organization=\"b\" version=\"1.0.0\"{id}/>", "game.xml", out Weft.Content.Packages.GameManifest? m, out _) ? m! : throw new InvalidOperationException();
+            Weft.Content.Packages.GameManifest.TryParse($"<Game name=\"a\" organization=\"b\" version=\"1.0.0\"{id}/>", "game.wgam", out Weft.Content.Packages.GameManifest? m, out _) ? m! : throw new InvalidOperationException();
 
         Assert.Equal(0u, ScriptSession.SteamAppIdFor(null, folder, out string? warning));
         Assert.Null(warning);
@@ -927,7 +927,7 @@ public class CommandTests
         scratch.Write("game/steam_appid.txt", "1234\n");
         Assert.Equal(1234u, ScriptSession.SteamAppIdFor(null, folder, out warning));
         Assert.Contains("steam_appid.txt", warning, StringComparison.Ordinal);
-        Assert.Contains("game.xml", warning, StringComparison.Ordinal);
+        Assert.Contains("game.wgam", warning, StringComparison.Ordinal);
         Assert.Equal(1234u, ScriptSession.SteamAppIdFor(WithId(""), folder, out warning)); // a manifest that names no app id leaves the file as it was
         Assert.NotNull(warning);
 
@@ -945,10 +945,10 @@ public class CommandTests
         using (var world = new Weft.Ecs.World())
         {
             world.CreateEntity("hero");
-            scratch.Write("game/scenes/main.ascene", world.SaveScene());
+            scratch.Write("game/scenes/main.wscn", world.SaveScene());
         }
 
-        scratch.Write("game/game.xml", "<Game name=\"Scened\" organization=\"Test\" version=\"1.0.0\"><EntryScene path=\"scenes/main.ascene\"/></Game>");
+        scratch.Write("game/game.wgam", "<Game name=\"Scened\" organization=\"Test\" version=\"1.0.0\"><EntryScene path=\"scenes/main.wscn\"/></Game>");
         Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "fs.write_text('user://seen.txt', world:lookup('hero') ~= 0 and 'hero is here' or 'no hero')"));
         string user = System.IO.Path.Combine(scratch.Root, "user");
 
@@ -961,7 +961,7 @@ public class CommandTests
     public void AnEntrySceneThatIsNotThereIsAnErrorOfTheGame()
     {
         using var scratch = new Scratch();
-        scratch.Write("game/game.xml", "<Game name=\"Scened\" organization=\"Test\" version=\"1.0.0\"><EntryScene path=\"scenes/missing.ascene\"/></Game>");
+        scratch.Write("game/game.wgam", "<Game name=\"Scened\" organization=\"Test\" version=\"1.0.0\"><EntryScene path=\"scenes/missing.wscn\"/></Game>");
         Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "fs.write_text('user://ran.txt', 'ran')"));
         string user = System.IO.Path.Combine(scratch.Root, "user");
 
@@ -973,7 +973,7 @@ public class CommandTests
     public void ABrokenGameXmlIsAnErrorOfTheGame()
     {
         using var scratch = new Scratch();
-        scratch.Write("game/game.xml", "<Game name=\"No version\" organization=\"Test\"/>");
+        scratch.Write("game/game.wgam", "<Game name=\"No version\" organization=\"Test\"/>");
         Game(scratch, "core", "<Script path=\"main.luau\"/>", user: false, ("main.luau", "fs.write_text('user://ran.txt', 'ran')"));
         string user = System.IO.Path.Combine(scratch.Root, "user");
 
@@ -981,7 +981,7 @@ public class CommandTests
         Assert.False(File.Exists(System.IO.Path.Combine(user, "ran.txt")));
 
         var thrown = Assert.Throws<Weft.Content.ContentException>(() => ScriptSession.StartGame(System.IO.Path.Combine(scratch.Root, "game"), user));
-        Assert.Contains("game.xml:1:", thrown.Message, StringComparison.Ordinal);
+        Assert.Contains("game.wgam:1:", thrown.Message, StringComparison.Ordinal);
         Assert.Contains("version", thrown.Message, StringComparison.Ordinal);
     }
 
@@ -1009,18 +1009,18 @@ public class CommandTests
     {
         using var scratch = new Scratch();
         string beside = System.IO.Path.Combine(scratch.Root, "beside");
-        scratch.Write("beside/game.xml", "<Game name=\"Beside\" organization=\"Test\" version=\"1.0.0\"/>");
+        scratch.Write("beside/game.wgam", "<Game name=\"Beside\" organization=\"Test\" version=\"1.0.0\"/>");
         // The locator answers with forward slashes on every OS.
         Assert.Equal(Slashes(beside), GameLocator.Find(beside));
         Assert.Equal(Slashes(beside), GameLocator.Find(beside + "/"));
 
         string bundle = System.IO.Path.Combine(scratch.Root, "Beside.app", "Contents");
-        scratch.Write("Beside.app/Contents/Resources/game.xml", "<Game name=\"Bundled\" organization=\"Test\" version=\"1.0.0\"/>");
+        scratch.Write("Beside.app/Contents/Resources/game.wgam", "<Game name=\"Bundled\" organization=\"Test\" version=\"1.0.0\"/>");
         Directory.CreateDirectory(System.IO.Path.Combine(bundle, "MacOS"));
         Assert.Equal(Slashes(System.IO.Path.Combine(bundle, "Resources")), GameLocator.Find(System.IO.Path.Combine(bundle, "MacOS")));
 
         // The program's own folder wins over the bundle's Resources, and a folder with neither has no game.
-        scratch.Write("Beside.app/Contents/MacOS/game.xml", "<Game name=\"Own\" organization=\"Test\" version=\"1.0.0\"/>");
+        scratch.Write("Beside.app/Contents/MacOS/game.wgam", "<Game name=\"Own\" organization=\"Test\" version=\"1.0.0\"/>");
         Assert.Equal(Slashes(System.IO.Path.Combine(bundle, "MacOS")), GameLocator.Find(System.IO.Path.Combine(bundle, "MacOS")));
         Directory.CreateDirectory(System.IO.Path.Combine(scratch.Root, "empty"));
         Assert.Null(GameLocator.Find(System.IO.Path.Combine(scratch.Root, "empty")));
@@ -1029,13 +1029,13 @@ public class CommandTests
     private static string ShippedRoot(Scratch scratch, string gameXml)
     {
         string root = System.IO.Path.Combine(scratch.Root, "shipped");
-        scratch.Write("shipped/game.xml", gameXml);
+        scratch.Write("shipped/game.wgam", gameXml);
         scratch.Write("shipped/secret.txt", "loose, so not part of the game");
-        scratch.Write("shipped/packages/loose/mod.xml", "<Mod id=\"loose\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        scratch.Write("shipped/packages/loose/mod.wmod", "<Mod id=\"loose\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
         scratch.Write("shipped/packages/loose/main.luau", "fs.write_text('user://loose.txt', 'a loose package ran')");
         Directory.CreateDirectory(System.IO.Path.Combine(root, "data"));
-        using var writer = new Weft.Content.Packs.PackWriter(System.IO.Path.Combine(root, "data", "game.pack"));
-        writer.Add("packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>"u8.ToArray());
+        using var writer = new Weft.Content.Packs.PackWriter(System.IO.Path.Combine(root, "data", "game.wpak"));
+        writer.Add("packages/core/mod.wmod", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>"u8.ToArray());
         writer.Add("packages/core/main.luau", System.Text.Encoding.UTF8.GetBytes("""
             local greeting = fs.read_text("res://greeting.txt")
             fs.write_text("user://report.txt", "secret=" .. tostring(fs.exists("res://secret.txt")) .. " greeting=" .. tostring(greeting))
@@ -1090,11 +1090,11 @@ public class CommandTests
     {
         Assert.True(Weft.Export.ExportTarget.TryParse(Weft.Export.ExportTarget.Host.Rid, out _, out _), "the machine running the tests is not a platform the engine exports for");
         using var scratch = new Scratch();
-        scratch.Write("game/game.xml", "<Game name=\"Exported\" organization=\"Test\" version=\"1.0.0\" executable=\"ExportedGame\"/>");
+        scratch.Write("game/game.wgam", "<Game name=\"Exported\" organization=\"Test\" version=\"1.0.0\" executable=\"ExportedGame\"/>");
         scratch.Write("game/secret.txt", "it is in the pack");
-        scratch.Write("game/dev_mods/dev/mod.xml", "<Mod id=\"dev\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        scratch.Write("game/dev_mods/dev/mod.wmod", "<Mod id=\"dev\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
         scratch.Write("game/dev_mods/dev/main.luau", "fs.write_text('user://dev.txt', 'a dev mod ran')");
-        scratch.Write("game/packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        scratch.Write("game/packages/core/mod.wmod", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
         scratch.Write("game/packages/core/main.luau", "fs.write_text('user://report.txt', 'secret=' .. fs.read_text('res://secret.txt'))");
         string runtime = FakeRuntimeFolder(scratch);
         string output = System.IO.Path.Combine(scratch.Root, "export");
@@ -1105,9 +1105,9 @@ public class CommandTests
         Assert.Equal(0, ExportCommand.Export(export, key));
 
         string root = Weft.Export.ExportTarget.Host.Os == "osx" ? System.IO.Path.Combine(output, "Exported.app", "Contents", "Resources") : output;
-        Assert.True(File.Exists(System.IO.Path.Combine(root, "game.xml")));
-        string pack = System.IO.Path.Combine(root, "data", "game.pack");
-        Assert.NotEqual("APGK", System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(pack), 0, 4));
+        Assert.True(File.Exists(System.IO.Path.Combine(root, "game.wgam")));
+        string pack = System.IO.Path.Combine(root, "data", "game.wpak");
+        Assert.NotEqual("WPAK", System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(pack), 0, 4));
         Assert.Equal(0, Commands.Launch(Options("--user", user, "--headless", "--frames", "2"), root.Replace('\\', '/'), key));
         Assert.Equal("secret=it is in the pack", File.ReadAllText(System.IO.Path.Combine(user, "report.txt")));
         Assert.False(File.Exists(System.IO.Path.Combine(user, "dev.txt")));
@@ -1132,7 +1132,7 @@ public class CommandTests
         Directory.CreateDirectory(System.IO.Path.Combine(scratch.Root, "none"));
         Assert.Equal(1, Commands.Launch(Options("--headless"), System.IO.Path.Combine(scratch.Root, "none")));
 
-        scratch.Write("broken/game.xml", "<Game name=\"No version\" organization=\"Test\"/>");
+        scratch.Write("broken/game.wgam", "<Game name=\"No version\" organization=\"Test\"/>");
         Assert.Equal(2, Commands.Launch(Options("--headless"), System.IO.Path.Combine(scratch.Root, "broken")));
     }
 
@@ -1143,7 +1143,7 @@ public class CommandTests
         string program = typeof(Commands).Assembly.Location;
         Assert.Null(GameLocator.Find(System.IO.Path.GetDirectoryName(program)!));
 
-        // The runtime as a program, started from its own output folder (no game.xml there): it says what to pass instead and exits with 1.
+        // The runtime as a program, started from its own output folder (no game.wgam there): it says what to pass instead and exits with 1.
         var info = new System.Diagnostics.ProcessStartInfo("dotnet") { RedirectStandardError = true, RedirectStandardOutput = true, WorkingDirectory = scratch.Root };
         info.ArgumentList.Add(program);
         using var process = System.Diagnostics.Process.Start(info)!;
@@ -1152,7 +1152,7 @@ public class CommandTests
         process.WaitForExit();
 
         Assert.Equal(1, process.ExitCode);
-        Assert.Contains("No game.xml next to the program", stderr, StringComparison.Ordinal);
+        Assert.Contains("No game.wgam next to the program", stderr, StringComparison.Ordinal);
         Assert.Contains("--smoke", stderr, StringComparison.Ordinal);
     }
 
@@ -1333,7 +1333,7 @@ public sealed class WorldRenderingTests : Weft.Graphics.Tests.GpuTest
 
     private static string Scene(Scratch scratch, string script)
     {
-        scratch.Write("game/packages/scene/mod.xml", "<Mod id=\"scene\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        scratch.Write("game/packages/scene/mod.wmod", "<Mod id=\"scene\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
         scratch.Write("game/packages/scene/main.luau", script);
         return Path.Combine(scratch.Root, "game");
     }

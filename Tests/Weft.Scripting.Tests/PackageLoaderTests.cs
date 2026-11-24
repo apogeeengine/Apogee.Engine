@@ -46,7 +46,7 @@ public sealed class GameFixture : IDisposable
     {
         string path = Path.Combine(_root, folder);
         Directory.CreateDirectory(path);
-        File.WriteAllText(Path.Combine(path, "mod.xml"), $"<Mod id=\"{id}\" version=\"1.0.0\">{manifestInner}</Mod>");
+        File.WriteAllText(Path.Combine(path, "mod.wmod"), $"<Mod id=\"{id}\" version=\"1.0.0\">{manifestInner}</Mod>");
         foreach ((string file, string text) in files)
         {
             string full = Path.Combine(path, file);

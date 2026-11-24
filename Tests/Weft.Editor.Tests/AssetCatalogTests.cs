@@ -43,7 +43,7 @@ public sealed class AssetCatalogTests : IDisposable
     {
         var uid = AssetUid.New();
         Write(_folder, path);
-        Write(_folder, path + ".import.xml", $"<Import uid=\"{uid}\"/>");
+        Write(_folder, path + ".wimp", $"<Import uid=\"{uid}\"/>");
         return uid;
     }
 
@@ -55,7 +55,7 @@ public sealed class AssetCatalogTests : IDisposable
     {
         AssetUid car = Imported("models/car.glb");
         AssetUid wall = Imported("textures/wall.png");
-        Write(_folder, "scenes/level.ascene", "<Scene version=\"1\" uid=\"uid://0000000000abc\"/>");
+        Write(_folder, "scenes/level.wscn", "<Scene version=\"1\" uid=\"uid://0000000000abc\"/>");
         Write(_folder, "notes/readme.txt");
 
         using AssetCatalog catalog = Catalog();
@@ -78,10 +78,10 @@ public sealed class AssetCatalogTests : IDisposable
     {
         Imported("models/car.glb");
         Write(_folder, "imported/models/car.glb");                    // the import cache
-        Write(_folder, "imported/car.amodel");
+        Write(_folder, "imported/car.wmdl");
         Write(_folder, ".hidden/secret.glb");                          // a folder that starts with a dot
         Write(_folder, "models/.draft.glb");                           // a file that does
-        Write(_folder, "models/notes.import.xml");
+        Write(_folder, "models/notes.wimp");
         Write(_folder, "deep/imported/keep.glb");                      // only the cache at the top of a root is the cache
 
         using AssetCatalog catalog = Catalog();

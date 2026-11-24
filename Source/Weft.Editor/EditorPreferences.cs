@@ -384,15 +384,15 @@ public sealed class EditorPreferences
 
     // ---- The last scene of each project ------------------------------------------------------------------------------------------
 
-    /// <summary>The key that holds the last scene of a project: <c>project.&lt;first 16 hex digits of the SHA-256 of its full path&gt;.scene</c>.</summary>
+    /// <summary>The key that holds the last scene of a project: <c>project.&lt;first 16 hex digits of the SHA-256 of its full path&gt;.wscn</c>.</summary>
     public static string SceneKey(string gameFolder)
     {
         string full = Normalize(gameFolder);
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(OperatingSystem.IsLinux() ? full : full.ToLowerInvariant()));
-        return "project." + Convert.ToHexStringLower(hash.AsSpan(0, 8)) + ".scene";
+        return "project." + Convert.ToHexStringLower(hash.AsSpan(0, 8)) + ".wscn";
     }
 
-    /// <summary>The virtual path (<c>res://scenes/level.ascene</c>) of the scene that was open last in the project, or null.</summary>
+    /// <summary>The virtual path (<c>res://scenes/level.wscn</c>) of the scene that was open last in the project, or null.</summary>
     public string? LastScene(string gameFolder)
     {
         string key = SceneKey(gameFolder);

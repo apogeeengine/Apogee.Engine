@@ -101,7 +101,7 @@ internal static class RuntimeLoop
     }
 
     /// <summary>A window with a swapchain: the scripts' panels over the background, with the dev overlay (F1 toggles it). Esc or closing the window ends it.</summary>
-    /// <param name="manifest">The game's <c>game.xml</c>, if it has one: the application metadata and, on Linux, the window icon come from it.</param>
+    /// <param name="manifest">The game's <c>game.wgam</c>, if it has one: the application metadata and, on Linux, the window icon come from it.</param>
     /// <param name="root">The folder of the game, where the manifest's icon file is.</param>
     public static int Windowed(RuntimeOptions options, ImGuiHost host, ScriptSession session, string title, out int frames, GameManifest? manifest = null, string? root = null)
     {
@@ -113,7 +113,7 @@ internal static class RuntimeLoop
         PlatformHost.Initialize();
         try
         {
-            // The window is the player's: the size and fullscreen from the settings (whose defaults are the game's game.xml), unless --size is given. VSync is read once, here.
+            // The window is the player's: the size and fullscreen from the settings (whose defaults are the game's game.wgam), unless --size is given. VSync is read once, here.
             SettingsStore settings = session.Settings;
             int width = options.SizeGiven ? options.Width : settings.GetInt(EngineSettings.WindowWidth);
             int height = options.SizeGiven ? options.Height : settings.GetInt(EngineSettings.WindowHeight);

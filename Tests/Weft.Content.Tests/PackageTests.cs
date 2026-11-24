@@ -87,13 +87,13 @@ public class ManifestTests
 {
     private static PackageManifest Parse(string xml)
     {
-        Assert.True(PackageManifest.TryParse(xml, "mod.xml", out PackageManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
+        Assert.True(PackageManifest.TryParse(xml, "mod.wmod", out PackageManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
         return manifest!;
     }
 
     private static IReadOnlyList<string> Fail(string xml)
     {
-        Assert.False(PackageManifest.TryParse(xml, "mod.xml", out PackageManifest? manifest, out IReadOnlyList<string> problems));
+        Assert.False(PackageManifest.TryParse(xml, "mod.wmod", out PackageManifest? manifest, out IReadOnlyList<string> problems));
         Assert.Null(manifest);
         Assert.NotEmpty(problems);
         return problems;
@@ -157,7 +157,7 @@ public class ManifestTests
     {
         IReadOnlyList<string> problems = Fail("<Mod id=\"a\"\n version=\"1\" apiVersion=\"0\">\n<Dependency version=\"1\"/></Mod>");
 
-        Assert.Equal(["mod.xml:1: 0 is below the minimum 1", "mod.xml:3: <Dependency> needs the attribute 'id'."], problems);
+        Assert.Equal(["mod.wmod:1: 0 is below the minimum 1", "mod.wmod:3: <Dependency> needs the attribute 'id'."], problems);
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public class ManifestTests
         Assert.Contains(problems, p => p.Contains("'../evil.luau' of a <Script> must be a plain relative path", StringComparison.Ordinal));
         Assert.Contains(problems, p => p.Contains("'/abs' of a <Content> must be a plain relative path", StringComparison.Ordinal));
         Assert.Contains(problems, p => p.Contains("'http://x' of a <Content>", StringComparison.Ordinal));
-        Assert.All(problems, p => Assert.StartsWith("mod.xml:1:", p));
+        Assert.All(problems, p => Assert.StartsWith("mod.wmod:1:", p));
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public class ManifestTests
     public void NotAModOrNotXmlIsRefused()
     {
         Assert.Contains("the root element is <Package>", Fail("<Package id=\"a\"/>").Single());
-        Assert.StartsWith("mod.xml:", Fail("<Mod").Single());
+        Assert.StartsWith("mod.wmod:", Fail("<Mod").Single());
         Assert.Contains(Fail("<Mod id=\"a\" version=\"1\"><Surprise/></Mod>"), p => p.Contains("<Surprise> is not allowed in <Mod>", StringComparison.Ordinal));
     }
 }
@@ -194,7 +194,7 @@ public class SolverTests
     private static PackageCandidate Candidate(string id, string version = "1.0.0", PackageKind kind = PackageKind.User, string dependencies = "", string attributes = "")
     {
         string xml = $"<Mod id=\"{id}\" version=\"{version}\" {attributes}>{dependencies}</Mod>";
-        Assert.True(PackageManifest.TryParse(xml, $"{id}/mod.xml", out PackageManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
+        Assert.True(PackageManifest.TryParse(xml, $"{id}/mod.wmod", out PackageManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
         return new PackageCandidate(manifest!, kind, id, () => throw new InvalidOperationException());
     }
 
@@ -353,10 +353,10 @@ public class PackageSetTests
     public void PackagesAreFoundInThePlacesAndMountedAtTheirIds()
     {
         using var game = new Game();
-        game.Res("packages/core/mod.xml", Mod("core", "<Script path=\"main.luau\"/>"));
+        game.Res("packages/core/mod.wmod", Mod("core", "<Script path=\"main.luau\"/>"));
         game.Res("packages/core/main.luau", "return 1");
-        game.Res("dev_mods/devmod/mod.xml", Mod("devmod", "<Dependency id=\"core\"/>"));
-        game.User("mods/usermod/mod.xml", Mod("usermod", "<Dependency id=\"core\"/>"));
+        game.Res("dev_mods/devmod/mod.wmod", Mod("devmod", "<Dependency id=\"core\"/>"));
+        game.User("mods/usermod/mod.wmod", Mod("usermod", "<Dependency id=\"core\"/>"));
         game.User("mods/usermod/data/x.xml", "<X id=\"a\"/>");
 
         using var set = PackageSet.Load(game.Files);
@@ -375,12 +375,12 @@ public class PackageSetTests
     public void AZippedModIsMountedLikeAFolder()
     {
         using var game = new Game();
-        game.Res("packages/core/mod.xml", Mod("core"));
+        game.Res("packages/core/mod.wmod", Mod("core"));
         string zipPath = Path.Combine(game.UserFolder, "mods", "zipped.zip");
         Directory.CreateDirectory(Path.GetDirectoryName(zipPath)!);
         using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
         {
-            foreach ((string name, string text) in new[] { ("mod.xml", Mod("zipped", "<Dependency id=\"core\"/><Script path=\"main.luau\"/>")), ("main.luau", "return 2") })
+            foreach ((string name, string text) in new[] { ("mod.wmod", Mod("zipped", "<Dependency id=\"core\"/><Script path=\"main.luau\"/>")), ("main.luau", "return 2") })
             {
                 using var writer = new StreamWriter(archive.CreateEntry(name).Open());
                 writer.Write(text);
@@ -398,19 +398,19 @@ public class PackageSetTests
     public void WhatIsWrongWithTheSearchIsAProblemNotAnException()
     {
         using var game = new Game();
-        game.Res("packages/core/mod.xml", Mod("core"));
+        game.Res("packages/core/mod.wmod", Mod("core"));
         game.Res("packages/no_manifest/readme.txt", "x");
-        game.Res("packages/wrong_name/mod.xml", Mod("something_else"));
-        game.Res("packages/broken/mod.xml", "<Mod id=\"broken\"");
+        game.Res("packages/wrong_name/mod.wmod", Mod("something_else"));
+        game.Res("packages/broken/mod.wmod", "<Mod id=\"broken\"");
         game.User("mods/junk.zip", "not a zip");
-        game.User("mods/empty/mod.xml", Mod("empty"));
+        game.User("mods/empty/mod.wmod", Mod("empty"));
 
         using var set = PackageSet.Load(game.Files);
 
         Assert.Equal(["core", "empty"], set.LoadOrder.Select(p => p.Id));
-        Assert.Contains(set.Problems, p => p.Contains("no_manifest has no mod.xml", StringComparison.Ordinal));
+        Assert.Contains(set.Problems, p => p.Contains("no_manifest has no mod.wmod", StringComparison.Ordinal));
         Assert.Contains(set.Problems, p => p.Contains("the id 'something_else' must be the name of the package's folder", StringComparison.Ordinal) && p.Contains("'wrong_name'", StringComparison.Ordinal));
-        Assert.Contains(set.Problems, p => p.StartsWith("res://packages/broken/mod.xml:", StringComparison.Ordinal));
+        Assert.Contains(set.Problems, p => p.StartsWith("res://packages/broken/mod.wmod:", StringComparison.Ordinal));
         Assert.Contains(set.Problems, p => p.Contains("junk.zip", StringComparison.Ordinal) && p.Contains("not a valid zip", StringComparison.Ordinal));
     }
 
@@ -418,9 +418,9 @@ public class PackageSetTests
     public void ModsThePlayerSwitchedOffDoNotLoadAndAreNotMounted()
     {
         using var game = new Game();
-        game.Res("packages/core/mod.xml", Mod("core"));
-        game.User("mods/on/mod.xml", Mod("on"));
-        game.User("mods/off/mod.xml", Mod("off"));
+        game.Res("packages/core/mod.wmod", Mod("core"));
+        game.User("mods/on/mod.wmod", Mod("on"));
+        game.User("mods/off/mod.wmod", Mod("off"));
         UserModSettings.SaveDisabled(game.Files, ["off", "core", "off"]);
 
         using var set = PackageSet.Load(game.Files);
@@ -446,10 +446,10 @@ public class PackageSetTests
     public void TheContentAndSchemasOfThePackagesBuildTheDefinitions()
     {
         using var game = new Game();
-        game.Res("packages/core/mod.xml", Mod("core", "<Content path=\"data\"/><Schema path=\"schemas\"/>"));
+        game.Res("packages/core/mod.wmod", Mod("core", "<Content path=\"data\"/><Schema path=\"schemas\"/>"));
         game.Res("packages/core/schemas/crate.xsd", "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"Crate\"><xs:complexType><xs:attribute name=\"id\" type=\"xs:string\" use=\"required\"/><xs:attribute name=\"weight\" type=\"xs:decimal\" default=\"1\"/></xs:complexType></xs:element></xs:schema>");
         game.Res("packages/core/data/crates.xml", "<Crates><Crate id=\"wooden\" weight=\"12\"/></Crates>");
-        game.User("mods/bigger/mod.xml", Mod("bigger", "<Dependency id=\"core\" version=\"^1.0\"/><Content path=\"data\"/>"));
+        game.User("mods/bigger/mod.wmod", Mod("bigger", "<Dependency id=\"core\" version=\"^1.0\"/><Content path=\"data\"/>"));
         game.User("mods/bigger/data/patch.xml", "<Crate id=\"wooden\" patch=\"true\" weight=\"20\"/>");
 
         using var set = PackageSet.Load(game.Files);
@@ -465,8 +465,8 @@ public class PackageSetTests
     public void ABrokenSchemaInAModIsAProblemAndTheGameStillLoads()
     {
         using var game = new Game();
-        game.Res("packages/core/mod.xml", Mod("core"));
-        game.User("mods/bad/mod.xml", Mod("bad", "<Schema path=\"s\"/>"));
+        game.Res("packages/core/mod.wmod", Mod("core"));
+        game.User("mods/bad/mod.wmod", Mod("bad", "<Schema path=\"s\"/>"));
         game.User("mods/bad/s/x.xsd", "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:key name=\"k\"/></xs:schema>");
 
         using var set = PackageSet.Load(game.Files);
@@ -480,8 +480,8 @@ public class PackageSetTests
     public void DisposingTakesTheMountsAway()
     {
         using var game = new Game();
-        game.Res("packages/core/mod.xml", Mod("core"));
-        game.User("mods/m/mod.xml", Mod("m"));
+        game.Res("packages/core/mod.wmod", Mod("core"));
+        game.User("mods/m/mod.wmod", Mod("m"));
         var set = PackageSet.Load(game.Files);
         Assert.True(game.Files.DirectoryExists("mod://core"));
 

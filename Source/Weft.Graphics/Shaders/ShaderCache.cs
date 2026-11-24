@@ -13,7 +13,7 @@ namespace Weft.Graphics.Shaders;
 /// </summary>
 internal sealed class ShaderCache(string directory)
 {
-    private const string Magic = "APGSC2";
+    private const string Magic = "WSHC2";
 
     public string Directory { get; } = directory;
 

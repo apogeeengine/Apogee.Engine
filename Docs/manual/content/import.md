@@ -6,22 +6,22 @@ is done once, not at every start.
 ```sh
 Weft.Runtime --import Samples/Mods/res              # import what changed (in the folder's imported/)
 Weft.Runtime --import Samples/Mods/res --force      # import everything again
-./build.sh pack Samples/Mods/res Bin/data/game.pack --cooked   # pack the artifacts instead of the sources they replace
+./build.sh pack Samples/Mods/res Bin/data/game.wpak --cooked   # pack the artifacts instead of the sources they replace
 ```
 
 ## What it makes
 
 | Source | Artifact | |
 | --- | --- | --- |
-| `.glb`, `.gltf` | `imported/<path>.amodel` | the model as the engine uses it (`ModelFile`): vertex and index buffers compressed with meshoptimizer's lossless codecs (the geometry comes back bit for bit), the textures embedded as GPU-compressed KTX 2 files (below), the rest plain fields. Loads without a glTF parser or any image decoding |
-| `.slang` | `imported/<path>.ashader` | a shader module compiled ahead of time (`ShaderBundle`, [Graphics](../graphics/graphics.md#compiled-ahead-of-time-shaderbundle)): SPIR-V (Vulkan) and Metal shading language for each entry point, and the reflection, for the module without defines and for each `<Variant>` of its settings. A module with no `[shader(…)]` entry point (a library such as `common.slang`) is not an asset; it is a **dependency** of every shader that imports it, so editing it imports those shaders again |
+| `.glb`, `.gltf` | `imported/<path>.wmdl` | the model as the engine uses it (`ModelFile`): vertex and index buffers compressed with meshoptimizer's lossless codecs (the geometry comes back bit for bit), the textures embedded as GPU-compressed KTX 2 files (below), the rest plain fields. Loads without a glTF parser or any image decoding |
+| `.slang` | `imported/<path>.wshd` | a shader module compiled ahead of time (`ShaderBundle`, [Graphics](../graphics/graphics.md#compiled-ahead-of-time-shaderbundle)): SPIR-V (Vulkan) and Metal shading language for each entry point, and the reflection, for the module without defines and for each `<Variant>` of its settings. A module with no `[shader(…)]` entry point (a library such as `common.slang`) is not an asset; it is a **dependency** of every shader that imports it, so editing it imports those shaders again |
 | `.png`, `.jpg`, `.jpeg` | `imported/<path>.ktx2` | a KTX 2 file with its whole mip chain: **Basis Universal UASTC** blocks (below), or with `compression="none"` 8-bit RGBA (`Ktx2Writer`). Either way the levels are supercompressed with zstd, which libktx inflates when it loads |
 
 `imported/index.xml` says which source each artifact came from and which other files it was made from (a glTF's `.bin` and its textures):
 
 ```xml
 <Imports version="1">
-  <Import source="models/car.gltf" artifact="imported/models/car.gltf.amodel" key="9c1e…">
+  <Import source="models/car.gltf" artifact="imported/models/car.gltf.wmdl" key="9c1e…">
     <Dependency path="models/car.bin"/>
     <Dependency path="models/wood.png"/>
   </Import>
@@ -48,7 +48,7 @@ Measured on the 11 MB `BoomBox.glb` sample (four 2048 x 2048 PNGs; Linux, 28 thr
 
 | | RGBA8 + zstd (`compression="none"`) | UASTC (the default) |
 | --- | --- | --- |
-| `.amodel` artifact | 11.7 MB | **5.5 MB** (5.2 MiB) |
+| `.wmdl` artifact | 11.7 MB | **5.5 MB** (5.2 MiB) |
 | in a `--cooked` pack | 11.7 MB | **5.5 MB** |
 | textures on the GPU (all levels) | 85.3 MiB | **21.3 MiB** (BC7: 4x less) |
 | first import | 1.0 s | 18.7 s (139 s of CPU) |
@@ -58,19 +58,19 @@ The artifact used to be about the size of its source; now it is half, and a GPU 
 
 ## When something is imported again
 
-Each artifact has a **key**: the SHA-256 of the importer's version, the asset's `.import.xml` settings, the asset itself, and every file the import read for it. `--import` makes an artifact
+Each artifact has a **key**: the SHA-256 of the importer's version, the asset's `.wimp` settings, the asset itself, and every file the import read for it. `--import` makes an artifact
 again only when its key is different, so changing a texture of a model, or a model's buffer, re-imports the model, and touching nothing re-imports nothing. An artifact whose source is
 gone is deleted. A failed import (a file that is not a PNG, a settings file that is wrong) is reported with its file, does not stop the others, exits with code 2, and leaves the artifact the
 game had (and its index entry) until the source is fixed.
 
 ### UIDs and the key
 
-Importing also gives each asset a [UID](assets.md) in its `.import.xml` (`<Import uid="uid://…"/>`, made if there is no sidecar) and lists them in `imported/assets.xml`. The `uid` attribute is not part of the key
+Importing also gives each asset a [UID](assets.md) in its `.wimp` (`<Import uid="uid://…"/>`, made if there is no sidecar) and lists them in `imported/assets.xml`. The `uid` attribute is not part of the key
 (`ImportSettings.KeyText` leaves it out), so a UID that is added, or that changes, imports nothing again.
 
 ### Settings
 
-An `<asset>.import.xml` next to an asset (checked against the engine's schema) changes how it is imported; every attribute is optional:
+An `<asset>.wimp` next to an asset (checked against the engine's schema) changes how it is imported; every attribute is optional:
 
 ```xml
 <Import srgb="false" mips="false" optimize="false"/>
@@ -104,40 +104,40 @@ It does not check that an artifact is current: importing is the step that does (
 
 ## Packing
 
-`--pack … --cooked` leaves out every source that has an artifact, the files it was made from and its `.import.xml`, and packs the rest with `imported/`. It needs an import first. A shipped game
-therefore holds `models/car.gltf.amodel` and `textures/ground.png.ktx2`, not the glTF, the `.bin` and the PNGs, and `ContentLoader.LoadModel("res://models/car.gltf")` finds the artifact by the
+`--pack … --cooked` leaves out every source that has an artifact, the files it was made from and its `.wimp`, and packs the rest with `imported/`. It needs an import first. A shipped game
+therefore holds `models/car.gltf.wmdl` and `textures/ground.png.ktx2`, not the glTF, the `.bin` and the PNGs, and `ContentLoader.LoadModel("res://models/car.gltf")` finds the artifact by the
 path of the source it replaced.
 
-A cooked pack also holds the authored documents (`.ascene`, see `AuthoredAssets.Extensions`) and the UID list `imported/assets.xml` as [cooked XML](#cooked-xml), each at the path of its source, so a
+A cooked pack also holds the authored documents (`.wscn`, see `AuthoredAssets.Extensions`) and the UID list `imported/assets.xml` as [cooked XML](#cooked-xml), each at the path of its source, so a
 shipped game parses no text for them and a UID still names its asset after the sidecar has been left out. So are the definitions of the base packages: the `.xml` files in the content folders
-(`<Content path="data"/>`) of each `packages/<id>/mod.xml` that reads. Everything else stays as it is: other `.xml` files, the manifests `mod.xml`, schemas (`.xsd`), RmlUi documents, the scripts, and
+(`<Content path="data"/>`) of each `packages/<id>/mod.wmod` that reads. Everything else stays as it is: other `.xml` files, the manifests `mod.wmod`, schemas (`.xsd`), RmlUi documents, the scripts, and
 everything under `dev_mods/`. The packing is `GamePacker` ([Packs](packs.md#from-code-gamepacker)); `--pack` is a thin command on top of it. A scene or a definition file that is not well-formed XML
 stops the pack, with its path and line.
 
 ## Shaders
 
-Shipped games never load the Slang compiler. `./build.sh aot` publishes the runtime and then runs `Weft.Runtime --import` on its `Shaders` folder, which writes `Shaders/imported/*.ashader`; the
+Shipped games never load the Slang compiler. `./build.sh aot` publishes the runtime and then runs `Weft.Runtime --import` on its `Shaders` folder, which writes `Shaders/imported/*.wshd`; the
 renderers load those (`ShaderLibrary`, [Rendering](../graphics/rendering.md#where-shaders-come-from-shaderlibrary)). In development nothing needs importing: a shader without an artifact is compiled and cached, as before. The bundle records the
 engine's shader ABI, so a mod's old compiled shader is refused with "import it again" rather than crashing the driver; to make a mod's shaders, import the mod's folder with the engine's dev runtime. CI runs the published runtime
 with the compiler libraries and every `.slang` source deleted, running the fixture game, to prove it.
 
 ## Cooked XML
 
-Authored XML (scenes and prefabs, and later materials) and definitions are small, but a shipped game still gains from not parsing text: a cooked file is the same document in a binary encoding, `APXB`, in
+Authored XML (scenes and prefabs, and later materials) and definitions are small, but a shipped game still gains from not parsing text: a cooked file is the same document in a binary encoding, `WXMB`, in
 `Weft.Content.Xml.XmlBinary`. It is not typed by the reflection registry: it holds the `XmlNode` tree (names, attributes in their order, text, the line each element started on, children) with every
 distinct name and value stored once, so it works for any XML file, does not depend on which components the engine had when the file was cooked, and gives back exactly the tree that was written. A scene with
 a thousand entities is less than half the size of its text.
 
 | Part | What it is |
 | --- | --- |
-| Header, 16 bytes | the magic `APXB`, a format version (`1`), flags (none are defined), the number of strings and the number of elements; little-endian |
+| Header, 16 bytes | the magic `WXMB`, a format version (`1`), flags (none are defined), the number of strings and the number of elements; little-endian |
 | Strings | each one a length and its UTF-8 bytes, in the order the writer first used them, so the same tree always gives the same file |
 | Elements | in document order, root first: name, line, attributes (name and value), text, number of children; every number is a varint (7 bits per byte) |
 
 ```csharp
 byte[] cooked = XmlBinary.Write(XmlNode.Parse(text));
-XmlNode again = XmlBinary.Read(cooked, "res://scenes/start.ascene");   // a ContentException if it is damaged
-XmlNode either = XmlFile.Read(files, "res://scenes/start.ascene");     // text or cooked, whichever the file is
+XmlNode again = XmlBinary.Read(cooked, "res://scenes/start.wscn");   // a ContentException if it is damaged
+XmlNode either = XmlFile.Read(files, "res://scenes/start.wscn");     // text or cooked, whichever the file is
 ```
 
 `XmlFile.Read(files, path)` is the one way to read an authored or definition file: it takes a file that starts with the magic as cooked (no text XML file can: those begin with `<`, a byte order mark or white
@@ -146,8 +146,8 @@ reads it as text (`fs.read_text`) gets bytes, and reading it with `XmlFile` is t
 (see [Packing](#packing)).
 
 Everything in the engine that reads such a file goes through `XmlFile.Read`: `DefDatabase` (the definitions, so `defs` in scripts), `World.LoadSceneFile` (and `world:load_scene_file`), the asset database's UID list, and the Luau
-`xml.load(path)`, which gives scripts the table `xml.decode` gives for a text or a cooked file ([Definitions](defs.md#from-luau)). What is not read that way is never cooked: the package manifests `mod.xml`, schemas
-(`.xsd`), `.rml` documents, the import index and the sidecars, `game.xml`, and the files of mods, which stay text because players and tools open them.
+`xml.load(path)`, which gives scripts the table `xml.decode` gives for a text or a cooked file ([Definitions](defs.md#from-luau)). What is not read that way is never cooked: the package manifests `mod.wmod`, schemas
+(`.xsd`), `.rml` documents, the import index and the sidecars, `game.wgam`, and the files of mods, which stay text because players and tools open them.
 
 The origin of an element is not stored: the reader gives every element the path it was asked to read, so an error in a cooked file still names the file and the source line. The reader accepts the versions up to the
 one it knows; a file from a newer engine, or with a flag it does not know, is refused with "cook again". A file cut short or damaged is a `ContentException`, never anything else, and a count in it (strings,
@@ -162,15 +162,15 @@ limited as in the text parser (`XmlNode.MaxDepth`).
 (as `ContentLoader` does), and cooking is only an optimization for the base game: a faster, sometimes smaller artifact that is a cache of the source. No format exists *only* cooked.
 
 **Use a standard container where there is one**, and an engine format only where there is none. So no `.atex`: textures stay KTX 2, which the engine already reads (including GPU-compressed
-data that is transcoded at load). That leaves `.amodel` as the one engine-specific binary so far, because glTF is an interchange format and there is no standard runtime one.
+data that is transcoded at load). That leaves `.wmdl` as the one engine-specific binary so far, because glTF is an interchange format and there is no standard runtime one.
 
 | Kind | Authored as | Cooked? | Artifact |
 | --- | --- | --- | --- |
-| Models | glTF | **yes, done** | `.amodel` (meshoptimizer) |
+| Models | glTF | **yes, done** | `.wmdl` (meshoptimizer) |
 | Textures | PNG, JPEG | **yes, done**: Basis UASTC in KTX 2, transcoded to BC7/ASTC/RGBA8 at load | `.ktx2` |
-| Shaders | Slang | **yes, done**: SPIR-V and Metal shading language and reflection ahead of time, in one bundle (DXIL has a slot), so a shipped game does not carry the compiler | `.ashader` |
-| Materials | XML definition (a `Material` type with a schema: textures by path, factors, alpha mode) | **not for now.** They are small data, which mods must be able to author and patch like any definition; a model's built-in materials are already in `.amodel` | none (an `.amat` only if profiling asks) |
-| Scenes, prefabs | XML: entities and their components, written and read through the reflection registry | **yes, done: `APXB` in place** ([Cooked XML](#cooked-xml)): `--pack --cooked` writes the tree of the document as a binary file in place of the source, under the same path, so that scenes, prefabs and definitions share one format and one reader; the definitions of the base packages are cooked the same way (a mod's are not: mods are never cooked) | binary XML (`APXB`), same path |
+| Shaders | Slang | **yes, done**: SPIR-V and Metal shading language and reflection ahead of time, in one bundle (DXIL has a slot), so a shipped game does not carry the compiler | `.wshd` |
+| Materials | XML definition (a `Material` type with a schema: textures by path, factors, alpha mode) | **not for now.** They are small data, which mods must be able to author and patch like any definition; a model's built-in materials are already in `.wmdl` | none (an `.amat` only if profiling asks) |
+| Scenes, prefabs | XML: entities and their components, written and read through the reflection registry | **yes, done: `WXMB` in place** ([Cooked XML](#cooked-xml)): `--pack --cooked` writes the tree of the document as a binary file in place of the source, under the same path, so that scenes, prefabs and definitions share one format and one reader; the definitions of the base packages are cooked the same way (a mod's are not: mods are never cooked) | binary XML (`WXMB`), same path |
 | Audio | WAV, FLAC, MP3 and Ogg Vorbis, decoded when loaded (streamed if asked) | already compressed by the formats; a cook would only trade load time for size | none |
 | Scripts | Luau | no (a bytecode cache could come later; it is not needed to ship) | none |
 
@@ -191,5 +191,5 @@ used, a source otherwise, a mod's files). cooked XML (`XmlBinaryTests`: every fi
 
 ## Status and re-importing one asset
 
-`AssetImporter.StatusOf("models/car.glb")` says where one asset stands (`AssetStatus`: `NotImportable`, `NotImported`, `UpToDate`, or `Stale` when the file, its `.import.xml` or what the import read changed) and `Reimport(source)`
+`AssetImporter.StatusOf("models/car.glb")` says where one asset stands (`AssetStatus`: `NotImportable`, `NotImported`, `UpToDate`, or `Stale` when the file, its `.wimp` or what the import read changed) and `Reimport(source)`
 imports just that asset again, leaving the rest of the index as it is. The [editor](../tools/editor.md)'s asset browser uses them, and so does the editor when files are [dropped on it from the system](../tools/editor.md#bringing-files-in): it copies them into the game and calls `Reimport` for each, on a worker thread, with the import gate held so that nothing else imports at the same time.

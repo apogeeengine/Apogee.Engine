@@ -54,43 +54,43 @@ public sealed class SceneFileTests : IDisposable
     {
         Make("crate");
 
-        _world.SaveSceneFile("res://scenes/level.ascene");
+        _world.SaveSceneFile("res://scenes/level.wscn");
 
-        string text = File.ReadAllText(Physical("scenes/level.ascene"));
-        AssetUid uid = AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/level.ascene")));
+        string text = File.ReadAllText(Physical("scenes/level.wscn"));
+        AssetUid uid = AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/level.wscn")));
         Assert.False(uid.IsNone);
         Assert.Contains($"<Scene version=\"1\" uid=\"{uid}\">", text, StringComparison.Ordinal);
-        Assert.Equal(uid, _assets.UidOf("res://scenes/level.ascene")); // the database knows the new file without a refresh by the caller
-        Assert.Equal("res://scenes/level.ascene", _assets.PathOf(uid));
+        Assert.Equal(uid, _assets.UidOf("res://scenes/level.wscn")); // the database knows the new file without a refresh by the caller
+        Assert.Equal("res://scenes/level.wscn", _assets.PathOf(uid));
     }
 
     [Fact]
     public void SavingOverAFileKeepsItsUid()
     {
         Make("crate");
-        _world.SaveSceneFile("res://scenes/level.ascene");
-        AssetUid first = AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/level.ascene")));
+        _world.SaveSceneFile("res://scenes/level.wscn");
+        AssetUid first = AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/level.wscn")));
 
         Make("barrel");
-        _world.SaveSceneFile("res://scenes/level.ascene");
+        _world.SaveSceneFile("res://scenes/level.wscn");
 
-        string text = File.ReadAllText(Physical("scenes/level.ascene"));
-        Assert.Equal(first, AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/level.ascene"))));
+        string text = File.ReadAllText(Physical("scenes/level.wscn"));
+        Assert.Equal(first, AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/level.wscn"))));
         Assert.Contains("barrel", text, StringComparison.Ordinal); // the new content was written
 
         // A file written by hand keeps the UID it was given, too.
         var chosen = AssetUid.New();
         Directory.CreateDirectory(Physical("scenes"));
-        File.WriteAllText(Physical("scenes/hand.ascene"), $"<!-- mine -->\n<Scene version='1' uid='{chosen}'/>");
-        _world.SaveSceneFile("res://scenes/hand.ascene");
-        Assert.Equal(chosen, AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/hand.ascene"))));
+        File.WriteAllText(Physical("scenes/hand.wscn"), $"<!-- mine -->\n<Scene version='1' uid='{chosen}'/>");
+        _world.SaveSceneFile("res://scenes/hand.wscn");
+        Assert.Equal(chosen, AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/hand.wscn"))));
     }
 
     [Fact]
     public void SaveSceneTextHasNoUid()
     {
         Make("crate");
-        _world.SaveSceneFile("res://scenes/level.ascene");
+        _world.SaveSceneFile("res://scenes/level.wscn");
 
         Assert.DoesNotContain("uid", _world.SaveScene(), StringComparison.Ordinal);
         Assert.DoesNotContain("uid", _world.SaveScene(_world.Roots().Single()), StringComparison.Ordinal);
@@ -103,12 +103,12 @@ public sealed class SceneFileTests : IDisposable
         Make("lid", crate);
         Make("other");
 
-        _world.SaveSceneFile("res://prefab.ascene", crate);
+        _world.SaveSceneFile("res://prefab.wscn", crate);
 
         using var fresh = new World { Files = _files, Assets = _assets };
-        List<Entity> loaded = fresh.LoadSceneFile("res://prefab.ascene");
+        List<Entity> loaded = fresh.LoadSceneFile("res://prefab.wscn");
         Assert.Equal(["crate", "lid"], loaded.Select(e => fresh.GetName(e)));
-        Assert.False(AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("prefab.ascene"))).IsNone);
+        Assert.False(AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("prefab.wscn"))).IsNone);
     }
 
     [Fact]
@@ -116,11 +116,11 @@ public sealed class SceneFileTests : IDisposable
     {
         Entity crate = Make("crate");
         Make("lid", crate);
-        _world.SaveSceneFile("res://scenes/level.ascene");
-        AssetUid uid = _assets.UidOf("res://scenes/level.ascene");
+        _world.SaveSceneFile("res://scenes/level.wscn");
+        AssetUid uid = _assets.UidOf("res://scenes/level.wscn");
 
         using var fresh = new World { Files = _files, Assets = _assets };
-        List<Entity> byPath = fresh.LoadSceneFile("res://scenes/level.ascene");
+        List<Entity> byPath = fresh.LoadSceneFile("res://scenes/level.wscn");
         List<Entity> byUid = fresh.LoadSceneFile(uid.ToString());
 
         Assert.Equal(2, byPath.Count);
@@ -131,57 +131,57 @@ public sealed class SceneFileTests : IDisposable
         Assert.Equal(holder, fresh.GetParent(fresh.LoadSceneFile(uid.ToString(), holder)[0]));
 
         Assert.Throws<ContentException>(() => fresh.LoadSceneFile("uid://0000000000zzz"));
-        Assert.Throws<FileNotFoundException>(() => fresh.LoadSceneFile("res://scenes/none.ascene"));
-        Assert.Throws<InvalidOperationException>(() => _ = new World().LoadSceneFile("res://scenes/level.ascene"));
+        Assert.Throws<FileNotFoundException>(() => fresh.LoadSceneFile("res://scenes/none.wscn"));
+        Assert.Throws<InvalidOperationException>(() => _ = new World().LoadSceneFile("res://scenes/level.wscn"));
     }
 
     [Fact]
     public void ARenamedSceneLoadsThroughItsUid()
     {
         Make("crate");
-        _world.SaveSceneFile("res://scenes/level.ascene");
-        AssetUid uid = _assets.UidOf("res://scenes/level.ascene");
+        _world.SaveSceneFile("res://scenes/level.wscn");
+        AssetUid uid = _assets.UidOf("res://scenes/level.wscn");
 
         Directory.CreateDirectory(Physical("levels"));
-        File.Move(Physical("scenes/level.ascene"), Physical("levels/first.ascene"));
+        File.Move(Physical("scenes/level.wscn"), Physical("levels/first.wscn"));
         _assets.Refresh();
 
         using var fresh = new World { Files = _files, Assets = _assets };
         Assert.Equal("crate", fresh.GetName(Assert.Single(fresh.LoadSceneFile(uid.ToString()))));
-        Assert.Throws<FileNotFoundException>(() => fresh.LoadSceneFile("res://scenes/level.ascene"));
+        Assert.Throws<FileNotFoundException>(() => fresh.LoadSceneFile("res://scenes/level.wscn"));
 
         // Saving to the UID overwrites the file where it is now, and it is still the same asset.
         fresh.SaveSceneFile(uid.ToString());
-        Assert.Equal(uid, AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("levels/first.ascene"))));
-        Assert.False(File.Exists(Physical("scenes/level.ascene")));
+        Assert.Equal(uid, AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("levels/first.wscn"))));
+        Assert.False(File.Exists(Physical("scenes/level.wscn")));
     }
 
     [Fact]
     public void ACookedSceneFileLoadsLikeTheTextOne()
     {
         Make("crate");
-        _world.SaveSceneFile("res://scenes/level.ascene");
-        XmlNode document = XmlFile.Read(_files, "res://scenes/level.ascene");
-        File.WriteAllBytes(Physical("scenes/level.ascene"), XmlBinary.Write(document));
+        _world.SaveSceneFile("res://scenes/level.wscn");
+        XmlNode document = XmlFile.Read(_files, "res://scenes/level.wscn");
+        File.WriteAllBytes(Physical("scenes/level.wscn"), XmlBinary.Write(document));
         _assets.Refresh();
 
         using var fresh = new World { Files = _files, Assets = _assets };
-        Assert.Equal("crate", fresh.GetName(Assert.Single(fresh.LoadSceneFile("res://scenes/level.ascene"))));
-        Assert.Single(fresh.LoadSceneFile(_assets.UidOf("res://scenes/level.ascene").ToString())); // by its UID, read from the cooked root
+        Assert.Equal("crate", fresh.GetName(Assert.Single(fresh.LoadSceneFile("res://scenes/level.wscn"))));
+        Assert.Single(fresh.LoadSceneFile(_assets.UidOf("res://scenes/level.wscn").ToString())); // by its UID, read from the cooked root
 
         // Saved over, the cooked file keeps its UID too.
-        fresh.SaveSceneFile("res://scenes/level.ascene");
-        Assert.Equal(_assets.UidOf("res://scenes/level.ascene"), AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/level.ascene"))));
+        fresh.SaveSceneFile("res://scenes/level.wscn");
+        Assert.Equal(_assets.UidOf("res://scenes/level.wscn"), AuthoredAssets.ReadUid(File.ReadAllBytes(Physical("scenes/level.wscn"))));
     }
 
     [Fact]
     public void AFileThatIsNotASceneIsAFormatError()
     {
         Directory.CreateDirectory(Physical("scenes"));
-        File.WriteAllText(Physical("scenes/bad.ascene"), "not xml");
-        File.WriteAllText(Physical("scenes/wrong.ascene"), "<Level version=\"1\"/>");
+        File.WriteAllText(Physical("scenes/bad.wscn"), "not xml");
+        File.WriteAllText(Physical("scenes/wrong.wscn"), "<Level version=\"1\"/>");
 
-        Assert.Throws<FormatException>(() => _world.LoadSceneFile("res://scenes/bad.ascene"));
-        Assert.Throws<FormatException>(() => _world.LoadSceneFile("res://scenes/wrong.ascene"));
+        Assert.Throws<FormatException>(() => _world.LoadSceneFile("res://scenes/bad.wscn"));
+        Assert.Throws<FormatException>(() => _world.LoadSceneFile("res://scenes/wrong.wscn"));
     }
 }

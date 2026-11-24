@@ -38,7 +38,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         return world.ApplyPrefabUpdates() ?? throw new InvalidOperationException("nothing to apply");
     }
 
-    private PrefabUpdate ChangeLamp(Func<string, string> edit) => Change(World, "prefabs/lamp.aprefab", edit);
+    private PrefabUpdate ChangeLamp(Func<string, string> edit) => Change(World, "prefabs/lamp.wprf", edit);
 
     private static string Replace(string text, string from, string to)
     {
@@ -146,7 +146,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         World.LoadScene(TwoLamps("<Override entity=\"3\"><Marks Level=\"4\" append=\"true\"/><Entity id=\"7\" name=\"Sign\"><Transform Position=\"0 1 0\" Rotation=\"0 0 0 1\" Scale=\"1 1 1\"/></Entity></Override>"));
         Entity lamp = World.Lookup("Lamp");
         Assert.Equal(["Sign"], NamesBelow(World, Child(lamp, "Base")));
-        string mended = Read("prefabs/lamp.aprefab");
+        string mended = Read("prefabs/lamp.wprf");
 
         PrefabUpdate update = ChangeLamp(text => Replace(text, BaseLamp, ""));
 
@@ -159,7 +159,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         Assert.Equal(whileGone, reloaded.SaveScene());
 
         // The prefab gets its Base back (a version control merge): what was added to it comes back with it.
-        Write("prefabs/lamp.aprefab", mended);
+        Write("prefabs/lamp.wprf", mended);
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
         World.ApplyPrefabUpdates();
 
@@ -187,7 +187,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         Assert.Equal(77, World.Get<Health>(Child(Child(corner, "Lamp 2"), "Bulb")).Max);
 
         // An edit of the corner itself works the same way.
-        PrefabUpdate again = Change(World, "prefabs/corner.aprefab", text => Replace(text, "<Entity id=\"4\" name=\"Bench\">", "<Entity id=\"5\" name=\"Stool\"/><Entity id=\"4\" name=\"Bench\">"));
+        PrefabUpdate again = Change(World, "prefabs/corner.wprf", text => Replace(text, "<Entity id=\"4\" name=\"Bench\">", "<Entity id=\"5\" name=\"Stool\"/><Entity id=\"4\" name=\"Bench\">"));
         Assert.Equal([corner], again.Updated);
         Assert.Equal(["Lamp", "Lamp 2", "Bench", "Stool"], NamesBelow(World, corner));
     }
@@ -210,10 +210,10 @@ public sealed class PrefabRefreshTests : PrefabTestBase
     public void ABrokenPrefabFileKeepsTheOldVersion()
     {
         World.LoadScene(TwoLamps());
-        string good = Read("prefabs/lamp.aprefab");
+        string good = Read("prefabs/lamp.wprf");
         string before = World.SaveScene();
 
-        Write("prefabs/lamp.aprefab", "<Prefab version=\"1\"><Entity id=\"1\" name=\"Lamp\">");     // cut off in the middle of a save
+        Write("prefabs/lamp.wprf", "<Prefab version=\"1\"><Entity id=\"1\" name=\"Lamp\">");     // cut off in the middle of a save
         PrefabReload reload = World.Prefabs.Reload(LampPath);
 
         Assert.Equal(PrefabReloadStatus.Failed, reload.Status);
@@ -223,13 +223,13 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         Assert.Equal(before, World.SaveScene());
 
         // Not a prefab at all, or a prefab whose entities are numbered twice: the same.
-        Write("prefabs/lamp.aprefab", "<Scene version=\"1\"/>");
+        Write("prefabs/lamp.wprf", "<Scene version=\"1\"/>");
         Assert.Equal(PrefabReloadStatus.Failed, World.Prefabs.Reload(LampPath).Status);
-        Write("prefabs/lamp.aprefab", Replace(good, "<Entity id=\"3\" name=\"Base\">", "<Entity id=\"2\" name=\"Base\">"));
+        Write("prefabs/lamp.wprf", Replace(good, "<Entity id=\"3\" name=\"Base\">", "<Entity id=\"2\" name=\"Base\">"));
         Assert.Equal(PrefabReloadStatus.Failed, World.Prefabs.Reload(LampPath).Status);
 
         // Mended, it is read again.
-        Write("prefabs/lamp.aprefab", Replace(good, BulbHealth, "<Health Current=\"5\" Max=\"11\" Regen=\"0.5\"/>"));
+        Write("prefabs/lamp.wprf", Replace(good, BulbHealth, "<Health Current=\"5\" Max=\"11\" Regen=\"0.5\"/>"));
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
         World.ApplyPrefabUpdates();
         Assert.Equal(11, World.Get<Health>(Child(World.Lookup("Lamp"), "Bulb")).Max);
@@ -240,9 +240,9 @@ public sealed class PrefabRefreshTests : PrefabTestBase
     {
         World.LoadScene(TwoLamps());
         string before = World.SaveScene();
-        string good = Read("prefabs/lamp.aprefab");
+        string good = Read("prefabs/lamp.wprf");
 
-        Write("prefabs/lamp.aprefab", Replace(good, BaseLamp, $"<Entity id=\"4\" name=\"Again\" prefab=\"{LampPath}\"/>"));
+        Write("prefabs/lamp.wprf", Replace(good, BaseLamp, $"<Entity id=\"4\" name=\"Again\" prefab=\"{LampPath}\"/>"));
         PrefabReload direct = World.Prefabs.Reload(LampPath);
 
         Assert.Equal(PrefabReloadStatus.Failed, direct.Status);
@@ -251,7 +251,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         Assert.Equal(before, World.SaveScene());
 
         // Through another prefab: the corner holds lamps, so a lamp that holds a corner is a loop too.
-        Write("prefabs/lamp.aprefab", Replace(good, BaseLamp, $"<Entity id=\"4\" name=\"Loop\" prefab=\"{CornerPath}\"/>"));
+        Write("prefabs/lamp.wprf", Replace(good, BaseLamp, $"<Entity id=\"4\" name=\"Loop\" prefab=\"{CornerPath}\"/>"));
         PrefabReload indirect = World.Prefabs.Reload(LampPath);
         Assert.Equal(PrefabReloadStatus.Failed, indirect.Status);
         Assert.Contains("contains itself", indirect.Error, StringComparison.Ordinal);
@@ -263,9 +263,9 @@ public sealed class PrefabRefreshTests : PrefabTestBase
     {
         World.LoadScene(TwoLamps("<Override entity=\"2\"><Health Max=\"40\"/></Override>"));
         string before = World.SaveScene();
-        string text = Read("prefabs/lamp.aprefab");
+        string text = Read("prefabs/lamp.wprf");
 
-        Delete("prefabs/lamp.aprefab");
+        Delete("prefabs/lamp.wprf");
         PrefabReload reload = World.Prefabs.Reload(LampPath);
 
         Assert.Equal(PrefabReloadStatus.Failed, reload.Status);
@@ -274,14 +274,14 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         Assert.Equal(before, World.SaveScene());                                                  // nothing about the instances was lost
 
         // It comes back (a branch is switched back): the same file is not a change.
-        Write("prefabs/lamp.aprefab", text);
+        Write("prefabs/lamp.wprf", text);
         Assert.Equal(PrefabReloadStatus.Unchanged, World.Prefabs.Reload(LampPath).Status);
     }
 
     [Fact]
     public void AMissingPrefabThatAppearsMakesItsInstancesWhole()
     {
-        const string Later = "res://prefabs/later.aprefab";
+        const string Later = "res://prefabs/later.wprf";
         string scene = $"""
             <Scene version="2">
               <Entity id="1" name="Thing" prefab="{Later}">
@@ -294,7 +294,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         Entity thing = World.Lookup("Thing");
         Assert.Empty(World.Children(thing));
 
-        Write("prefabs/later.aprefab", """
+        Write("prefabs/later.wprf", """
             <Prefab version="1" nextId="3">
               <Entity id="1" name="Thing"><Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/>
                 <Entity id="2" name="Part"><Health Current="1" Max="2" Regen="0"/></Entity>
@@ -347,8 +347,8 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         World.PrefabsChanged += seen.Add;
         _ = World.PrefabChanged.Connect(signalled.Add);
 
-        Write("prefabs/lamp.aprefab", Replace(Read("prefabs/lamp.aprefab"), BulbHealth, "<Health Current=\"5\" Max=\"31\" Regen=\"0.5\"/>"));
-        Write("prefabs/corner.aprefab", Replace(Read("prefabs/corner.aprefab"), "<Entity id=\"4\" name=\"Bench\">", "<Entity id=\"5\" name=\"Stool\"/><Entity id=\"4\" name=\"Bench\">"));
+        Write("prefabs/lamp.wprf", Replace(Read("prefabs/lamp.wprf"), BulbHealth, "<Health Current=\"5\" Max=\"31\" Regen=\"0.5\"/>"));
+        Write("prefabs/corner.wprf", Replace(Read("prefabs/corner.wprf"), "<Entity id=\"4\" name=\"Bench\">", "<Entity id=\"5\" name=\"Stool\"/><Entity id=\"4\" name=\"Bench\">"));
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(CornerPath).Status);
         Assert.True(World.HasPendingPrefabUpdates);
@@ -387,7 +387,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
     public void AnInstanceMadeWhileAChangeWaitsIsMadeFromTheOldFileAndFollowsIt()
     {
         World.LoadScene(TwoLamps());
-        Write("prefabs/lamp.aprefab", Replace(Read("prefabs/lamp.aprefab"), BaseLamp, BaseLamp + "<Entity id=\"4\" name=\"Cord\"/>"));
+        Write("prefabs/lamp.wprf", Replace(Read("prefabs/lamp.wprf"), BaseLamp, BaseLamp + "<Entity id=\"4\" name=\"Cord\"/>"));
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
 
         // Everything is made from what the instances were made from until the update: a new lamp, a copy of one, one under a lamp's member.
@@ -415,7 +415,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
 
         // The new lamp is eight: too many to expand, so no instance of it can be updated.
         string many = string.Concat(Enumerable.Range(10, 5).Select(n => $"<Entity id=\"{n}\" name=\"Extra{n}\"/>"));
-        Write("prefabs/lamp.aprefab", Replace(Read("prefabs/lamp.aprefab"), BaseLamp, BaseLamp + many));
+        Write("prefabs/lamp.wprf", Replace(Read("prefabs/lamp.wprf"), BaseLamp, BaseLamp + many));
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
         PrefabUpdate update = WithWarnings(() => World.ApplyPrefabUpdates()!, out _);
 
@@ -469,7 +469,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         World.LoadScene(TwoLamps());
         Entity switchEntity = World.Lookup("Switch");
         World.Set(switchEntity, World.Get<Marks>(switchEntity) with { Target = Child(World.Lookup("Lamp"), "Base") });
-        string mended = Read("prefabs/lamp.aprefab");
+        string mended = Read("prefabs/lamp.wprf");
 
         ChangeLamp(text => Replace(text, BaseLamp, ""));
 
@@ -477,7 +477,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         string saved = World.SaveScene();
         Assert.Contains("Target=\"2/3\"", saved, StringComparison.Ordinal);                      // ...but it remembers where it pointed
 
-        Write("prefabs/lamp.aprefab", mended);
+        Write("prefabs/lamp.wprf", mended);
         using World again = OtherWorld();
         again.LoadScene(saved);
         Assert.Equal(Child(again, again.Lookup("Lamp"), "Base"), again.Get<Marks>(again.Lookup("Switch")).Target);
@@ -488,7 +488,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
     {
         // A world that has been told its library changed, then moved to another one, forgets what it was waiting for: the handles mean nothing in the new one.
         World.LoadScene(TwoLamps());
-        Write("prefabs/lamp.aprefab", Replace(Read("prefabs/lamp.aprefab"), BulbHealth, "<Health Current=\"5\" Max=\"12\" Regen=\"0.5\"/>"));
+        Write("prefabs/lamp.wprf", Replace(Read("prefabs/lamp.wprf"), BulbHealth, "<Health Current=\"5\" Max=\"12\" Regen=\"0.5\"/>"));
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
         Assert.True(World.HasPendingPrefabUpdates);
 
@@ -508,7 +508,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         doomed.Prefabs = library;
         doomed.Dispose();
 
-        Write("prefabs/lamp.aprefab", Replace(Read("prefabs/lamp.aprefab"), BulbHealth, "<Health Current=\"5\" Max=\"12\" Regen=\"0.5\"/>"));
+        Write("prefabs/lamp.wprf", Replace(Read("prefabs/lamp.wprf"), BulbHealth, "<Health Current=\"5\" Max=\"12\" Regen=\"0.5\"/>"));
         _ = library.Load(LampPath);
         Assert.Equal(PrefabReloadStatus.Reloaded, library.Reload(LampPath).Status);               // first read of it: nothing was held, so it is a change
 
@@ -520,7 +520,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
     {
         World.LoadScene(TwoLamps());
         World.HoldPrefabUpdates = true;
-        Write("prefabs/lamp.aprefab", Replace(Read("prefabs/lamp.aprefab"), BulbHealth, "<Health Current=\"5\" Max=\"12\" Regen=\"0.5\"/>"));
+        Write("prefabs/lamp.wprf", Replace(Read("prefabs/lamp.wprf"), BulbHealth, "<Health Current=\"5\" Max=\"12\" Regen=\"0.5\"/>"));
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
 
         Assert.True(World.HoldPrefabUpdates);
@@ -572,13 +572,13 @@ public sealed class PrefabRefreshTests : PrefabTestBase
     [Fact]
     public void ANestedInstanceWhosePrefabIsSwappedKeepsItsRoot()
     {
-        Write("prefabs/lantern.aprefab", "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"2\" name=\"Lantern\"><Entity id=\"1\" name=\"Glass\"/><Entity id=\"3\" name=\"Frame\"/></Entity></Prefab>");
+        Write("prefabs/lantern.wprf", "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"2\" name=\"Lantern\"><Entity id=\"1\" name=\"Glass\"/><Entity id=\"3\" name=\"Frame\"/></Entity></Prefab>");
         World.LoadScene($"<Scene version=\"2\"><Entity id=\"1\" name=\"Corner\" prefab=\"{Corner}\"/></Scene>");
         Entity corner = World.Lookup("Corner");
         Entity inner = Child(corner, "Lamp");
 
         // The corner's first lamp becomes a lantern, whose root has the id of the lamp's Bulb.
-        PrefabUpdate update = Change(World, "prefabs/corner.aprefab", text => Replace(text, $"<Entity id=\"2\" name=\"Lamp\" prefab=\"{LampPath}|{LampUid}\">", "<Entity id=\"2\" name=\"Lamp\" prefab=\"res://prefabs/lantern.aprefab\">"));
+        PrefabUpdate update = Change(World, "prefabs/corner.wprf", text => Replace(text, $"<Entity id=\"2\" name=\"Lamp\" prefab=\"{LampPath}|{LampUid}\">", "<Entity id=\"2\" name=\"Lamp\" prefab=\"res://prefabs/lantern.wprf\">"));
 
         Assert.True(World.IsAlive(corner));
         Assert.Empty(update.Failed);
@@ -640,11 +640,11 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         World.LoadScene(TwoLamps());
         Entity switchEntity = World.Lookup("Switch");
         World.Set(switchEntity, World.Get<Marks>(switchEntity) with { Target = Child(World.Lookup("Lamp"), "Base") });
-        string mended = Read("prefabs/lamp.aprefab");
+        string mended = Read("prefabs/lamp.wprf");
         ChangeLamp(text => Replace(text, BaseLamp, ""));
         Assert.Equal(default, World.Get<Marks>(switchEntity).Target);
 
-        Write("prefabs/lamp.aprefab", mended);
+        Write("prefabs/lamp.wprf", mended);
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
         World.ApplyPrefabUpdates();
 
@@ -669,7 +669,7 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         Assert.NotEmpty(XmlNode.Parse(saved).Children.Single(c => c.Attribute("name") == "Switch").Child("Marks")!.Attribute("Target") ?? "");   // what it waited for is still written
 
         // The lamp gets an entity 5 (a Hook): the Sign comes back under it, and what waited names it.
-        Write("prefabs/lamp.aprefab", Replace(Read("prefabs/lamp.aprefab"), BaseLamp, BaseLamp + "<Entity id=\"5\" name=\"Hook\"/>"));
+        Write("prefabs/lamp.wprf", Replace(Read("prefabs/lamp.wprf"), BaseLamp, BaseLamp + "<Entity id=\"5\" name=\"Hook\"/>"));
         using World again = OtherWorld();
         again.LoadScene(saved);
         Entity sign = Child(again, Child(again, again.Lookup("Lamp"), "Hook"), "Sign");
@@ -769,11 +769,11 @@ public sealed class PrefabRefreshTests : PrefabTestBase
         Entity lamp = Child(World.Lookup("CornerB"), "Lamp");
         Entity bulb = Child(lamp, "Bulb");
         World.Set(bulb, World.Get<Marks>(bulb) with { Target = Child(lamp, "Base") });
-        string mended = Read("prefabs/lamp.aprefab");
+        string mended = Read("prefabs/lamp.wprf");
 
         ChangeLamp(text => Replace(text, BaseLamp, ""));
         Assert.Equal(default, World.Get<Marks>(bulb).Target);
-        Write("prefabs/lamp.aprefab", mended);
+        Write("prefabs/lamp.wprf", mended);
         Assert.Equal(PrefabReloadStatus.Reloaded, World.Prefabs.Reload(LampPath).Status);
         World.ApplyPrefabUpdates();
 

@@ -81,7 +81,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
     public void AFloatSpelledDifferentlyInThePrefabIsNoOverride()
     {
         // The prefab spells numbers its own way, a field it leaves out is zero, and a bool may be 1: what matters is the value the loader makes.
-        Write("prefabs/spelled.aprefab", """
+        Write("prefabs/spelled.wprf", """
             <Prefab version="1" nextId="3">
               <Entity id="1" name="Spelled">
                 <Transform Position="1.0 2.50 0e0" Rotation="0 0 0 1.0" Scale="1.000 1 1"/>
@@ -90,7 +90,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
               </Entity>
             </Prefab>
             """);
-        World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Spelled\" prefab=\"res://prefabs/spelled.aprefab\"/></Scene>");
+        World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Spelled\" prefab=\"res://prefabs/spelled.wprf\"/></Scene>");
 
         string text = SavesTheSameAfterALoad(World);
 
@@ -114,20 +114,20 @@ public sealed class PrefabDiffTests : PrefabTestBase
         // The prefab spells the model as a path alone, as a UID alone, and as both: the world names it with both.
         foreach (string spelled in new[] { "res://models/box.glb", box.ToString(), $"res://models/box.glb|{box}" })
         {
-            Write("prefabs/crate.aprefab", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Crate\"><Furnished Count=\"1\" Model=\"{spelled}\"/></Entity></Prefab>");
+            Write("prefabs/crate.wprf", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Crate\"><Furnished Count=\"1\" Model=\"{spelled}\"/></Entity></Prefab>");
             using World world = OtherWorld();
             world.RegisterAssetType("model", handle => names.TryGetValue(handle, out AssetRef named) ? named : null, reference => reference.Path.EndsWith("other.glb", StringComparison.Ordinal) ? 8u : 7u);
-            world.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Crate\" prefab=\"res://prefabs/crate.aprefab\"/></Scene>");
+            world.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Crate\" prefab=\"res://prefabs/crate.wprf\"/></Scene>");
 
             Assert.Equal(7u, world.Get<Furnished>(world.Lookup("Crate")).Model);
             Assert.Empty(Element(world.SaveScene(), "Crate").Children);          // no override whichever way the prefab spells it
         }
 
         // Another model is an override, written as the world names it.
-        Write("prefabs/crate.aprefab", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Crate\"><Furnished Count=\"1\" Model=\"res://models/box.glb\"/></Entity></Prefab>");
+        Write("prefabs/crate.wprf", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Crate\"><Furnished Count=\"1\" Model=\"res://models/box.glb\"/></Entity></Prefab>");
         using World changed = OtherWorld();
         changed.RegisterAssetType("model", handle => names.TryGetValue(handle, out AssetRef named) ? named : null, reference => reference.Path.EndsWith("other.glb", StringComparison.Ordinal) ? 8u : 7u);
-        changed.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Crate\" prefab=\"res://prefabs/crate.aprefab\"/></Scene>");
+        changed.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Crate\" prefab=\"res://prefabs/crate.wprf\"/></Scene>");
         changed.Set(changed.Lookup("Crate"), new Furnished { Count = 1, Model = 8 });
         XmlNode furnished = Element(changed.SaveScene(), "Crate").Child("Furnished")!;
         Assert.Equal([("Model", $"res://models/other.glb|{other}")], furnished.Attributes.Select(a => (a.Name, a.Value)));
@@ -439,7 +439,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
         Assert.Equal(settled, third.SaveScene());
 
         // The prefab gets the entity and the component back: they apply again, and nothing was lost to make it so.
-        Write("prefabs/lamp.aprefab", Read("prefabs/lamp.aprefab").Replace("<Entity id=\"3\" name=\"Base\">", "<Entity id=\"9\" name=\"Ninth\"><Health Current=\"1\"/></Entity><Entity id=\"3\" name=\"Base\"><Frozen/>", StringComparison.Ordinal));
+        Write("prefabs/lamp.wprf", Read("prefabs/lamp.wprf").Replace("<Entity id=\"3\" name=\"Base\">", "<Entity id=\"9\" name=\"Ninth\"><Health Current=\"1\"/></Entity><Entity id=\"3\" name=\"Base\"><Frozen/>", StringComparison.Ordinal));
         using World again = OtherWorld();
         again.LoadScene(text);
         Entity lamp2 = again.Lookup("Lamp");
@@ -456,10 +456,10 @@ public sealed class PrefabDiffTests : PrefabTestBase
             """;
         World.LoadScene(LampScene(Body));
         string before = World.SaveScene();
-        string lampText = Read("prefabs/lamp.aprefab");
+        string lampText = Read("prefabs/lamp.wprf");
 
         // The lamp is gone (a disabled mod, a bad merge): the scene loads with an empty instance and saves with everything it held.
-        Delete("prefabs/lamp.aprefab");
+        Delete("prefabs/lamp.wprf");
         Assets.Refresh();
         using World without = OtherWorld();
         List<Entity> loaded = WithWarnings(() => without.LoadScene(before), out List<string> warnings);
@@ -474,7 +474,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
         Assert.Equal(during, same.SaveScene());
 
         // The lamp is back: the instance is what it was.
-        Write("prefabs/lamp.aprefab", lampText);
+        Write("prefabs/lamp.wprf", lampText);
         Assets.Refresh();
         using World back = OtherWorld();
         back.LoadScene(during);
@@ -531,7 +531,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
 
         World.SavePrefabFile(CornerPath, corner);
 
-        XmlNode saved = XmlNode.Parse(Read("prefabs/corner.aprefab"));
+        XmlNode saved = XmlNode.Parse(Read("prefabs/corner.wprf"));
         Assert.Equal(CornerUid.ToString(), saved.Attribute("uid"));
         Assert.Equal("7", saved.Attribute("nextId"));
         XmlNode root = saved.Child("Entity")!;
@@ -553,7 +553,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
         World.Destroy(Child(corner, "Pole"));
         _ = World.CreateEntity("Beam", corner);
         World.SavePrefabFile(CornerPath, corner);
-        XmlNode again = XmlNode.Parse(Read("prefabs/corner.aprefab"));
+        XmlNode again = XmlNode.Parse(Read("prefabs/corner.wprf"));
         Assert.Equal("8", again.Attribute("nextId"));
         Assert.Equal([("2", "Lamp"), ("3", "Lamp 2"), ("7", "Beam")], again.Child("Entity")!.Children.Where(c => c.Name == "Entity").Select(c => (c.Attribute("id")!, c.Attribute("name")!)));
 
@@ -598,8 +598,8 @@ public sealed class PrefabDiffTests : PrefabTestBase
         string saved = World.SaveScene();
 
         // The lamp moved on: its Base is gone, it has a Lens now, and the bulb has other values.
-        string lamp = Read("prefabs/lamp.aprefab");
-        Write("prefabs/lamp.aprefab", lamp
+        string lamp = Read("prefabs/lamp.wprf");
+        Write("prefabs/lamp.wprf", lamp
             .Replace("<Entity id=\"3\" name=\"Base\"><Transform Position=\"0 0 0\" Rotation=\"0 0 0 1\" Scale=\"1 1 1\"/></Entity>", "<Entity id=\"4\" name=\"Lens\"><Frozen/></Entity>", StringComparison.Ordinal)
             .Replace("<Health Current=\"5\" Max=\"9\" Regen=\"0.5\"/>", "<Health Current=\"5\" Max=\"90\" Regen=\"0.75\"/>", StringComparison.Ordinal)
             .Replace("nextId=\"4\"", "nextId=\"5\"", StringComparison.Ordinal));
@@ -622,7 +622,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
         Assert.Equal([("Current", "3")], element.Children[2].Child("Health")!.Attributes.Select(a => (a.Name, a.Value)));
 
         // The old lamp comes back (the mod is enabled again): the kept override applies.
-        Write("prefabs/lamp.aprefab", lamp);
+        Write("prefabs/lamp.wprf", lamp);
         using World older = OtherWorld();
         older.LoadScene(text);
         Assert.Equal(["Bulb", "Foot"], NamesBelow(older, older.Lookup("Lamp")));
@@ -637,7 +637,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
         string saved = World.SaveScene();
 
         // The lamp's Flicker has a field it did not have when the scene was written.
-        Write("prefabs/lamp.aprefab", Read("prefabs/lamp.aprefab")
+        Write("prefabs/lamp.wprf", Read("prefabs/lamp.wprf")
             .Replace("<Field name=\"lamp\" kind=\"Entity\"/>", "<Field name=\"lamp\" kind=\"Entity\"/><Field name=\"phase\" kind=\"Float32\"/>", StringComparison.Ordinal)
             .Replace("<Flicker speed=\"2\" lamp=\"1\"/>", "<Flicker speed=\"2\" lamp=\"1\" phase=\"0.5\"/>", StringComparison.Ordinal));
         using World newer = OtherWorld();
@@ -660,10 +660,10 @@ public sealed class PrefabDiffTests : PrefabTestBase
     public void AnInstanceWhoseFileBecomesACycleStillSavesAndLoads()
     {
         World.LoadScene(LampScene());
-        string lamp = Read("prefabs/lamp.aprefab");
+        string lamp = Read("prefabs/lamp.wprf");
 
         // The file is replaced by one that holds an instance of itself, and the world is told it changed.
-        Write("prefabs/lamp.aprefab", lamp.Replace("<Entity id=\"3\" name=\"Base\"><Transform Position=\"0 0 0\" Rotation=\"0 0 0 1\" Scale=\"1 1 1\"/></Entity>", $"<Entity id=\"4\" name=\"Again\" prefab=\"{LampPath}\"/>", StringComparison.Ordinal));
+        Write("prefabs/lamp.wprf", lamp.Replace("<Entity id=\"3\" name=\"Base\"><Transform Position=\"0 0 0\" Rotation=\"0 0 0 1\" Scale=\"1 1 1\"/></Entity>", $"<Entity id=\"4\" name=\"Again\" prefab=\"{LampPath}\"/>", StringComparison.Ordinal));
         World.Prefabs.Written(World.Prefabs.Load(LampPath));
         World.ApplyPrefabUpdates();                                                                // (an update cannot make a prefab that contains itself: the instance stays as it was)
         string text = WithWarnings(() => World.SaveScene(), out List<string> warnings);
@@ -684,19 +684,19 @@ public sealed class PrefabDiffTests : PrefabTestBase
     {
         Entity holder = World.CreateEntity("Holder");
         _ = World.Instantiate(LampPath, holder);
-        string before = Read("prefabs/lamp.aprefab");
+        string before = Read("prefabs/lamp.wprf");
 
         InvalidOperationException e = Assert.Throws<InvalidOperationException>(() => World.SavePrefabFile(LampPath, holder));
 
         Assert.Contains("itself", e.Message, StringComparison.Ordinal);
-        Assert.Equal(before, Read("prefabs/lamp.aprefab"));                                      // nothing was written
+        Assert.Equal(before, Read("prefabs/lamp.wprf"));                                      // nothing was written
 
         // Under another name it is a prefab like any other, with the lamp inside it as an instance.
-        World.SavePrefabFile("res://prefabs/holder.aprefab", holder);
-        XmlNode saved = XmlNode.Parse(Read("prefabs/holder.aprefab"));
+        World.SavePrefabFile("res://prefabs/holder.wprf", holder);
+        XmlNode saved = XmlNode.Parse(Read("prefabs/holder.wprf"));
         Assert.Equal(Lamp, saved.Child("Entity")!.Child("Entity")!.Attribute("prefab"));
         using World fresh = OtherWorld();
-        Entity made = fresh.Instantiate("res://prefabs/holder.aprefab");
+        Entity made = fresh.Instantiate("res://prefabs/holder.wprf");
         Assert.True(fresh.IsPrefabInstance(Child(fresh, made, "Lamp")));
         Assert.Equal(["Bulb", "Base"], NamesBelow(fresh, Child(fresh, made, "Lamp")));
     }
@@ -763,7 +763,7 @@ public sealed class PrefabDiffTests : PrefabTestBase
     [Fact]
     public void WhatTheWorldCannotDescribeIsNeitherRemovedNorKept()
     {
-        Write("prefabs/lamp.aprefab", Read("prefabs/lamp.aprefab").Replace("<Entity id=\"3\" name=\"Base\">", "<Entity id=\"3\" name=\"Base\"><Mystery a=\"1\"/><Frozen/>", StringComparison.Ordinal));
+        Write("prefabs/lamp.wprf", Read("prefabs/lamp.wprf").Replace("<Entity id=\"3\" name=\"Base\">", "<Entity id=\"3\" name=\"Base\"><Mystery a=\"1\"/><Frozen/>", StringComparison.Ordinal));
         World.IgnoreInScenes("Frozen");                                                           // only means something in this run
         World.LoadScene(LampScene());
         Entity lampBase = Child(World.Lookup("Lamp"), "Base");

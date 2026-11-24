@@ -26,7 +26,7 @@ public sealed class PlatformPackagingContext
     public required Action<string> Log { get; init; }
 
     /// <summary>
-    /// The <c>Icon</c> that the exported <c>game.xml</c> names, relative to <see cref="ExportLayout.GameRoot"/>: null (the default) when the icon is in the executable or the bundle, the path of a file the
+    /// The <c>Icon</c> that the exported <c>game.wgam</c> names, relative to <see cref="ExportLayout.GameRoot"/>: null (the default) when the icon is in the executable or the bundle, the path of a file the
     /// step wrote when the runtime draws the window's icon itself (Linux).
     /// </summary>
     public string? ExportedIcon { get; set; }

@@ -86,7 +86,7 @@ not the entities of registered components and the reflection data under them, no
   *that* world's handle for the same asset, so a model is still the same model although the new session numbered its models afresh. An asset that world cannot find, or that has no path or UID, comes back as 0
   with a warning. Any other handle of the run (a physics body's id) is still bytes and comes back with the old value, so such components are left to the code that made them. What a prefab instance's element held that could not be applied
   (see [prefabs](../content/prefabs.md#overrides)) travels with the instance's root, so Play and Stop, undo and redo do not lose it.
-- **Scenes** (`.ascene`): `SaveScene()` writes the user entities as XML text, `SaveScene(entity)` one branch, and `LoadScene(text, parent?)` creates the entities (under `parent` when given) and returns them in the
+- **Scenes** (`.wscn`): `SaveScene()` writes the user entities as XML text, `SaveScene(entity)` one branch, and `LoadScene(text, parent?)` creates the entities (under `parent` when given) and returns them in the
   order of the file. `SaveSceneDocument(roots)` and `LoadScene(node, parent?)` do the same with an `XmlNode` tree, for code that patches or inspects it. Each component is an element and each field an attribute
   (`<Transform Position="0 -0.5 0" Rotation="0 0 0 1" Scale="1 1 1"/>`), a child `<Entity>` is a child entity, and the format needs no reflection, so it works in NativeAOT. Flecs' own JSON was not used: it would
   carry the entities the engine registers for its types and systems. Components a script defined are written with their schema and defined again when the scene is loaded into a world that has not heard of them.

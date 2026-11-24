@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A .aprefab file: one entity with everything below it, and the components they have. The structure is described here; what the components and their fields are comes from the engine's registry when the prefab is instantiated. -->
+<!-- A .wprf file: one entity with everything below it, and the components they have. The structure is described here; what the components and their fields are comes from the engine's registry when the prefab is instantiated. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:simpleType name="Uid">
     <xs:restriction base="xs:string">

@@ -20,7 +20,7 @@ public sealed class FilesTests : IDisposable
     {
         string folder = Path.Combine(_root, "workshop", folderName);
         Directory.CreateDirectory(folder);
-        File.WriteAllText(Path.Combine(folder, "mod.xml"), $"""<Mod id="{modId}" name="{modId}" version="1.0.0"><Script path="main.luau"/></Mod>""");
+        File.WriteAllText(Path.Combine(folder, "mod.wmod"), $"""<Mod id="{modId}" name="{modId}" version="1.0.0"><Script path="main.luau"/></Mod>""");
         File.WriteAllText(Path.Combine(folder, "main.luau"), "-- " + modId);
         if (extraFile is not null)
         {
@@ -43,14 +43,14 @@ public sealed class FilesTests : IDisposable
         Assert.Equal(["big_crates", "fast_trucks"], root.Select(e => e.Name).Order());
         Assert.All(root, e => Assert.Equal(FileKind.Directory, e.Kind));
 
-        Assert.Equal(FileKind.File, source.Kind("big_crates/mod.xml"));
+        Assert.Equal(FileKind.File, source.Kind("big_crates/mod.wmod"));
         Assert.Equal(FileKind.Directory, source.Kind("big_crates/data"));
         Assert.Equal(FileKind.None, source.Kind("3001"));            // the item's id is not its name
         Assert.Equal(FileKind.None, source.Kind("big_crates/nothing"));
         Assert.Equal("data", System.Text.Encoding.UTF8.GetString(source.ReadAllBytes("big_crates/data/x.xml")));
-        Assert.Throws<FileNotFoundException>(() => source.ReadAllBytes("unknown/mod.xml"));
+        Assert.Throws<FileNotFoundException>(() => source.ReadAllBytes("unknown/mod.wmod"));
         Assert.False(((IFileSource)source).CanWrite);
-        Assert.Equal(Path.Combine(a, "mod.xml"), source.PhysicalPath("big_crates/mod.xml"));
+        Assert.Equal(Path.Combine(a, "mod.wmod"), source.PhysicalPath("big_crates/mod.wmod"));
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class FilesTests : IDisposable
         files.Mount("workshop://", new WorkshopSource([("3001", Item("3001", "big_crates")), ("3002", Item("3002", "fast_trucks"))]));
         files.Mount("user://", new DirectorySource(Directory.CreateDirectory(Path.Combine(_root, "user")).FullName, writable: true));
         Directory.CreateDirectory(Path.Combine(_root, "user", "mods", "own_mod"));
-        File.WriteAllText(Path.Combine(_root, "user", "mods", "own_mod", "mod.xml"), """<Mod id="own_mod" name="own" version="1.0.0"/>""");
+        File.WriteAllText(Path.Combine(_root, "user", "mods", "own_mod", "mod.wmod"), """<Mod id="own_mod" name="own" version="1.0.0"/>""");
 
         using PackageSet packages = PackageSet.Load(files, new PackageOptions { ExtraUserModsPaths = ["workshop://"] });
 

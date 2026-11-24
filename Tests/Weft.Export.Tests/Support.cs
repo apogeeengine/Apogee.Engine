@@ -91,8 +91,8 @@ internal static class FakeRuntime
         scratch.Write($"{folder}/Weft.Runtime.dbg", "debug");
         scratch.Write($"{folder}/Weft.Runtime.lib", "import library");
         scratch.Write($"{folder}/steam_appid.txt", "480");
-        scratch.Write($"{folder}/game.xml", "<Game/>");
-        scratch.Write($"{folder}/data/old.pack", "an old pack");
+        scratch.Write($"{folder}/game.wgam", "<Game/>");
+        scratch.Write($"{folder}/data/old.wpak", "an old pack");
         return scratch.Path(folder);
     }
 

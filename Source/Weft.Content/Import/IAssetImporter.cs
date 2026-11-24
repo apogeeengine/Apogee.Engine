@@ -5,7 +5,7 @@ using Weft.Content.FileSystem;
 
 namespace Weft.Content.Import;
 
-/// <summary>What an importer made: the artifact's bytes and the extension that is added to the source's name (<c>.amodel</c>).</summary>
+/// <summary>What an importer made: the artifact's bytes and the extension that is added to the source's name (<c>.wmdl</c>).</summary>
 public sealed record ImportResult(byte[] Bytes, string ArtifactExtension);
 
 /// <summary>
@@ -20,7 +20,7 @@ public interface IAssetImporter
     /// <summary>The extensions it takes, with the dot, in lower case.</summary>
     IReadOnlyList<string> Extensions { get; }
 
-    /// <summary>Everything that changes what it writes and is not in the asset or its <c>.import.xml</c>: its own version, the version and the options of the tools it calls.</summary>
+    /// <summary>Everything that changes what it writes and is not in the asset or its <c>.wimp</c>: its own version, the version and the options of the tools it calls.</summary>
     string Fingerprint { get; }
 
     /// <summary>The artifact of the asset, or null when the asset is not one (a shader module that only other shaders import): it then has no entry in the index.</summary>
@@ -109,7 +109,7 @@ public sealed class ModelImporter : IAssetImporter
             OptimizeMeshes = context.Settings.Optimize,
             ReadFile = context.ReadFile,
         });
-        return new ImportResult(ModelFile.Write(model, context.Settings.Compression), ".amodel");
+        return new ImportResult(ModelFile.Write(model, context.Settings.Compression), ".wmdl");
     }
 }
 

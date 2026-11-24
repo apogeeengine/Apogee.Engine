@@ -26,7 +26,7 @@ public sealed class AssetKindsTests
     {
         Assert.Equal([".glb", ".gltf"], AssetKinds.ExtensionsOf("model"));
         Assert.Equal([".png", ".jpg", ".jpeg"], AssetKinds.ExtensionsOf("texture"));
-        Assert.Equal([".ascene"], AssetKinds.ExtensionsOf("scene"));
+        Assert.Equal([".wscn"], AssetKinds.ExtensionsOf("scene"));
         Assert.Empty(AssetKinds.ExtensionsOf("kindnobodyregistered"));
         Assert.Equal("Model", AssetKinds.LabelOf("model"));
         Assert.Equal("kindnobodyregistered", AssetKinds.LabelOf("kindnobodyregistered"));
@@ -39,8 +39,8 @@ public sealed class AssetKindsTests
         Assert.Equal("model", AssetKinds.TypeOfPath("res://models/car.glb"));
         Assert.Equal("model", AssetKinds.TypeOfPath("mod://id/CAR.GLTF"));
         Assert.Equal("texture", AssetKinds.TypeOfPath(@"C:\game\wall.Png"));
-        Assert.Equal("scene", AssetKinds.TypeOfPath("level.ascene"));
-        Assert.Null(AssetKinds.TypeOfPath("res://models/car.glb.import.xml"));     // a sidecar is no asset
+        Assert.Equal("scene", AssetKinds.TypeOfPath("level.wscn"));
+        Assert.Null(AssetKinds.TypeOfPath("res://models/car.glb.wimp"));     // a sidecar is no asset
         Assert.Null(AssetKinds.TypeOfPath("res://models/car"));
         Assert.Null(AssetKinds.TypeOfPath("res://models/.glb"));                    // a name that only starts with a dot has no extension
         Assert.Null(AssetKinds.TypeOfPath("res://dir.glb/car"));

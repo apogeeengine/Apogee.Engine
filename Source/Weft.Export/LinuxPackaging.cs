@@ -7,7 +7,7 @@ using Weft.Content.Packages;
 namespace Weft.Export;
 
 /// <summary>
-/// Linux: the executable is made executable, the icon is written as <c>icon.png</c> (the runtime draws the window's icon from the file named by the exported <c>game.xml</c>), and a desktop entry,
+/// Linux: the executable is made executable, the icon is written as <c>icon.png</c> (the runtime draws the window's icon from the file named by the exported <c>game.wgam</c>), and a desktop entry,
 /// <c>&lt;identifier&gt;.desktop</c>, is written for whoever installs the game (a distribution package, a Flatpak, an AppImage). The entry is a template: nothing in the export reads it, and Steam does not use it.
 /// </summary>
 internal sealed class LinuxPackaging : IPlatformPackaging

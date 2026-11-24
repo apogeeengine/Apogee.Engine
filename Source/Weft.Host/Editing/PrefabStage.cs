@@ -40,7 +40,7 @@ public sealed class PrefabStage : IDisposable
     /// <summary>The root entity of the prefab in <see cref="World"/>. It is not an instance: it is the prefab's own root.</summary>
     public Entity Root { get; }
 
-    /// <summary>The path of the prefab's file (<c>res://prefabs/lamp.aprefab</c>), however it was asked for.</summary>
+    /// <summary>The path of the prefab's file (<c>res://prefabs/lamp.wprf</c>), however it was asked for.</summary>
     public string Path { get; }
 
     /// <summary>The prefab's handle in the session's <see cref="PrefabLibrary"/> (the same in the stage's world and in the session's).</summary>
@@ -59,7 +59,7 @@ public sealed class PrefabStage : IDisposable
     /// Opens the prefab at <paramref name="path"/> in a world of its own.
     /// </summary>
     /// <param name="session">The session whose files, assets, models and prefabs the stage uses.</param>
-    /// <param name="path">A path ending in <c>.aprefab</c>, <c>uid://…</c>, or <c>path|uid://…</c> (the text of a <see cref="Weft.Core.Assets.AssetRef"/>).</param>
+    /// <param name="path">A path ending in <c>.wprf</c>, <c>uid://…</c>, or <c>path|uid://…</c> (the text of a <see cref="Weft.Core.Assets.AssetRef"/>).</param>
     /// <exception cref="System.IO.FileNotFoundException">There is no such file.</exception>
     /// <exception cref="Weft.Content.ContentException">The path is a <c>uid://</c> that no file has.</exception>
     /// <exception cref="FormatException">The text is not a reference, the file is not a prefab, its root is an instance of another prefab, or it would make more than <see cref="World.MaxLoadEntities"/> entities.</exception>

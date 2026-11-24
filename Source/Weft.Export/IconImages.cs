@@ -5,7 +5,7 @@ using Weft.Content;
 namespace Weft.Export;
 
 /// <summary>
-/// A game's icon (<c>game.xml</c>'s <c>Icon</c>: a square PNG) at the sizes the platforms want: Windows icon resources, the macOS <c>icns</c>, the Linux icon. Sizes below the image are made by averaging
+/// A game's icon (<c>game.wgam</c>'s <c>Icon</c>: a square PNG) at the sizes the platforms want: Windows icon resources, the macOS <c>icns</c>, the Linux icon. Sizes below the image are made by averaging
 /// the pixels each new pixel covers (a box filter, with transparent pixels counting for nothing in the colors); a size above it is made the same way, which only repeats pixels, and is warned about.
 /// </summary>
 public sealed class IconImages

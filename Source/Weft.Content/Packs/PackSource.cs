@@ -11,7 +11,7 @@ namespace Weft.Content.Packs;
 
 /// <summary>
 /// A pack (see <see cref="PackWriter"/>) as a source of the virtual file system. Opening reads the headers and indexes of the first part and of the parts that follow it
-/// (<c>name_001.pack</c>…, which must all be there); files are read, decrypted, decompressed and checked against their hashes when asked for. A pack that is encrypted needs the key
+/// (<c>name_001.wpak</c>…, which must all be there); files are read, decrypted, decompressed and checked against their hashes when asked for. A pack that is encrypted needs the key
 /// (without one, or with a wrong one, <see cref="Open"/> says so); damage anywhere is an <see cref="IOException"/> naming the file. Reads are safe from several threads.
 /// A patch pack can <see cref="FileKind.Removed"/> paths of the packs mounted under it.
 /// </summary>

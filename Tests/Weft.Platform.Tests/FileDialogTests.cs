@@ -48,14 +48,14 @@ public sealed unsafe class FileDialogTests
     [Fact]
     public void AResultListIsCopied()
     {
-        byte** list = MakeList("/home/me/scenes/level.ascene", "/home/me/scénes/niveau 2.ascene");
+        byte** list = MakeList("/home/me/scenes/level.wscn", "/home/me/scénes/niveau 2.wscn");
         FileDialogResult result = FileDialog.Read(list);
         Free(list); // SDL frees its list when the callback returns: the copy must not depend on it.
 
         Assert.True(result.HasPaths);
         Assert.False(result.Cancelled);
         Assert.Null(result.Error);
-        Assert.Equal(["/home/me/scenes/level.ascene", "/home/me/scénes/niveau 2.ascene"], result.Paths);
+        Assert.Equal(["/home/me/scenes/level.wscn", "/home/me/scénes/niveau 2.wscn"], result.Paths);
     }
 
     [Fact]
@@ -191,13 +191,13 @@ public sealed unsafe class FileDialogTests
     [Fact]
     public void TheRequestMemoryHoldsTheFiltersAndTheLocation()
     {
-        var filters = new List<(string, string)> { ("Scenes", "ascene"), ("Modèles", "glb;gltf"), ("All files", "*") };
+        var filters = new List<(string, string)> { ("Scenes", "wscn"), ("Modèles", "glb;gltf"), ("All files", "*") };
         FileDialog.FilterBlock block = FileDialog.FilterBlock.Create(filters, "/home/me/jeu éphémère/scenes/");
         try
         {
             Assert.Equal(3, block.Count);
             Assert.Equal("Scenes", Utf8.FromPointer(block.Table[0].Name));
-            Assert.Equal("ascene", Utf8.FromPointer(block.Table[0].Pattern));
+            Assert.Equal("wscn", Utf8.FromPointer(block.Table[0].Pattern));
             Assert.Equal("Modèles", Utf8.FromPointer(block.Table[1].Name));
             Assert.Equal("glb;gltf", Utf8.FromPointer(block.Table[1].Pattern));
             Assert.Equal("*", Utf8.FromPointer(block.Table[2].Pattern));

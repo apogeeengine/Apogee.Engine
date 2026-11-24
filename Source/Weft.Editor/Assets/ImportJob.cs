@@ -17,7 +17,7 @@ namespace Weft.Editor.Assets;
 /// <param name="Copied">The files now in the project (virtual paths).</param>
 /// <param name="Imported">The assets that were imported, as virtual paths.</param>
 /// <param name="Failed">The files that were not copied or not imported, with the reason; the ones that were copied stay in place (the asset browser's <i>Re-import</i> tries again).</param>
-/// <param name="Reassigned">The assets whose <c>.import.xml</c> came with a UID that another asset of the project has, and got a new one (the path, the old UID, the new).</param>
+/// <param name="Reassigned">The assets whose <c>.wimp</c> came with a UID that another asset of the project has, and got a new one (the path, the old UID, the new).</param>
 /// <param name="NotImported">The project has never been imported (it has no <c>imported/index.xml</c>), so the files were copied and not imported: it loads its files from their sources, and importing a first file would make the reloader import the whole project on the main thread.</param>
 /// <param name="Cancelled">The job was cancelled before it was done: what was copied stays, nothing was undone.</param>
 /// <param name="Error">An unexpected failure that ended the job.</param>

@@ -46,7 +46,7 @@ public class XmlBinaryTests
     private static byte[] Claim(uint strings, uint nodes, params byte[] rest)
     {
         var bytes = new byte[16 + rest.Length];
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x42585041);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x424D5857);
         BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(4), XmlBinary.Version);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), strings);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12), nodes);
@@ -71,15 +71,15 @@ public class XmlBinaryTests
     [Fact]
     public void ATreeRoundTripsWithAttributesOrderTextAndLines()
     {
-        XmlNode tree = XmlNode.Parse(Sample, "scene.ascene");
+        XmlNode tree = XmlNode.Parse(Sample, "scene.wscn");
         tree.Children[2].SetAttribute("z", "last");
         tree.Children[2].SetAttribute("a", "first"); // written after "z": the order is kept, not sorted
 
         byte[] bytes = XmlBinary.Write(tree);
-        XmlNode read = XmlBinary.Read(bytes, "res://cooked.ascene");
+        XmlNode read = XmlBinary.Read(bytes, "res://cooked.wscn");
 
         Assert.True(XmlBinary.IsBinary(bytes));
-        AssertSame(tree, read, "res://cooked.ascene");
+        AssertSame(tree, read, "res://cooked.wscn");
         Assert.Equal(["z", "a"], read.Children[2].Attributes.Select(a => a.Name));
         Assert.Equal(tree.ToXml(), read.ToXml());
         Assert.Equal(6, read.Children[1].Line);
@@ -142,7 +142,7 @@ public class XmlBinaryTests
         int text = Encoding.UTF8.GetByteCount(scene.ToXml());
 
         Assert.True(bytes.Length < text / 2, $"{bytes.Length} bytes cooked, {text} as text");
-        AssertSame(scene, XmlBinary.Read(bytes, "big.ascene"), "big.ascene");
+        AssertSame(scene, XmlBinary.Read(bytes, "big.wscn"), "big.wscn");
     }
 
     [Fact]
@@ -151,25 +151,25 @@ public class XmlBinaryTests
         using var folder = new TempFolder();
         var files = new VirtualFileSystem();
         files.Mount("res://", new DirectorySource(folder.Root, writable: true));
-        XmlNode tree = XmlNode.Parse(Sample, "res://scene.ascene");
-        files.WriteAllText("res://scene.ascene", Sample);
-        files.WriteAllBytes("res://cooked.ascene", XmlBinary.Write(tree));
-        files.WriteAllBytes("res://bom.ascene", [.. Encoding.UTF8.Preamble, .. Encoding.UTF8.GetBytes(Sample)]);
+        XmlNode tree = XmlNode.Parse(Sample, "res://scene.wscn");
+        files.WriteAllText("res://scene.wscn", Sample);
+        files.WriteAllBytes("res://cooked.wscn", XmlBinary.Write(tree));
+        files.WriteAllBytes("res://bom.wscn", [.. Encoding.UTF8.Preamble, .. Encoding.UTF8.GetBytes(Sample)]);
 
-        XmlNode fromText = XmlFile.Read(files, "res://scene.ascene");
-        XmlNode fromBinary = XmlFile.Read(files, "res://cooked.ascene");
-        XmlNode fromBom = XmlFile.Read(files, "res://bom.ascene");
+        XmlNode fromText = XmlFile.Read(files, "res://scene.wscn");
+        XmlNode fromBinary = XmlFile.Read(files, "res://cooked.wscn");
+        XmlNode fromBom = XmlFile.Read(files, "res://bom.wscn");
 
-        AssertSame(tree, fromText, "res://scene.ascene");
-        AssertSame(tree, fromBinary, "res://cooked.ascene");
-        AssertSame(tree, fromBom, "res://bom.ascene");
+        AssertSame(tree, fromText, "res://scene.wscn");
+        AssertSame(tree, fromBinary, "res://cooked.wscn");
+        AssertSame(tree, fromBom, "res://bom.wscn");
         Assert.Equal(fromText.ToXml(), fromBinary.ToXml());
-        AssertSame(tree, XmlFile.Read(Encoding.UTF8.GetBytes(Sample), "res://scene.ascene"), "res://scene.ascene");
-        Assert.Throws<FileNotFoundException>(() => XmlFile.Read(files, "res://missing.ascene"));
+        AssertSame(tree, XmlFile.Read(Encoding.UTF8.GetBytes(Sample), "res://scene.wscn"), "res://scene.wscn");
+        Assert.Throws<FileNotFoundException>(() => XmlFile.Read(files, "res://missing.wscn"));
 
         // A text file that is not XML is still the text parser's error, with the path and the line.
-        files.WriteAllText("res://bad.ascene", "<a>\n<b></a>");
-        Assert.StartsWith("res://bad.ascene:2:", Assert.Throws<XmlParseException>(() => XmlFile.Read(files, "res://bad.ascene")).Message);
+        files.WriteAllText("res://bad.wscn", "<a>\n<b></a>");
+        Assert.StartsWith("res://bad.wscn:2:", Assert.Throws<XmlParseException>(() => XmlFile.Read(files, "res://bad.wscn")).Message);
     }
 
     [Fact]
@@ -196,28 +196,28 @@ public class XmlBinaryTests
 
         byte[] newer = (byte[])good.Clone();
         BinaryPrimitives.WriteUInt16LittleEndian(newer.AsSpan(4), 2);
-        ContentException error = Assert.Throws<ContentException>(() => XmlBinary.Read(newer, "res://a.ascene"));
+        ContentException error = Assert.Throws<ContentException>(() => XmlBinary.Read(newer, "res://a.wscn"));
         Assert.Contains("newer engine", error.Message, StringComparison.Ordinal);
         Assert.Contains("cook again", error.Message, StringComparison.Ordinal);
-        Assert.StartsWith("res://a.ascene:", error.Message, StringComparison.Ordinal);
-        Assert.Throws<ContentException>(() => XmlFile.Read(newer, "res://a.ascene")); // not mistaken for text
+        Assert.StartsWith("res://a.wscn:", error.Message, StringComparison.Ordinal);
+        Assert.Throws<ContentException>(() => XmlFile.Read(newer, "res://a.wscn")); // not mistaken for text
 
         byte[] flagged = (byte[])good.Clone();
         BinaryPrimitives.WriteUInt16LittleEndian(flagged.AsSpan(6), 1);
-        Assert.Throws<ContentException>(() => XmlBinary.Read(flagged, "a.ascene"));
+        Assert.Throws<ContentException>(() => XmlBinary.Read(flagged, "a.wscn"));
 
         byte[] zero = (byte[])good.Clone();
         BinaryPrimitives.WriteUInt16LittleEndian(zero.AsSpan(4), 0);
-        Assert.Throws<ContentException>(() => XmlBinary.Read(zero, "a.ascene"));
+        Assert.Throws<ContentException>(() => XmlBinary.Read(zero, "a.wscn"));
 
         byte[] magic = (byte[])good.Clone();
         magic[0] ^= 0xFF;
         Assert.False(XmlBinary.IsBinary(magic));
-        Assert.Throws<ContentException>(() => XmlBinary.Read(magic, "a.ascene"));
-        Assert.Throws<ContentException>(() => XmlBinary.Read([], "a.ascene"));
-        Assert.Throws<ContentException>(() => XmlBinary.Read("<a/>"u8, "a.ascene"));
+        Assert.Throws<ContentException>(() => XmlBinary.Read(magic, "a.wscn"));
+        Assert.Throws<ContentException>(() => XmlBinary.Read([], "a.wscn"));
+        Assert.Throws<ContentException>(() => XmlBinary.Read("<a/>"u8, "a.wscn"));
         Assert.False(XmlBinary.IsBinary("<a/>"u8));
-        Assert.False(XmlBinary.IsBinary("APX"u8));
+        Assert.False(XmlBinary.IsBinary("WXM"u8));
         Assert.False(XmlBinary.IsBinary([0xEF, 0xBB, 0xBF, (byte)'<']));
     }
 
@@ -230,11 +230,11 @@ public class XmlBinaryTests
         for (int length = 0; length < good.Length; length++)
         {
             byte[] prefix = good[..length];
-            Assert.Throws<ContentException>(() => XmlBinary.Read(prefix, "cut.ascene"));
+            Assert.Throws<ContentException>(() => XmlBinary.Read(prefix, "cut.wscn"));
         }
 
         // One extra byte is damage too.
-        Assert.Throws<ContentException>(() => XmlBinary.Read([.. good, 0], "extra.ascene"));
+        Assert.Throws<ContentException>(() => XmlBinary.Read([.. good, 0], "extra.wscn"));
 
         // Flipped bytes read as something else or are refused; nothing but a ContentException may come out.
         var random = new Random(20261114);
@@ -249,7 +249,7 @@ public class XmlBinaryTests
 
             try
             {
-                XmlBinary.Read(damaged, "flipped.ascene");
+                XmlBinary.Read(damaged, "flipped.wscn");
             }
             catch (ContentException)
             {
@@ -270,13 +270,13 @@ public class XmlBinaryTests
         for (int i = 0; i < 200; i++)
         {
             random.NextBytes(noise);
-            noise[0] = 0x41;
-            noise[1] = 0x50;
-            noise[2] = 0x58;
+            noise[0] = 0x57;
+            noise[1] = 0x58;
+            noise[2] = 0x4D;
             noise[3] = 0x42;
             try
             {
-                XmlBinary.Read(noise, "noise.ascene");
+                XmlBinary.Read(noise, "noise.wscn");
             }
             catch (ContentException)
             {
@@ -304,7 +304,7 @@ public class XmlBinaryTests
         long before = GC.GetAllocatedBytesForCurrentThread();
         foreach (byte[] file in files)
         {
-            Assert.Throws<ContentException>(() => XmlBinary.Read(file, "huge.ascene"));
+            Assert.Throws<ContentException>(() => XmlBinary.Read(file, "huge.wscn"));
         }
 
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;

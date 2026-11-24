@@ -117,7 +117,7 @@ public static class RuntimeFolder
     /// <summary>
     /// Whether a file of the runtime folder goes into an export. Left out: debug files (<c>*.pdb</c>, <c>*.dbg</c>, <c>*.dSYM</c>), import libraries (<c>*.lib</c>, <c>*.exp</c>), the Slang compiler's
     /// libraries (a shipped game loads compiled shaders and never the compiler) and the shader sources (<c>Shaders/*.slang</c>; <c>Shaders/imported</c> stays), and what only a development
-    /// folder has: <c>steam_appid.txt</c> (the dev switch of Steam), <c>game.xml</c> and <c>data/</c> (the export writes its own).
+    /// folder has: <c>steam_appid.txt</c> (the dev switch of Steam), <c>game.wgam</c> and <c>data/</c> (the export writes its own).
     /// </summary>
     /// <param name="relativePath">The path in the runtime folder, with <c>/</c> or <c>\</c> as separators.</param>
     public static bool Ships(string relativePath)
@@ -125,7 +125,7 @@ public static class RuntimeFolder
         string path = relativePath.Replace('\\', '/').TrimStart('/');
         string[] segments = path.Split('/');
         string file = segments[^1];
-        if (segments.Length == 1 && (file is "steam_appid.txt" or "game.xml"))
+        if (segments.Length == 1 && (file is "steam_appid.txt" or "game.wgam"))
         {
             return false;
         }
@@ -154,9 +154,9 @@ public static class RuntimeFolder
             return false;
         }
 
-        // A shader source and the file of its import settings (x.slang and x.slang.import.xml): a shipped game loads the compiled shaders of Shaders/imported and never reads either.
+        // A shader source and the file of its import settings (x.slang and x.slang.wimp): a shipped game loads the compiled shaders of Shaders/imported and never reads either.
         if (segments[0] == "Shaders" && segments.Length > 1 && segments[1] != "imported"
-            && (file.EndsWith(".slang", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".slang.import.xml", StringComparison.OrdinalIgnoreCase)))
+            && (file.EndsWith(".slang", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".slang.wimp", StringComparison.OrdinalIgnoreCase)))
         {
             return false;
         }

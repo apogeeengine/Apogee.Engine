@@ -11,7 +11,7 @@ namespace Weft.Content.Assets;
 /// <summary>What <see cref="AssetDatabase.Move"/> did, or in a preview would do.</summary>
 /// <param name="From">The asset's old path.</param>
 /// <param name="To">Its new path.</param>
-/// <param name="Files">The files that moved (or would): the asset, its <c>.import.xml</c> and its imported artifact, each by its new path.</param>
+/// <param name="Files">The files that moved (or would): the asset, its <c>.wimp</c> and its imported artifact, each by its new path.</param>
 /// <param name="References">The documents whose references were rewritten, and the ones that could not be.</param>
 /// <param name="Warnings">Things a person should look at: another asset reads this one by relative path, or the import data could not be updated.</param>
 /// <param name="Applied">False for a preview: nothing was moved or written.</param>
@@ -24,7 +24,7 @@ public sealed partial class AssetDatabase
     /// <summary>
     /// Moves or renames the asset at <paramref name="from"/> to <paramref name="to"/> (both in the game folder, <c>res://</c>) and keeps everything that names it working:
     /// <list type="bullet">
-    /// <item>the file, its <c>.import.xml</c> (so the UID goes with it) and its imported artifact move together;</item>
+    /// <item>the file, its <c>.wimp</c> (so the UID goes with it) and its imported artifact move together;</item>
     /// <item>the references in documents are rewritten (<see cref="AssetReferences.Rewrite"/>: scenes and the definition folders in <paramref name="defFolders"/>), keeping their UIDs;</item>
     /// <item><c>imported/index.xml</c> and <c>imported/assets.xml</c> say the new path. The artifact is still good (the import key does not depend on the path), so nothing imports again; an
     /// editor that wants to be sure can call <see cref="AssetImporter.Reimport"/>.</item>
@@ -33,8 +33,8 @@ public sealed partial class AssetDatabase
     /// import data is a cache; if it cannot be updated that is a warning and the next import repairs it. <c>.luau</c> scripts are never rewritten: the ones that mention the old path are listed in
     /// <see cref="RewriteReport.ScriptMentions"/>. Only a file can be moved here (a folder is moved by moving what is in it, one call each).
     /// </summary>
-    /// <param name="from">The asset's path. It must be a file, and not an <c>.import.xml</c> (that follows its asset) or something in <c>imported/</c>.</param>
-    /// <param name="to">The new path. Nothing may be there, neither a file nor a folder, and no <c>.import.xml</c>.</param>
+    /// <param name="from">The asset's path. It must be a file, and not a <c>.wimp</c> (that follows its asset) or something in <c>imported/</c>.</param>
+    /// <param name="to">The new path. Nothing may be there, neither a file nor a folder, and no <c>.wimp</c>.</param>
     /// <param name="defFolders">Virtual folders whose <c>.xml</c> files are searched for references as well as the authored files.</param>
     /// <param name="dryRun">Report what would happen and change nothing.</param>
     /// <param name="allowSkipped">Go on although a writable document could not be used (not well-formed, not UTF-8, too big, cooked…) and its references to the asset will therefore break. By default that refuses the move before anything is written; see <see cref="SkippedDocument.Blocking"/>.</param>
@@ -100,9 +100,9 @@ public sealed partial class AssetDatabase
         return false;
     }
 
-    private static bool IsManifestPath(string path) => path == GameRoot + "game.xml" || VfsPath.FileName(path) == "mod.xml";
+    private static bool IsManifestPath(string path) => path == GameRoot + "game.wgam" || VfsPath.FileName(path) == "mod.wmod";
 
-    // The UID of the asset being moved: from the file where it is (at the old path, or at the new one when it has moved), or from the .import.xml an interrupted move left behind.
+    // The UID of the asset being moved: from the file where it is (at the old path, or at the new one when it has moved), or from the .wimp an interrupted move left behind.
     private AssetUid UidForMove(string source, string target)
     {
         AssetUid uid = UidOf(source);
@@ -119,8 +119,8 @@ public sealed partial class AssetDatabase
         return uid;
     }
 
-    // The asset, and its .import.xml when it has one: each moves from the first path to the second. Checks everything that can be checked without changing a file.
-    // A move that was interrupted after the asset moved (its .import.xml or its import data was left behind) is finished: only what is left is moved.
+    // The asset, and its .wimp when it has one: each moves from the first path to the second. Checks everything that can be checked without changing a file.
+    // A move that was interrupted after the asset moved (its .wimp or its import data was left behind) is finished: only what is left is moved.
     private List<(string From, string To)> MovesOf(string source, string target, bool imported)
     {
         if (!source.StartsWith(GameRoot, StringComparison.Ordinal) || !target.StartsWith(GameRoot, StringComparison.Ordinal))
@@ -140,7 +140,7 @@ public sealed partial class AssetDatabase
 
         if (IsManifestPath(source) || IsManifestPath(target))
         {
-            throw new ContentException($"'{source}' to '{target}': game.xml and mod.xml are read from where they are, not found by their path. They are not assets and are not moved here.");
+            throw new ContentException($"'{source}' to '{target}': game.wgam and mod.wmod are read from where they are, not found by their path. They are not assets and are not moved here.");
         }
 
         for (string? above = VfsPath.ParentOf(target); above is not null; above = VfsPath.ParentOf(above))
@@ -192,7 +192,7 @@ public sealed partial class AssetDatabase
         return moves;
     }
 
-    // What is left of a move whose asset is already at the target: its .import.xml, when that was left behind. Nothing else to move (the import data is brought up to date after).
+    // What is left of a move whose asset is already at the target: its .wimp, when that was left behind. Nothing else to move (the import data is brought up to date after).
     private List<(string From, string To)> ResumedMoves(string source, string target)
     {
         var moves = new List<(string, string)>();

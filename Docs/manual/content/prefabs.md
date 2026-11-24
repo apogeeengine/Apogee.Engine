@@ -1,6 +1,6 @@
 # Prefabs
 
-A prefab is a piece of a scene that can be made again and again: one entity with everything below it, saved as an XML document, a `.aprefab` file. A lamp with its model and its bulb, a crate with its
+A prefab is a piece of a scene that can be made again and again: one entity with everything below it, saved as an XML document, a `.wprf` file. A lamp with its model and its bulb, a crate with its
 lid. A script or a tool instantiates it where it is needed, and every instance starts out the same. Like a [scene](scenes.md) it is XML, so a person can read it, a diff of two versions makes sense, and
 it has a [UID](assets.md#where-a-uid-lives) in its root that survives renaming and moving the file.
 
@@ -66,22 +66,22 @@ model, so it is still the same prefab in the next session.
 ## From C#
 
 ```csharp
-Entity lamp = world.Instantiate("res://prefabs/lamp.aprefab", parent);   // parent is optional
+Entity lamp = world.Instantiate("res://prefabs/lamp.wprf", parent);   // parent is optional
 Entity same = world.Instantiate("uid://7h2k4m6p8q0rs");                   // the file that has that UID, wherever it moved to
 
-world.PrefabOf(lamp);                  // "res://prefabs/lamp.aprefab|uid://7h2k4m6p8q0rs"; null for an entity that is not an instance root
+world.PrefabOf(lamp);                  // "res://prefabs/lamp.wprf|uid://7h2k4m6p8q0rs"; null for an entity that is not an instance root
 world.IsPrefabInstance(lamp);          // true
 world.InstanceOf(world.Children(lamp)[0]);   // lamp: the instance an entity is part of, or none
 world.IsPrefabMember(world.Children(lamp)[0]);   // true: part of an instance without being its root, so it cannot be moved under another parent
 
-world.SavePrefabFile("res://prefabs/crate.aprefab", crate);   // one entity and everything under it
+world.SavePrefabFile("res://prefabs/crate.wprf", crate);   // one entity and everything under it
 ```
 
 - **`Instantiate`** takes a path, a `uid://…` or `path|uid://…` (the text form of an [`AssetRef`](assets.md)), or a handle (`world.Instantiate(uint prefab)`). It returns the root, and the entities under it are made
   in the order of the file, the prefabs inside it expanded. It reads without a game's per-mod confinement. Errors: a `uid://` no file has is a `ContentException`, a missing file a `FileNotFoundException`, a file
   that is not a prefab (another root, none or two roots, a bad or repeated id, a newer version, a root that is itself an instance of another prefab) or that would make more than `world.MaxLoadEntities` entities a
   `FormatException`, and a world without `Files` an `InvalidOperationException`. Nothing is made when it fails.
-- **`SavePrefabFile(path, root)`** writes the entity and everything below it. The path must end in `.aprefab`. The file keeps its UID (a new one gets a new UID), the ids are kept as above, and an Entity
+- **`SavePrefabFile(path, root)`** writes the entity and everything below it. The path must end in `.wprf`. The file keeps its UID (a new one gets a new UID), the ids are kept as above, and an Entity
   field that points at something outside what is saved is left out. An instance of another prefab inside the tree is written as one element with its [overrides](#how-overrides-are-stored), numbered in this
   file; the root is written as an ordinary entity even when it is an instance (a prefab saved from an instance of itself holds its entities). A tree that holds an instance of the file being written, directly or
   through another prefab (a file that is not there yet counts by the path it will have), is an `InvalidOperationException`, and nothing is written. A path that is not in a writable source is an `UnauthorizedAccessException`.
@@ -96,8 +96,8 @@ The handle is only meaningful in the run that made it: scenes and snapshots hold
 ## From Luau
 
 ```lua
-local lamp = world:instantiate("res://prefabs/lamp.aprefab", parent)   -- or "uid://…"; parent is optional
-print(world:prefab_of(lamp))     -- res://prefabs/lamp.aprefab|uid://7h2k4m6p8q0rs
+local lamp = world:instantiate("res://prefabs/lamp.wprf", parent)   -- or "uid://…"; parent is optional
+print(world:prefab_of(lamp))     -- res://prefabs/lamp.wprf|uid://7h2k4m6p8q0rs
 print(world:prefab_of(some))     -- nil: not the root of an instance
 ```
 
@@ -113,11 +113,11 @@ entity's, and its `name` is the name the root of the nested instance gets.
 <Prefab version="1" uid="uid://9w1e3r5t7y9ua" nextId="5">
   <Entity id="1" name="Corner">
     <Transform Position="0 0 0" Rotation="0 0 0 1" Scale="1 1 1"/>
-    <Entity id="2" name="Lamp" prefab="res://prefabs/lamp.aprefab|uid://7h2k4m6p8q0rs">   <!-- an instance: its id is in the corner's numbering -->
+    <Entity id="2" name="Lamp" prefab="res://prefabs/lamp.wprf|uid://7h2k4m6p8q0rs">   <!-- an instance: its id is in the corner's numbering -->
       <Transform Position="2 0 0"/>                                     <!-- a patch of the lamp's root: only the fields that change -->
       <Override entity="2"><Light Intensity="120"/></Override>          <!-- the lamp's Bulb (entity 2 of the lamp), in the lamp's numbering -->
     </Entity>
-    <Entity id="3" name="Lamp 2" prefab="res://prefabs/lamp.aprefab|uid://7h2k4m6p8q0rs">
+    <Entity id="3" name="Lamp 2" prefab="res://prefabs/lamp.wprf|uid://7h2k4m6p8q0rs">
       <Transform Position="-2 0 0"/>
       <Override entity="3" remove="true"/>                              <!-- this one has no Base -->
     </Entity>
@@ -136,7 +136,7 @@ An address does not follow the hierarchy: if the author of the prefab moves enti
 
 **Scopes.** An Entity-typed field means an entity *of the document that holds it*. Inside a prefab file that is an id of the file (`lamp="1"` is the lamp's root), and it becomes an address under wherever the
 file is instanced (`5/2` for the lamp that is entity 2 of a corner instanced as 5). Everything an instance element and its overrides hold is written in the scope of the document the instance is in, so a field in
-an override inside `corner.aprefab` is an id of the corner, and one in a scene is an address of the scene. A field that names nothing (an id nobody has, text that is not an address) stays as it is and, as in
+an override inside `corner.wprf` is an id of the corner, and one in a scene is an address of the scene. A field that names nothing (an id nobody has, text that is not an address) stays as it is and, as in
 a scene, means no entity.
 
 **Inner before outer.** The instances inside a prefab are expanded first, each with its own patches and overrides; the instance that holds the prefab then applies its overrides on top. An outer override
@@ -149,7 +149,7 @@ may reach into a nested instance with a longer address (`2/2` in an instance of 
 An instance element changes its prefab in three ways: component elements directly inside it, `<Entity>` children, and `<Override>` elements for any other entity of the instance.
 
 ```xml
-<Entity id="2" name="Corner" prefab="res://prefabs/corner.aprefab|uid://9w1e3r5t7y9ua">
+<Entity id="2" name="Corner" prefab="res://prefabs/corner.wprf|uid://9w1e3r5t7y9ua">
   <Transform Position="10 0 4"/>                         <!-- a modified field on the root: the other fields stay the prefab's -->
   <Health max="200" current="200" append="true"/>        <!-- a component the prefab does not have, written whole -->
   <Override entity="4" name="Old bench"><Transform remove="true"/></Override>   <!-- a renamed entity, and a removed component -->
@@ -216,7 +216,7 @@ A prefab file changes while worlds hold instances of it: it is edited by hand, a
 and the entities they are made of keep their ids, so a selection, a reference from another entity and a variable in a script stay valid.
 
 ```csharp
-PrefabReload result = world.Prefabs.Reload("res://prefabs/lamp.aprefab");   // reads the file again: Reloaded, Unchanged or Failed (with why)
+PrefabReload result = world.Prefabs.Reload("res://prefabs/lamp.wprf");   // reads the file again: Reloaded, Unchanged or Failed (with why)
 PrefabUpdate? update = world.ApplyPrefabUpdates();                           // makes the instances follow it, at a point where changing entities is safe
 ```
 
@@ -307,7 +307,7 @@ world.IsOverridden(bulb, "Health", "Max");                               // the 
 world.RevertOverride(root, changes[0]);                                  // or RevertOverrides / RevertComponentOverrides / RevertEntityOverrides / RevertAllOverrides
 PrefabUpdate? update = world.ApplyOverrides(root, changes, PrefabApplyTarget.InstancePrefab);   // or ApplyOverride / ApplyAllOverrides
 PrefabLinkReport report = world.BreakPrefabLink(root, completely: false);
-world.CreatePrefab(crate, "res://prefabs/crate.aprefab");                // root of the new prefab, and now an instance of it
+world.CreatePrefab(crate, "res://prefabs/crate.wprf");                // root of the new prefab, and now an instance of it
 world.DropUnappliedOverrides(root);
 ```
 
@@ -385,11 +385,11 @@ An editor that edits a prefab *as the prefab* (not as an instance in a scene: it
 one script VM, one physics world, one audio and one UI, so the second set is a second `World`, not a second session: `Weft.Host` gives the pieces, and a tool brings the windows.
 
 ```csharp
-using PrefabStage stage = PrefabStage.Open(session, "res://prefabs/lamp.aprefab");   // a path, a uid://…, or both
+using PrefabStage stage = PrefabStage.Open(session, "res://prefabs/lamp.wprf");   // a path, a uid://…, or both
 World world = stage.World;                                  // the prefab's entities: a hierarchy, an inspector and a viewport can show it
 Entity root = stage.Root;                                   // the prefab's own root: not an instance
 var history = new EditHistory();                            // an undo history of its own: the commands take a WorldRef, which a World converts to
-history.Execute(PrefabCommands.Instantiate(world, "res://prefabs/crate.aprefab", root));   // …edited like any world
+history.Execute(PrefabCommands.Instantiate(world, "res://prefabs/crate.wprf", root));   // …edited like any world
 if (stage.CanSave)
 {
     PrefabUpdate? update = stage.Save();                    // the file, and then every instance of the prefab in the session's world
@@ -425,7 +425,7 @@ if (stage.CanSave)
   not allow Play with a stage open. The stage's history is its own: it is not the scene's, and a prefab update of the stage's world (`PrefabsChanged` on `stage.World`) is a change from outside for it, as for the
   scene's. A stage is *edited*, not played: nothing in it runs.
 
-A file reached by two spellings (`res://packages/core/prefabs/lamp.aprefab` and the `mod://core/prefabs/lamp.aprefab` the asset database gives the same file) is two library handles when it has a UID, so
+A file reached by two spellings (`res://packages/core/prefabs/lamp.wprf` and the `mod://core/prefabs/lamp.wprf` the asset database gives the same file) is two library handles when it has a UID, so
 open a prefab by the path an instance names it by (`world.PrefabOf(instance)`) or by its `uid://…`.
 
 The `PrefabStageTests` (`Tests/Weft.Host.Tests`) and `PrefabContentsTests` (`Tests/Weft.Ecs.Tests`) cover all of this: ids, instances kept as instances, the session's instances following a save (also
@@ -433,18 +433,18 @@ those of an outer prefab), a failing or damaged write, a cycle, a read-only pref
 
 ## Cooked builds
 
-A shipped game holds its prefabs in its [packs](packs.md). `--pack --cooked` (after `--import`, which gives a prefab without a `uid` one) stores each `.aprefab` as [cooked XML](import.md#cooked-xml) in place
-of the text, at the same path, and a script or the game reads it exactly as it reads the file: `world:instantiate("mod://core/prefabs/crate.aprefab")`, a scene that holds an instance, and a prefab that
+A shipped game holds its prefabs in its [packs](packs.md). `--pack --cooked` (after `--import`, which gives a prefab without a `uid` one) stores each `.wprf` as [cooked XML](import.md#cooked-xml) in place
+of the text, at the same path, and a script or the game reads it exactly as it reads the file: `world:instantiate("mod://core/prefabs/crate.wprf")`, a scene that holds an instance, and a prefab that
 holds another all take the text and the cooked form alike, with the same limits ([Limits](#limits)). The format has no parts that only exist in text: the tree of the document is what is stored, so
 what an instance makes does not depend on how the file was written down. Nothing in a game needs the sources: the pack of the fixture game of the tests is run with its folder deleted.
 
 The fixture game (`Tests/Fixtures/ShippedGame`) shows it: its scene holds an instance of a crate prefab, which holds a lid prefab, with an override of the lid's handle, and its script instantiates the crate
 once more and leaves `user://prefab.txt`. The `ACookedGameInstantiatesPrefabsFromThePack` test (`Tests/Weft.Runtime.Tests`) imports it, packs it `--cooked`, checks that the packed prefabs start with
-the magic of cooked XML (`APXB`), deletes the sources and runs the game from the pack: it must leave the text the game left when it ran from its folder.
+the magic of cooked XML (`WXMB`), deletes the sources and runs the game from the pack: it must leave the text the game left when it ran from its folder.
 
 ## Renaming a prefab
 
-An instance names its prefab by a path and a UID (`res://prefabs/lamp.aprefab|uid://…`), in a scene and in the prefab that holds it. Renaming or moving the file keeps the instances working in either way:
+An instance names its prefab by a path and a UID (`res://prefabs/lamp.wprf|uid://…`), in a scene and in the prefab that holds it. Renaming or moving the file keeps the instances working in either way:
 
 - **From a tool:** `AssetDatabase.Move(from, to)` moves the file, and rewrites the path in every scene and prefab that names it, in the instances of a scene and in the prefabs nested in other prefabs
   alike; the UID in each stays. A preview (`dryRun`) lists what would change. `AssetReferences.Find` lists the places that name a prefab (an instance is an `Entity` element, with a `prefab` attribute) before
@@ -456,5 +456,5 @@ A reference with a path and no UID follows only a rename that goes through `Move
 
 ## Files
 
-`.aprefab` is an [authored asset](assets.md#where-a-uid-lives) (`AuthoredAssets.Extensions`): `--import` gives a file without a `uid` one by adding the attribute to its root, the asset database finds a
+`.wprf` is an [authored asset](assets.md#where-a-uid-lives) (`AuthoredAssets.Extensions`): `--import` gives a file without a `uid` one by adding the attribute to its root, the asset database finds a
 prefab by its UID, `--pack` stores it (`--cooked` as [cooked XML](import.md#cooked-xml), at the same path), and renaming or moving it keeps its UID (and what refers to it by `path|uid` still finds it).

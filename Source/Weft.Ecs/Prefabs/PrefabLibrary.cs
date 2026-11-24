@@ -50,7 +50,7 @@ public sealed class PrefabLibrary(VirtualFileSystem files, AssetDatabase? assets
     public event Action<uint>? Changed;
 
     /// <summary>
-    /// The handle of the prefab that <paramref name="pathOrRef"/> names: a path (<c>res://prefabs/lamp.aprefab</c>), a <c>uid://…</c>, or <c>path|uid://…</c>. The same file always gives the same
+    /// The handle of the prefab that <paramref name="pathOrRef"/> names: a path (<c>res://prefabs/lamp.wprf</c>), a <c>uid://…</c>, or <c>path|uid://…</c>. The same file always gives the same
     /// handle. A reference that names no file gives a handle too (its <see cref="Document"/> is null), so that it can be saved and asked for again; the file is looked for again each time it is asked.
     /// </summary>
     /// <exception cref="FormatException">The text is not an asset reference.</exception>

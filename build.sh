@@ -7,7 +7,7 @@
 #   ./build.sh aot-viewer publish the Viewer sample (Samples/Viewer) the same way: a sample, run by hand, never by CI
 #   ./build.sh bench [filter]  run the BenchmarkDotNet measurements in Samples/Benchmarks (Release; e.g. `bench '*Culling*'`): a sample, run by hand
 #   ./build.sh docs [serve]   build the API reference (DocFX for C#, the runtime for Luau), then Docs/ with mkdocs --strict into Bin/site
-#   ./build.sh pack <folder> <out.pack> [...]   pack a folder with Weft.Runtime --pack (this wrapper loads .env, so WEFT_PACK_KEY applies)
+#   ./build.sh pack <folder> <out.wpak> [...]   pack a folder with Weft.Runtime --pack (this wrapper loads .env, so WEFT_PACK_KEY applies)
 #   ./build.sh export <game folder> <out folder> --target <rid> [--cooked] [...]   export a game with Weft.Runtime --export (.env is loaded, so WEFT_PACK_KEY applies; needs ./build.sh aot first)
 #   ./build.sh sdk steam <zip>   unpack the Steamworks SDK headers the bindings generator needs (see ThirdParty/README.md)
 #   ./build.sh <command>  anything else goes to Tools/Weft.Build (bindings, ...)

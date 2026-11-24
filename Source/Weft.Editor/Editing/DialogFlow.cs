@@ -28,7 +28,7 @@ public enum DialogKind
 public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> current, Action<string> tell, Action<string> openProject, Action<DialogKind> unavailable)
 {
     /// <summary>The filters of the scene dialogs.</summary>
-    public static IReadOnlyList<(string Name, string Pattern)> SceneFilters { get; } = [("Scenes", "ascene"), ("All files", "*")];
+    public static IReadOnlyList<(string Name, string Pattern)> SceneFilters { get; } = [("Scenes", "wscn"), ("All files", "*")];
 
     /// <summary>A dialog is open: the menus are greyed, and another request is refused.</summary>
     public bool Busy => dialogs.Busy;
@@ -135,9 +135,9 @@ public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> curren
 
     private void OpenScenePath(EditorProject project, string path)
     {
-        if (!path.EndsWith(".ascene", StringComparison.OrdinalIgnoreCase))
+        if (!path.EndsWith(".wscn", StringComparison.OrdinalIgnoreCase))
         {
-            tell($"{path} is not a scene: scene files end in .ascene.");
+            tell($"{path} is not a scene: scene files end in .wscn.");
             return;
         }
 
@@ -161,9 +161,9 @@ public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> curren
 
     private void SaveScenePath(EditorProject project, string path)
     {
-        if (!path.EndsWith(".ascene", StringComparison.OrdinalIgnoreCase))
+        if (!path.EndsWith(".wscn", StringComparison.OrdinalIgnoreCase))
         {
-            path += ".ascene";
+            path += ".wscn";
         }
 
         if (VirtualPaths.ToVirtual(project.GameFolder, path) is not { } virtualPath)

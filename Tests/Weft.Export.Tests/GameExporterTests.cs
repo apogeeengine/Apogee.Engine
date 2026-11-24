@@ -42,13 +42,13 @@ public class GameExporterTests
 
         public Setup(ExportTarget? runtimeOf = null)
         {
-            _scratch.Write("game/game.xml", GameXml);
+            _scratch.Write("game/game.wgam", GameXml);
             _scratch.Write("game/icon.png", Png.Encode(256, 256, new byte[256 * 256 * 4]));
-            _scratch.Write("game/packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"/>");
+            _scratch.Write("game/packages/core/mod.wmod", "<Mod id=\"core\" version=\"1.0.0\"/>");
             _scratch.Write("game/packages/core/main.luau", "print('hi')");
             _scratch.Write("game/models/a.dat", "one");
-            _scratch.Write("game/dev_mods/dev/mod.xml", "<Mod id=\"dev\" version=\"1.0.0\"/>");
-            _scratch.Write("game/data/stale.pack", "an old pack of the development folder");
+            _scratch.Write("game/dev_mods/dev/mod.wmod", "<Mod id=\"dev\" version=\"1.0.0\"/>");
+            _scratch.Write("game/data/stale.wpak", "an old pack of the development folder");
             _scratch.Write("game/steam_appid.txt", "480");
             _scratch.Write("game/.git/config", "left out");
             Runtime = FakeRuntime.Make(_scratch, runtimeOf ?? new ExportTarget("linux", "x64"));
@@ -106,14 +106,14 @@ public class GameExporterTests
         Assert.True(File.Exists(exe));
         Assert.True(File.Exists(Path.Combine(exeDirectory, library)));
         Assert.True(File.Exists(Path.Combine(exeDirectory, "Shaders", "imported", "x.spv")));
-        Assert.True(File.Exists(Path.Combine(root, "game.xml")));
-        Assert.True(File.Exists(Path.Combine(root, "data", "game.pack")));
+        Assert.True(File.Exists(Path.Combine(root, "game.wgam")));
+        Assert.True(File.Exists(Path.Combine(root, "data", "game.wpak")));
         Assert.True(File.Exists(Path.Combine(setup.Out, GameExporter.MarkerFile)));
         Assert.Contains(Path.GetRelativePath(setup.Out, exe).Replace('\\', '/'), result.Files);
         Assert.DoesNotContain(GameExporter.MarkerFile, result.Files);
         Assert.Equal(target, RuntimeFolder.Detect(exe));
 
-        // The exported game.xml is the game's, read by the runtime from beside the program (the icon is in the executable or the bundle, except on Linux where the step writes icon.png).
+        // The exported game.wgam is the game's, read by the runtime from beside the program (the icon is in the executable or the bundle, except on Linux where the step writes icon.png).
         GameManifest exported = GameManifest.Load(root, out IReadOnlyList<string> problems)!;
         Assert.Empty(problems);
         Assert.Equal(("Fixture Game", "Test Studio", "1.2.3", "FixtureGame", 480u, 800, 600), (exported.Name, exported.Organization, exported.Version.ToString(), exported.Executable, exported.SteamAppId, exported.Window.Width, exported.Window.Height));
@@ -127,11 +127,11 @@ public class GameExporterTests
 
         ExportResult result = GameExporter.Export(setup.Options(new ExportTarget("linux", "x64")));
 
-        // No Weft.Runtime, pdb, dbg, lib, slang library or source, steam_appid.txt, or the runtime folder's own game.xml and data.
+        // No Weft.Runtime, pdb, dbg, lib, slang library or source, steam_appid.txt, or the runtime folder's own game.wgam and data.
         // On Linux the step adds the icon and the desktop entry.
-        Assert.Equal(["FixtureGame", "Shaders/imported/x.spv", "data/game.pack", "game.xml", "icon.png", "libflecs.so", "org.test.fixturegame.desktop"], result.Files);
+        Assert.Equal(["FixtureGame", "Shaders/imported/x.spv", "data/game.wpak", "game.wgam", "icon.png", "libflecs.so", "org.test.fixturegame.desktop"], result.Files);
         Assert.Equal(FakeRuntime.Executable(new ExportTarget("linux", "x64")), File.ReadAllBytes(result.Executable)); // with no key the program is copied as it is
-        Assert.Equal("<Game/>", File.ReadAllText(Path.Combine(setup.Runtime, "game.xml"))); // the runtime folder itself is not touched
+        Assert.Equal("<Game/>", File.ReadAllText(Path.Combine(setup.Runtime, "game.wgam"))); // the runtime folder itself is not touched
     }
 
     [Fact]
@@ -141,7 +141,7 @@ public class GameExporterTests
 
         ExportResult result = GameExporter.Export(setup.Options(new ExportTarget("linux", "x64")));
 
-        Assert.Equal(["models/a.dat", "packages/core/main.luau", "packages/core/mod.xml"], Setup.PackedFiles(Path.Combine(result.GameRoot, "data", "game.pack"), null));
+        Assert.Equal(["models/a.dat", "packages/core/main.luau", "packages/core/mod.wmod"], Setup.PackedFiles(Path.Combine(result.GameRoot, "data", "game.wpak"), null));
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class GameExporterTests
 
         ExportResult result = GameExporter.Export(setup.Options(new ExportTarget("linux", "x64"), cooked: true));
 
-        List<string> packed = Setup.PackedFiles(Path.Combine(result.GameRoot, "data", "game.pack"), null);
+        List<string> packed = Setup.PackedFiles(Path.Combine(result.GameRoot, "data", "game.wpak"), null);
         Assert.DoesNotContain("models/a.dat", packed);
         Assert.Contains(packed, p => p.StartsWith("imported/", StringComparison.Ordinal) && p.EndsWith(".up", StringComparison.Ordinal));
         Assert.Contains("imported/index.xml", packed);
@@ -181,7 +181,7 @@ public class GameExporterTests
 
         ExportResult result = GameExporter.Export(setup.Options(new ExportTarget("linux", "x64"), cooked: true));
 
-        Assert.Equal(["packages/core/main.luau", "packages/core/mod.xml"], Setup.PackedFiles(Path.Combine(result.GameRoot, "data", "game.pack"), null).Where(p => !p.StartsWith("imported/", StringComparison.Ordinal)));
+        Assert.Equal(["packages/core/main.luau", "packages/core/mod.wmod"], Setup.PackedFiles(Path.Combine(result.GameRoot, "data", "game.wpak"), null).Where(p => !p.StartsWith("imported/", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -192,8 +192,8 @@ public class GameExporterTests
 
         ExportResult result = GameExporter.Export(setup.Options(new ExportTarget("linux", "x64"), key: key));
 
-        string pack = Path.Combine(result.GameRoot, "data", "game.pack");
-        Assert.NotEqual("APGK", Encoding.ASCII.GetString(File.ReadAllBytes(pack), 0, 4));
+        string pack = Path.Combine(result.GameRoot, "data", "game.wpak");
+        Assert.NotEqual("WPAK", Encoding.ASCII.GetString(File.ReadAllBytes(pack), 0, 4));
         Assert.Contains("packages/core/main.luau", Setup.PackedFiles(pack, key));
         byte[] exe = File.ReadAllBytes(result.Executable);
         PackKey? embedded = PackKeySlot.Decode(exe.AsSpan(FakeRuntime.SlotOffset(exe), 68));
@@ -235,7 +235,7 @@ public class GameExporterTests
 
         ExportResult result = GameExporter.Export(setup.Options(new ExportTarget("linux", "x64")));
 
-        Assert.Equal("APGK", Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(result.GameRoot, "data", "game.pack")), 0, 4));
+        Assert.Equal("WPAK", Encoding.ASCII.GetString(File.ReadAllBytes(Path.Combine(result.GameRoot, "data", "game.wpak")), 0, 4));
         byte[] exe = File.ReadAllBytes(result.Executable);
         Assert.Null(PackKeySlot.Decode(exe.AsSpan(FakeRuntime.SlotOffset(exe), 68)));
         Assert.Contains(result.Warnings, w => w.Contains("not encrypted", StringComparison.Ordinal));
@@ -281,16 +281,16 @@ public class GameExporterTests
 
         ExportOptions around = setup.Options(target) with { OutputFolder = setup.Scratch.Root };
         Assert.Contains("inside the output folder", Assert.Throws<ExportException>(() => GameExporter.Export(around)).Message, StringComparison.Ordinal);
-        Assert.True(File.Exists(Path.Combine(setup.Game, "game.xml")));
+        Assert.True(File.Exists(Path.Combine(setup.Game, "game.wgam")));
     }
 
     [Fact]
     public void AGameWithoutGameXmlCannotBeExported()
     {
         using var setup = new Setup();
-        File.Delete(Path.Combine(setup.Game, "game.xml"));
+        File.Delete(Path.Combine(setup.Game, "game.wgam"));
 
-        Assert.Contains("has no game.xml", Assert.Throws<ExportException>(() => GameExporter.Export(setup.Options(new ExportTarget("linux", "x64")))).Message, StringComparison.Ordinal);
+        Assert.Contains("has no game.wgam", Assert.Throws<ExportException>(() => GameExporter.Export(setup.Options(new ExportTarget("linux", "x64")))).Message, StringComparison.Ordinal);
         Assert.False(Directory.Exists(setup.Out));
     }
 
@@ -298,11 +298,11 @@ public class GameExporterTests
     public void ABrokenGameXmlIsReportedWithItsProblems()
     {
         using var setup = new Setup();
-        setup.Scratch.Write("game/game.xml", "<Game name=\"No version\" organization=\"Test\"/>");
+        setup.Scratch.Write("game/game.wgam", "<Game name=\"No version\" organization=\"Test\"/>");
 
         string message = Assert.Throws<ExportException>(() => GameExporter.Export(setup.Options(new ExportTarget("linux", "x64")))).Message;
 
-        Assert.Contains("game.xml", message, StringComparison.Ordinal);
+        Assert.Contains("game.wgam", message, StringComparison.Ordinal);
         Assert.Contains("version", message, StringComparison.Ordinal);
     }
 
@@ -330,7 +330,7 @@ public class GameExporterTests
     public void AnExecutableNameThatIsAFileOfTheRuntimeIsRefused()
     {
         using var setup = new Setup();
-        setup.Scratch.Write("game/game.xml", GameXml.Replace("executable=\"FixtureGame\"", "executable=\"libflecs.so\"", StringComparison.Ordinal));
+        setup.Scratch.Write("game/game.wgam", GameXml.Replace("executable=\"FixtureGame\"", "executable=\"libflecs.so\"", StringComparison.Ordinal));
 
         Assert.Contains("is the name of a file of the runtime", Assert.Throws<ExportException>(() => GameExporter.Export(setup.Options(new ExportTarget("linux", "x64")))).Message, StringComparison.Ordinal);
     }

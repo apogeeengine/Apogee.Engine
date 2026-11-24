@@ -4,7 +4,7 @@ using Weft.Core.Assets;
 namespace Weft.Content.Assets;
 
 /// <summary>
-/// The UID in a <c>&lt;asset&gt;.import.xml</c>: the <c>uid</c> attribute of its <c>&lt;Import&gt;</c> root (<c>&lt;Import uid="uid://4k2m9x7q1w3ze" srgb="false"/&gt;</c>). Anything that rewrites a
+/// The UID in a <c>&lt;asset&gt;.wimp</c>: the <c>uid</c> attribute of its <c>&lt;Import&gt;</c> root (<c>&lt;Import uid="uid://4k2m9x7q1w3ze" srgb="false"/&gt;</c>). Anything that rewrites a
 /// sidecar (a settings panel) has to keep it: <c>ImportSidecar.SetUid(newText, ImportSidecar.ReadUid(oldText))</c>. The import settings and the import key ignore it
 /// (<see cref="Import.ImportSettings.KeyText"/>), so a UID never makes an asset import again.
 /// </summary>
@@ -14,7 +14,7 @@ public static class ImportSidecar
     public const string RootName = "Import";
 
     /// <summary>The suffix that makes the sidecar's name from the asset's.</summary>
-    public const string Suffix = ".import.xml";
+    public const string Suffix = ".wimp";
 
     /// <summary>The UID in the sidecar's text, or <see cref="AssetUid.None"/> when there is none, the text is empty, is not an <c>&lt;Import&gt;</c> or the attribute is not a valid UID. It never throws.</summary>
     public static AssetUid ReadUid(string sidecarText) => RootTag.ReadUid(sidecarText, RootName);

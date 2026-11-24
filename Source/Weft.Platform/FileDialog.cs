@@ -63,7 +63,7 @@ public static unsafe class FileDialog
     public static int PendingCount => s_pending.Count;
 
     /// <summary>
-    /// Asks the user to choose a file to open. <paramref name="filters"/> are (name, pattern) pairs such as <c>("Scenes", "ascene")</c> (several extensions separated by <c>;</c>, or <c>*</c> for all files); the platform
+    /// Asks the user to choose a file to open. <paramref name="filters"/> are (name, pattern) pairs such as <c>("Scenes", "wscn")</c> (several extensions separated by <c>;</c>, or <c>*</c> for all files); the platform
     /// may let the user ignore them. <paramref name="defaultLocation"/> is the folder or file the dialog starts at. <paramref name="done"/> runs once, on the main thread, from <see cref="Dispatch"/>. Returns the request's id.
     /// </summary>
     public static int OpenFile(Window? window, IReadOnlyList<(string Name, string Pattern)> filters, string? defaultLocation, bool many, Action<FileDialogResult> done)

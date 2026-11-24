@@ -289,9 +289,9 @@ public sealed class ImportJobTests
         EditorProject project = rig.Project;
         AssetUid uid = AssetUid.New();
         File.WriteAllBytes(Path.Combine(Game(rig), "a.png"), TestAssets.Png(1));
-        File.WriteAllText(Path.Combine(Game(rig), "a.png.import.xml"), ImportSidecar.SetUid("", uid));
+        File.WriteAllText(Path.Combine(Game(rig), "a.png.wimp"), ImportSidecar.SetUid("", uid));
         string dropped = source.Write("a.png", TestAssets.Png(9));
-        source.Write("a.png.import.xml", ImportSidecar.SetUid("", AssetUid.New()));
+        source.Write("a.png.wimp", ImportSidecar.SetUid("", AssetUid.New()));
         DropPlan plan = PlanFor(project, "res://", ClashPolicy.Replace, dropped);
 
         ImportJob job = JobFor(project, plan);
@@ -300,7 +300,7 @@ public sealed class ImportJobTests
 
         Assert.True(job.Report!.Success);
         Assert.Equal(TestAssets.Png(9), File.ReadAllBytes(Path.Combine(Game(rig), "a.png")));
-        Assert.Equal(uid, ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(Game(rig), "a.png.import.xml"))));   // the asset is still the same asset
+        Assert.Equal(uid, ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(Game(rig), "a.png.wimp"))));   // the asset is still the same asset
     }
 
     [Fact]
@@ -312,9 +312,9 @@ public sealed class ImportJobTests
         EditorProject project = rig.Project;
         AssetUid shared = AssetUid.New();
         File.WriteAllBytes(Path.Combine(Game(rig), "orig.png"), TestAssets.Png(1));
-        File.WriteAllText(Path.Combine(Game(rig), "orig.png.import.xml"), ImportSidecar.SetUid("", shared));
+        File.WriteAllText(Path.Combine(Game(rig), "orig.png.wimp"), ImportSidecar.SetUid("", shared));
         string copy = source.Write("copy.png", TestAssets.Png(2));
-        source.Write("copy.png.import.xml", ImportSidecar.SetUid("", shared));                      // a copy of the asset together with its settings
+        source.Write("copy.png.wimp", ImportSidecar.SetUid("", shared));                      // a copy of the asset together with its settings
         DropPlan plan = PlanFor(project, "res://", ClashPolicy.KeepBoth, copy);
 
         ImportJob job = JobFor(project, plan);
@@ -327,8 +327,8 @@ public sealed class ImportJobTests
         Assert.Equal("res://copy.png", path);
         Assert.Equal(shared, old);
         Assert.NotEqual(shared, fresh);
-        Assert.Equal(fresh, ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(Game(rig), "copy.png.import.xml"))));
-        Assert.Equal(shared, ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(Game(rig), "orig.png.import.xml"))));  // the original keeps its identity
+        Assert.Equal(fresh, ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(Game(rig), "copy.png.wimp"))));
+        Assert.Equal(shared, ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(Game(rig), "orig.png.wimp"))));  // the original keeps its identity
     }
 
     [Fact]
@@ -339,14 +339,14 @@ public sealed class ImportJobTests
         using var source = new DropSource();
         AssetUid uid = AssetUid.New();
         string dropped = source.Write("a.png", TestAssets.Png());
-        source.Write("a.png.import.xml", ImportSidecar.SetUid("", uid));
+        source.Write("a.png.wimp", ImportSidecar.SetUid("", uid));
 
         ImportJob job = JobFor(rig.Project, PlanFor(rig.Project, "res://", ClashPolicy.KeepBoth, dropped));
         job.Start();
         Assert.True(job.Wait(s_wait));
 
         Assert.Empty(job.Report!.Reassigned);
-        Assert.Equal(uid, ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(Game(rig), "a.png.import.xml"))));
+        Assert.Equal(uid, ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(Game(rig), "a.png.wimp"))));
     }
 
     [Fact]

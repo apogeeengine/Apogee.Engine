@@ -10,12 +10,12 @@ namespace Weft.Content.Assets;
 
 /// <summary>
 /// Assets that are written by people or tools as XML, rather than imported from another format: they carry their own UID, in the <c>uid</c> attribute of the document's root element
-/// (<c>&lt;Scene version="1" uid="uid://…"&gt;</c>, <c>&lt;Prefab …&gt;</c>), and have no <c>.import.xml</c>. Scenes and prefabs now; materials add their extension to <see cref="Extensions"/> when they land.
+/// (<c>&lt;Scene version="1" uid="uid://…"&gt;</c>, <c>&lt;Prefab …&gt;</c>), and have no <c>.wimp</c>. Scenes and prefabs now; materials add their extension to <see cref="Extensions"/> when they land.
 /// </summary>
 public static class AuthoredAssets
 {
     /// <summary>The extensions of authored assets, with the dot, in lower case.</summary>
-    public static IReadOnlyList<string> Extensions { get; } = [".ascene", ".aprefab"];
+    public static IReadOnlyList<string> Extensions { get; } = [".wscn", ".wprf"];
 
     /// <summary>Whether <paramref name="path"/> names an authored asset (by its extension, not case-sensitive).</summary>
     public static bool IsAuthored(string path) => Extensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));

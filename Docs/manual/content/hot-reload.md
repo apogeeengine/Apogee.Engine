@@ -12,10 +12,10 @@ Weft.Runtime --game Samples/Mods --watch
 | --- | --- |
 | a `.luau` file that a script has `require`d | the module is run again and **updated in place** (below) |
 | a definition or a schema in a package's `Content` or `Schema` folder | the definitions are read again, `LuauVm.Defs` is replaced, the `defs.on_change` listeners are called |
-| a `.glb`, `.gltf`, `.bin`, image or `.import.xml` | imported again when the project has been imported (`imported/index.xml`), then `HotReloader.AssetsChanged` says which, for the host to load them again |
-| a `.slang` file | imported again when the project has been imported (so its `.ashader` stays current), then `HotReloader.ShadersChanged` says which. The runtime hands them to its `ShaderLibrary`, and the renderers rebuild the pipelines that use them, off the render thread and swapped in at a frame boundary ([Rendering](../graphics/rendering.md#rebuilding-pipelines-when-a-shader-changes)); a shader that does not compile keeps the old pipelines and shows its error in the dev overlay |
-| a `.aprefab` file | read again; if it is a prefab that loads (and does not contain itself), the instances of it in the world follow it **in place**: the entities keep their ids and what the instances changed stays ([Prefabs](prefabs.md#when-the-prefab-changes)). A file that is cut off or broken keeps the old version, and the error is in the log. `HotReloader.DocumentsChanged` says which scene and prefab files changed |
-| a package's `mod.xml`, or an entry script (a package's `<Script>`, which runs once) | listed as *needs a restart*, with a warning in the log |
+| a `.glb`, `.gltf`, `.bin`, image or `.wimp` | imported again when the project has been imported (`imported/index.xml`), then `HotReloader.AssetsChanged` says which, for the host to load them again |
+| a `.slang` file | imported again when the project has been imported (so its `.wshd` stays current), then `HotReloader.ShadersChanged` says which. The runtime hands them to its `ShaderLibrary`, and the renderers rebuild the pipelines that use them, off the render thread and swapped in at a frame boundary ([Rendering](../graphics/rendering.md#rebuilding-pipelines-when-a-shader-changes)); a shader that does not compile keeps the old pipelines and shows its error in the dev overlay |
+| a `.wprf` file | read again; if it is a prefab that loads (and does not contain itself), the instances of it in the world follow it **in place**: the entities keep their ids and what the instances changed stays ([Prefabs](prefabs.md#when-the-prefab-changes)). A file that is cut off or broken keeps the old version, and the error is in the log. `HotReloader.DocumentsChanged` says which scene and prefab files changed |
+| a package's `mod.wmod`, or an entry script (a package's `<Script>`, which runs once) | listed as *needs a restart*, with a warning in the log |
 
 Files and folders that start with a dot, editors' temporary files (`~`, `.tmp`, `.swp`), and `imported/` itself are ignored. Zips and packs are not watched (they do not change under a running game).
 
@@ -47,7 +47,7 @@ return M
 ```csharp
 using var reloader = new HotReloader(files, vm, packages);        // watches every folder behind the mounts
 reloader.AssetsChanged += paths => { /* load the assets again */ };
-reloader.DocumentsChanged += paths => { /* scenes and prefabs: world.Prefabs.Reload(path) for each .aprefab, then world.ApplyPrefabUpdates() */ };
+reloader.DocumentsChanged += paths => { /* scenes and prefabs: world.Prefabs.Reload(path) for each .wprf, then world.ApplyPrefabUpdates() */ };
 
 // each frame, on the thread that owns the VM:
 ReloadReport report = reloader.Poll();        // modules, DefsReloaded, assets, shaders, documents, NeedsRestart, Failures

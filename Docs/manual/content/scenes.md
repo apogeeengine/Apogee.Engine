@@ -1,6 +1,6 @@
 # Scenes
 
-A scene is the entities of a world, with their components, saved as an XML document: a `.ascene` file. The editor saves and opens them, a game's entry scene is one, and scripts and tools make and read
+A scene is the entities of a world, with their components, saved as an XML document: a `.wscn` file. The editor saves and opens them, a game's entry scene is one, and scripts and tools make and read
 them as text. Because a scene is XML like the rest of the game's data, a mod can patch it (see [Patching a scene](#patching-a-scene)), and a diff of two scenes is something a person can read.
 
 ```xml
@@ -77,13 +77,13 @@ XML that is not well-formed, a root other than `<Scene>`, and a `version` newer 
 
 ## Prefab instances
 
-An `<Entity>` with a `prefab` attribute is an instance of a [prefab](prefabs.md): a whole piece of scene (an entity with everything below it) that lives in a `.aprefab` file and is made again at each
+An `<Entity>` with a `prefab` attribute is an instance of a [prefab](prefabs.md): a whole piece of scene (an entity with everything below it) that lives in a `.wprf` file and is made again at each
 instance. The element does not repeat what the prefab holds, only what this instance changes:
 
 ```xml
 <Scene version="2">
   <Entity id="1" name="Player">…</Entity>
-  <Entity id="2" name="Corner" prefab="res://prefabs/corner.aprefab|uid://9w1e3r5t7y9ua">
+  <Entity id="2" name="Corner" prefab="res://prefabs/corner.wprf|uid://9w1e3r5t7y9ua">
     <Transform Position="10 0 4"/>                         <!-- a field of the root changed: the other fields stay the prefab's -->
     <Override entity="4" name="Old bench"><Transform remove="true"/></Override>   <!-- another entity of the prefab, found by its address: renamed, and one component removed -->
     <Override entity="3" remove="true"/>                   <!-- an entity removed with everything below it -->
@@ -134,9 +134,9 @@ A scene kept as a file has an identity, a [UID](assets.md#where-a-uid-lives) in 
 `World.Files` and `World.Assets`, which the host sets (a game's session and the editor do; a bare `new World()` has neither and cannot load a file).
 
 ```csharp
-world.SaveSceneFile("res://scenes/level.ascene");              // every user entity
-world.SaveSceneFile("res://prefabs/crate.ascene", crate);      // one entity and everything under it
-List<Entity> made = world.LoadSceneFile("res://scenes/level.ascene", parent);
+world.SaveSceneFile("res://scenes/level.wscn");              // every user entity
+world.SaveSceneFile("res://prefabs/crate.wscn", crate);      // one entity and everything under it
+List<Entity> made = world.LoadSceneFile("res://scenes/level.wscn", parent);
 world.LoadSceneFile("uid://4k2m9x7q1w3ze");                    // the file that has that UID, wherever it is now
 ```
 
@@ -156,7 +156,7 @@ for _, entity in world:load_scene(text, parent) do   -- parent is optional
     print(world:get_name(entity))
 end
 
-local made = world:load_scene_file("res://scenes/level.ascene", parent)   -- or "uid://…"; parent is optional
+local made = world:load_scene_file("res://scenes/level.wscn", parent)   -- or "uid://…"; parent is optional
 ```
 
 `save_scene` returns the text and `load_scene` the list of entities it made; text that is not a scene is an error. `load_scene_file` returns the same list from a file. It reads without the per-mod confinement check of `fs.read_text`, as `models.load` and `ui:load_document` do:
@@ -166,9 +166,9 @@ keeps the confinement of a mod's files (and a file written that way has no UID u
 
 ## Cooked scenes
 
-`--pack --cooked` stores each `.ascene` as [cooked XML](import.md#cooked-xml) at the path of its source: the same tree (names, attributes, text, the lines of the source) in a binary encoding, which is not tied to the
+`--pack --cooked` stores each `.wscn` as [cooked XML](import.md#cooked-xml) at the path of its source: the same tree (names, attributes, text, the lines of the source) in a binary encoding, which is not tied to the
 components the engine had when it was cooked, and keeps the `uid` of the root. `LoadSceneFile` and `world:load_scene_file` read both forms, and so does the asset database that finds a scene by `uid://…`, so a game
-needs no change to ship its scenes cooked. The fixture game of the tests (`Tests/Fixtures/ShippedGame`) loads `mod://core/scenes/start.ascene` this way from an encrypted cooked pack. A scene in a mod is never
+needs no change to ship its scenes cooked. The fixture game of the tests (`Tests/Fixtures/ShippedGame`) loads `mod://core/scenes/start.wscn` this way from an encrypted cooked pack. A scene in a mod is never
 cooked (mods are Luau and data, shipped as folders and zips), and `LoadScene(text)`, which takes text, is for text.
 
 ## Patching a scene

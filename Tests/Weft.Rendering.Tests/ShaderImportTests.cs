@@ -69,7 +69,8 @@ public sealed class ShaderImportTests : IDisposable
 
         Assert.True(report.Success);
         Assert.Equal(["shaders/run.slang"], report.Imported); // the library has no entry point: it is not an asset
-        byte[] bundle = _files.ReadAllBytes("res://imported/shaders/run.slang.ashader");
+        byte[] bundle = _files.ReadAllBytes("res://imported/shaders/run.slang.wshd");
+        Assert.Equal("WSHD", System.Text.Encoding.ASCII.GetString(bundle, 0, 4));
         CompiledShader shader = ShaderBundle.Read(bundle);
         Assert.Equal(["run"], shader.EntryPoints);
         Assert.Equal(0x07230203u, BitConverter.ToUInt32(shader.Spirv("run"), 0));
@@ -139,11 +140,11 @@ public sealed class ShaderImportTests : IDisposable
     {
         Write("shaders/library.slang", Library);
         Write("shaders/run.slang", Shader);
-        Write("shaders/run.slang.import.xml", "<Import><Variant><Define name=\"FAST\"/></Variant></Import>");
+        Write("shaders/run.slang.wimp", "<Import><Variant><Define name=\"FAST\"/></Variant></Import>");
 
         Assert.True(Import().Success);
 
-        byte[] bundle = _files.ReadAllBytes("res://imported/shaders/run.slang.ashader");
+        byte[] bundle = _files.ReadAllBytes("res://imported/shaders/run.slang.wshd");
         Assert.Equal(["", "FAST=1"], ShaderBundle.Variants(bundle));
         Assert.NotEqual(ShaderBundle.Read(bundle).Spirv("run"), ShaderBundle.Read(bundle, "FAST=1").Spirv("run"));
     }
@@ -164,7 +165,7 @@ public sealed class ShaderImportTests : IDisposable
     {
         Write("shaders/library.slang", Library);
         Write("shaders/run.slang", Shader);
-        Write("shaders/run.slang.import.xml", "<Import><Variant><Define name=\"FAST\"/></Variant></Import>");
+        Write("shaders/run.slang.wimp", "<Import><Variant><Define name=\"FAST\"/></Variant></Import>");
         Import();
         var library = new ShaderLibrary(_files, createCompiler: _ => throw new InvalidOperationException("the compiler was started"));
 
@@ -209,7 +210,7 @@ public sealed class ShaderImportTests : IDisposable
         Write("shaders/library.slang", Library);
         Write("shaders/run.slang", Shader);
         Import();
-        string artifact = Path.Combine(_root, "imported", "shaders", "run.slang.ashader");
+        string artifact = Path.Combine(_root, "imported", "shaders", "run.slang.wshd");
         byte[] bundle = File.ReadAllBytes(artifact);
         BitConverter.GetBytes(ShaderAbi.Version + 1).CopyTo(bundle, 8);
         File.WriteAllBytes(artifact, bundle);

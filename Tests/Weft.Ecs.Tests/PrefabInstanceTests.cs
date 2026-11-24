@@ -378,11 +378,11 @@ public sealed class PrefabInstanceTests : PrefabTestBase
         // The real library resolves a path, a UID and both to one file, so a prefab that names itself by UID is the prefab being expanded, not a new one.
         AssetUid a = AssetUid.New();
         AssetUid b = AssetUid.New();
-        Write("cycles/a.aprefab", $"<Prefab version=\"1\" uid=\"{a}\" nextId=\"4\"><Entity id=\"1\" name=\"A\"><Entity id=\"2\" name=\"ViaUid\" prefab=\"{a}\"/><Entity id=\"3\" name=\"ViaB\" prefab=\"res://cycles/b.aprefab|{b}\"/></Entity></Prefab>");
-        Write("cycles/b.aprefab", $"<Prefab version=\"1\" uid=\"{b}\" nextId=\"3\"><Entity id=\"1\" name=\"B\"><Entity id=\"2\" name=\"BackToA\" prefab=\"res://cycles/a.aprefab\"/></Entity></Prefab>");
+        Write("cycles/a.wprf", $"<Prefab version=\"1\" uid=\"{a}\" nextId=\"4\"><Entity id=\"1\" name=\"A\"><Entity id=\"2\" name=\"ViaUid\" prefab=\"{a}\"/><Entity id=\"3\" name=\"ViaB\" prefab=\"res://cycles/b.wprf|{b}\"/></Entity></Prefab>");
+        Write("cycles/b.wprf", $"<Prefab version=\"1\" uid=\"{b}\" nextId=\"3\"><Entity id=\"1\" name=\"B\"><Entity id=\"2\" name=\"BackToA\" prefab=\"res://cycles/a.wprf\"/></Entity></Prefab>");
         Assets.Refresh();
 
-        Entity root = WithWarnings(() => World.Instantiate("res://cycles/a.aprefab"), out List<string> warnings);
+        Entity root = WithWarnings(() => World.Instantiate("res://cycles/a.wprf"), out List<string> warnings);
 
         Assert.Equal(["ViaUid", "ViaB"], NamesBelow(World, root));
         Assert.Empty(World.Children(Child(root, "ViaUid")));                                   // the repeat is one empty entity
@@ -417,11 +417,11 @@ public sealed class PrefabInstanceTests : PrefabTestBase
         const int Files = 20;
         for (int i = 0; i < Files; i++)
         {
-            string inner = i + 1 < Files ? $"<Entity id=\"2\" name=\"Next\" prefab=\"res://chain/p{i + 1}.aprefab\"/>" : "";
-            Write($"chain/p{i}.aprefab", $"<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\" name=\"P{i}\">{inner}</Entity></Prefab>");
+            string inner = i + 1 < Files ? $"<Entity id=\"2\" name=\"Next\" prefab=\"res://chain/p{i + 1}.wprf\"/>" : "";
+            Write($"chain/p{i}.wprf", $"<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\" name=\"P{i}\">{inner}</Entity></Prefab>");
         }
 
-        Entity root = WithWarnings(() => World.Instantiate("res://chain/p0.aprefab"), out List<string> warnings);
+        Entity root = WithWarnings(() => World.Instantiate("res://chain/p0.wprf"), out List<string> warnings);
 
         int depth = 0;
         for (Entity current = root; World.Children(current).Count > 0; current = World.Children(current)[0])
@@ -451,9 +451,9 @@ public sealed class PrefabInstanceTests : PrefabTestBase
     [Fact]
     public void InstantiateRefusesAPrefabWhoseRootIsAnInstance()
     {
-        Write("prefabs/variant.aprefab", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Variant\" prefab=\"{Lamp}\"/></Prefab>");
+        Write("prefabs/variant.wprf", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Variant\" prefab=\"{Lamp}\"/></Prefab>");
 
-        Assert.Throws<FormatException>(() => World.Instantiate("res://prefabs/variant.aprefab"));
+        Assert.Throws<FormatException>(() => World.Instantiate("res://prefabs/variant.wprf"));
         Assert.Empty(World.UserEntities());
     }
 
@@ -489,7 +489,7 @@ public sealed class PrefabInstanceTests : PrefabTestBase
     [Fact]
     public void AnInstanceInAPrefabKeepsReferencesInsideItself()
     {
-        Write("prefabs/pair.aprefab", $"""
+        Write("prefabs/pair.wprf", $"""
             <Prefab version="1" nextId="5">
               <Entity id="1" name="Pair">
                 <Entity id="2" name="Left" prefab="{Lamp}"><Override entity="2"><Marks Target="3"/></Override></Entity>
@@ -498,8 +498,8 @@ public sealed class PrefabInstanceTests : PrefabTestBase
             </Prefab>
             """);
 
-        Entity first = World.Instantiate("res://prefabs/pair.aprefab");
-        Entity second = World.Instantiate("res://prefabs/pair.aprefab");
+        Entity first = World.Instantiate("res://prefabs/pair.wprf");
+        Entity second = World.Instantiate("res://prefabs/pair.wprf");
 
         // "3" in the pair's override is the pair's entity 3, the right lamp of the same pair.
         Assert.Equal(Child(first, "Right"), World.Get<Marks>(Child(Child(first, "Left"), "Bulb")).Target);
@@ -512,9 +512,9 @@ public sealed class PrefabInstanceTests : PrefabTestBase
     [Fact]
     public void LoadSceneFileFindsInstancesThroughTheirUid()
     {
-        Write("scenes/s.ascene", $"<Scene version=\"2\"><Entity id=\"1\" name=\"ByUid\" prefab=\"{LampUid}\"/></Scene>");
+        Write("scenes/s.wscn", $"<Scene version=\"2\"><Entity id=\"1\" name=\"ByUid\" prefab=\"{LampUid}\"/></Scene>");
 
-        List<Entity> loaded = World.LoadSceneFile("res://scenes/s.ascene");
+        List<Entity> loaded = World.LoadSceneFile("res://scenes/s.wscn");
 
         Assert.Equal(3, loaded.Count);
         Assert.Equal(Lamp, World.PrefabOf(loaded[0]));                      // the instance now names the file and its UID

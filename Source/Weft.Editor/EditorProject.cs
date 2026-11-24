@@ -101,7 +101,7 @@ public sealed class EditorProject : IDisposable
         }
     }
 
-    /// <summary>The virtual path of the scene file (<c>res://scenes/level.ascene</c>), or null for one that was never saved.</summary>
+    /// <summary>The virtual path of the scene file (<c>res://scenes/level.wscn</c>), or null for one that was never saved.</summary>
     public string? ScenePath { get; private set; }
 
     /// <summary>The scene has changes that are not in its file. Undoing back to the saved state clears it (see <see cref="EditHistory.IsAtSavePoint"/>).</summary>
@@ -262,9 +262,9 @@ public sealed class EditorProject : IDisposable
 
     public void SaveSceneAs(string path)
     {
-        if (!path.EndsWith(".ascene", StringComparison.OrdinalIgnoreCase))
+        if (!path.EndsWith(".wscn", StringComparison.OrdinalIgnoreCase))
         {
-            path += ".ascene";
+            path += ".wscn";
         }
 
         StopIfPlaying();
@@ -274,8 +274,8 @@ public sealed class EditorProject : IDisposable
         Log.Info("Editor", $"Saved {path}");
     }
 
-    /// <summary>The scene files of the game (every <c>.ascene</c> under <c>res://</c>), as virtual paths.</summary>
-    public List<string> SceneFiles() => [.. Session.Files!.EnumerateFiles("res://", "*.ascene", recursive: true).Order(StringComparer.Ordinal)];
+    /// <summary>The scene files of the game (every <c>.wscn</c> under <c>res://</c>), as virtual paths.</summary>
+    public List<string> SceneFiles() => [.. Session.Files!.EnumerateFiles("res://", "*.wscn", recursive: true).Order(StringComparer.Ordinal)];
 
     // ---- Importing dropped files ----
 

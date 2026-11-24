@@ -22,7 +22,7 @@ public sealed class PrefabOverrideFuzzTests : PrefabFuzzBase
 
     private List<Entity> AllInstances() => [.. World.UserEntities().Where(e => World.IsPrefabInstance(e)).OrderBy(e => e.Id)];
 
-    private string Files2() => Read("prefabs/lamp.aprefab") + Read("prefabs/corner.aprefab");
+    private string Files2() => Read("prefabs/lamp.wprf") + Read("prefabs/corner.wprf");
 
     [Theory]
     [MemberData(nameof(Seeds))]

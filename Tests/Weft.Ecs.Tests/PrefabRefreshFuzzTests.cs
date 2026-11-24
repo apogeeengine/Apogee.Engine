@@ -64,10 +64,10 @@ public sealed class PrefabRefreshFuzzTests : PrefabFuzzBase
 
         string saved = World.SaveScene();
 
-        string lamp = Edit(Read("prefabs/lamp.aprefab"), LampChanges, random);
-        string corner = Edit(Read("prefabs/corner.aprefab"), CornerChanges, random);
-        Write("prefabs/lamp.aprefab", lamp);
-        Write("prefabs/corner.aprefab", corner);
+        string lamp = Edit(Read("prefabs/lamp.wprf"), LampChanges, random);
+        string corner = Edit(Read("prefabs/corner.wprf"), CornerChanges, random);
+        Write("prefabs/lamp.wprf", lamp);
+        Write("prefabs/corner.wprf", corner);
         if (World.Prefabs.Reload(LampPath).Status == PrefabReloadStatus.Failed || World.Prefabs.Reload(CornerPath).Status == PrefabReloadStatus.Failed)
         {
             return; // two edits that cannot both be made (an id twice): not a prefab, so nothing follows it, which another test says
@@ -100,7 +100,7 @@ public sealed class PrefabRefreshFuzzTests : PrefabFuzzBase
             : text;
 
     private string SwapTheCornersLamp(string text) =>
-        text.Replace($"<Entity id=\"2\" name=\"Lamp\" prefab=\"{Lamp}\">", "<Entity id=\"2\" name=\"Lamp\" prefab=\"res://prefabs/lantern.aprefab\">", StringComparison.Ordinal);
+        text.Replace($"<Entity id=\"2\" name=\"Lamp\" prefab=\"{Lamp}\">", "<Entity id=\"2\" name=\"Lamp\" prefab=\"res://prefabs/lantern.wprf\">", StringComparison.Ordinal);
 
     private static Entity At(World world, string path)
     {
@@ -126,7 +126,7 @@ public sealed class PrefabRefreshFuzzTests : PrefabFuzzBase
     public void TwoRoundsOfPrefabChangesAreLoadsOfTheSavedSceneOverThem(int seed)
     {
         var random = new Random(seed + 104729);
-        Write("prefabs/lantern.aprefab", "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"2\" name=\"Lantern\"><Transform Position=\"0 0 0\" Rotation=\"0 0 0 1\" Scale=\"1 1 1\"/><Entity id=\"1\" name=\"Glass\"/><Entity id=\"3\" name=\"Frame\"/></Entity></Prefab>");
+        Write("prefabs/lantern.wprf", "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"2\" name=\"Lantern\"><Transform Position=\"0 0 0\" Rotation=\"0 0 0 1\" Scale=\"1 1 1\"/><Entity id=\"1\" name=\"Glass\"/><Entity id=\"3\" name=\"Frame\"/></Entity></Prefab>");
         World.LoadScene(Base2());
 
         for (int round = 0; round < 2; round++)
@@ -147,8 +147,8 @@ public sealed class PrefabRefreshFuzzTests : PrefabFuzzBase
             }
 
             // The files change (the lamp, the corner, now and then both through the renumbering and the lantern, ), the world is told of each.
-            string lampBefore = Read("prefabs/lamp.aprefab");
-            string cornerBefore = Read("prefabs/corner.aprefab");
+            string lampBefore = Read("prefabs/lamp.wprf");
+            string cornerBefore = Read("prefabs/corner.wprf");
             string lamp = Edit(lampBefore, LampChanges, random);
             string corner = Edit(cornerBefore, CornerChanges, random);
             bool reuses = false;                     // an id of a file now means another entity: an override follows the id, so what it did cannot be undone by putting the file back
@@ -164,8 +164,8 @@ public sealed class PrefabRefreshFuzzTests : PrefabFuzzBase
                 reuses = true;
             }
 
-            Write("prefabs/lamp.aprefab", lamp);
-            Write("prefabs/corner.aprefab", corner);
+            Write("prefabs/lamp.wprf", lamp);
+            Write("prefabs/corner.wprf", corner);
             bool usable = true;
             foreach (string path in new[] { LampPath, CornerPath })
             {
@@ -252,8 +252,8 @@ public sealed class PrefabRefreshFuzzTests : PrefabFuzzBase
 
             if (!opsDone && !reuses)
             {
-                Write("prefabs/lamp.aprefab", lampBefore);
-                Write("prefabs/corner.aprefab", cornerBefore);
+                Write("prefabs/lamp.wprf", lampBefore);
+                Write("prefabs/corner.wprf", cornerBefore);
                 _ = World.Prefabs.Reload(LampPath);
                 _ = World.Prefabs.Reload(CornerPath);
                 World.ApplyPrefabUpdates();

@@ -13,7 +13,7 @@ using Weft.Reflection;
 
 namespace Weft.Ecs;
 
-// Scenes: the user entities of a world as XML text (a `.ascene` file), read and written through the engine's XmlNode and field by field from the registry's descriptions, so no reflection is
+// Scenes: the user entities of a world as XML text (a `.wscn` file), read and written through the engine's XmlNode and field by field from the registry's descriptions, so no reflection is
 // involved and it works in a NativeAOT program. The format is ours, not Flecs' own serialization, which would carry the entities of the types and systems the engine registers.
 //
 //   <?xml version="1.0" encoding="utf-8"?>

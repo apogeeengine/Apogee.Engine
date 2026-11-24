@@ -9,7 +9,7 @@ using Weft.Core.Assets;
 namespace Weft.Content.Assets;
 
 /// <summary>One place in a document that names an asset: an attribute whose text is an <see cref="AssetRef"/> (or, for a script, a string that mentions the asset).</summary>
-/// <param name="Document">The document, as the virtual path it was found at (<c>res://scenes/start.ascene</c>, <c>mod://core/scenes/a.ascene</c>).</param>
+/// <param name="Document">The document, as the virtual path it was found at (<c>res://scenes/start.wscn</c>, <c>mod://core/scenes/a.wscn</c>).</param>
 /// <param name="Line">The line of the element (of the text, for a script).</param>
 /// <param name="Element">The element's name; empty for a script.</param>
 /// <param name="Attribute">The attribute's name; empty for a script, where the mention is text and not an attribute.</param>
@@ -29,7 +29,7 @@ public sealed record SkippedDocument(string Document, string Reason, bool Blocki
 /// <param name="Changes">The attributes that are rewritten to the new path (a reference that carries a UID keeps it).</param>
 /// <param name="Unchanged">References to the asset that need no change: a <c>uid://</c> alone follows the file by itself, and a reference that already says the new path.</param>
 /// <param name="ScriptMentions">Script strings that mention the asset (a path, or its UID). They are reported and never rewritten: a script is code, and a string in it may be built or compared.</param>
-/// <param name="Unrewritable">Other places that name the old path and are not rewritten, for the editor to show: the paths in <c>game.xml</c> (<c>&lt;EntryScene&gt;</c>, <c>&lt;Icon&gt;</c>) and <c>mod.xml</c> (<c>&lt;Script&gt;</c>), whose <see cref="AssetReferenceSite.Value"/> is the full path they name, and text inside an element of a document (<see cref="AssetReferenceSite.Attribute"/> is empty). They break if the file moves and nothing here fixes them.</param>
+/// <param name="Unrewritable">Other places that name the old path and are not rewritten, for the editor to show: the paths in <c>game.wgam</c> (<c>&lt;EntryScene&gt;</c>, <c>&lt;Icon&gt;</c>) and <c>mod.wmod</c> (<c>&lt;Script&gt;</c>), whose <see cref="AssetReferenceSite.Value"/> is the full path they name, and text inside an element of a document (<see cref="AssetReferenceSite.Attribute"/> is empty). They break if the file moves and nothing here fixes them.</param>
 /// <param name="Skipped">The documents that were not used, each with the reason. A document in a read-only root that refers to the asset is here: its references were found and not rewritten. A file that is not well-formed is here too; it may or may not have held references.</param>
 /// <param name="Documents">The files that were changed (in a preview, that would be).</param>
 /// <param name="Applied">False for a preview: nothing was written.</param>

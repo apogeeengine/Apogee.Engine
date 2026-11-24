@@ -16,13 +16,13 @@ public sealed record PackRequest
     /// <summary>The game folder: it is <c>res://</c>, and the paths in the pack are relative to it. Names that start with a dot are left out.</summary>
     public required string Folder { get; init; }
 
-    /// <summary>The first part of the pack (<c>game.pack</c>); a bigger pack goes on in <c>game_001.pack</c>… beside it.</summary>
+    /// <summary>The first part of the pack (<c>game.wpak</c>); a bigger pack goes on in <c>game_001.wpak</c>… beside it.</summary>
     public required string Output { get; init; }
 
     /// <summary>
     /// Pack what a shipped game needs: the imported artifacts instead of the sources, their settings and the files they were made from, and authored documents (<see cref="AuthoredAssets.Extensions"/>)
     /// and the UID list <c>imported/assets.xml</c> in their cooked form (<see cref="XmlBinary"/>) at the paths they have in the folder, and so are the definitions (the <c>.xml</c> files) in the content folders
-    /// of the base packages (<c>packages/&lt;id&gt;/</c>, as their <c>mod.xml</c> lists them). The manifests (<c>mod.xml</c>), schemas and sidecars stay text. It needs the folder to have been imported (<c>imported/index.xml</c>,
+    /// of the base packages (<c>packages/&lt;id&gt;/</c>, as their <c>mod.wmod</c> lists them). The manifests (<c>mod.wmod</c>), schemas and sidecars stay text. It needs the folder to have been imported (<c>imported/index.xml</c>,
     /// see <see cref="AssetImporter"/>) unless <see cref="AllowNothingImported"/> says otherwise. Nothing under <c>dev_mods/</c> is cooked.
     /// </summary>
     public bool Cooked { get; init; }
@@ -200,7 +200,7 @@ public static class GamePacker
                 foreach (ImportEntry entry in entries)
                 {
                     replaced.Add(entry.Source);
-                    replaced.Add(entry.Source + ".import.xml");
+                    replaced.Add(entry.Source + ".wimp");
                     replaced.UnionWith(entry.Dependencies);
                 }
 
@@ -225,12 +225,12 @@ public static class GamePacker
         }
 
         /// <summary>
-        /// The <c>.xml</c> files in the content folders (<c>&lt;Content path="…"/&gt;</c>) of each base package whose <c>mod.xml</c> is among <paramref name="paths"/> and reads: what a
+        /// The <c>.xml</c> files in the content folders (<c>&lt;Content path="…"/&gt;</c>) of each base package whose <c>mod.wmod</c> is among <paramref name="paths"/> and reads: what a
         /// <see cref="DefDatabase"/> loads from it. The manifest itself and the sidecars are never among them. A manifest that does not read is the game's error when it runs, so its package is packed as it is.
         /// </summary>
         private static HashSet<string> DefinitionsOf(string folder, List<string> paths)
         {
-            const string Manifest = "mod.xml";
+            const string Manifest = "mod.wmod";
             var found = new HashSet<string>(StringComparer.Ordinal);
             foreach (string manifestPath in paths.Where(p => p.StartsWith(BasePackages, StringComparison.Ordinal) && p.EndsWith("/" + Manifest, StringComparison.Ordinal) && p.IndexOf('/', BasePackages.Length) == p.Length - Manifest.Length - 1))
             {
@@ -243,7 +243,7 @@ public static class GamePacker
                 foreach (string content in manifest!.ContentFolders)
                 {
                     string prefix = package + content + "/";
-                    foreach (string path in paths.Where(p => p.StartsWith(prefix, StringComparison.Ordinal) && p.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && !p.EndsWith(ImportSidecar.Suffix, StringComparison.OrdinalIgnoreCase)))
+                    foreach (string path in paths.Where(p => p.StartsWith(prefix, StringComparison.Ordinal) && p.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)))
                     {
                         found.Add(path);
                     }

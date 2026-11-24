@@ -75,7 +75,7 @@ public class AssetReferencesTests
         public AssetUid Imported(string asset)
         {
             Import();
-            return ImportSidecar.ReadUid(Read(asset + ".import.xml"));
+            return ImportSidecar.ReadUid(Read(asset + ".wimp"));
         }
 
         public void Dispose() => _folder.Dispose();
@@ -95,9 +95,9 @@ public class AssetReferencesTests
         project.Write("models/car.dat", "car");
         project.Write("models/bike.dat", "bike");
         AssetUid car = project.Imported("models/car.dat");
-        AssetUid bike = ImportSidecar.ReadUid(project.Read("models/bike.dat.import.xml"));
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"), Model($"res://models/bike.dat|{bike}"), "<Other Mesh=\"res://models/car.dat\" Spare=\"res://models/car.dat|" + car + "\"/>"));
-        project.Write("scenes/b.ascene", SceneOf(AssetUid.New(), "<Entity id=\"1\">", "  " + Model("res://models/car.dat"), "</Entity>"));
+        AssetUid bike = ImportSidecar.ReadUid(project.Read("models/bike.dat.wimp"));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"), Model($"res://models/bike.dat|{bike}"), "<Other Mesh=\"res://models/car.dat\" Spare=\"res://models/car.dat|" + car + "\"/>"));
+        project.Write("scenes/b.wscn", SceneOf(AssetUid.New(), "<Entity id=\"1\">", "  " + Model("res://models/car.dat"), "</Entity>"));
         project.Write("data/units.xml", "<Units>\n  <Unit mesh=\"res://models/car.dat\"/>\n</Units>\n");
         project.Write("data/other.xml", "<Units><Unit mesh=\"res://models/bike.dat\"/></Units>");
         AssetRef target = project.Assets.RefOf("res://models/car.dat");
@@ -107,14 +107,14 @@ public class AssetReferencesTests
         Assert.Equal(
             [
                 ("res://data/units.xml", 2, "Unit", "mesh"),
-                ("res://scenes/a.ascene", 3, "ModelRenderer", "Model"),
-                ("res://scenes/a.ascene", 5, "Other", "Mesh"),
-                ("res://scenes/a.ascene", 5, "Other", "Spare"),
-                ("res://scenes/b.ascene", 4, "ModelRenderer", "Model"),
+                ("res://scenes/a.wscn", 3, "ModelRenderer", "Model"),
+                ("res://scenes/a.wscn", 5, "Other", "Mesh"),
+                ("res://scenes/a.wscn", 5, "Other", "Spare"),
+                ("res://scenes/b.wscn", 4, "ModelRenderer", "Model"),
             ],
             found.Select(s => (s.Document, s.Line, s.Element, s.Attribute)).OrderBy(t => t.Item1, StringComparer.Ordinal).ThenBy(t => t.Item2).ThenBy(t => t.Item4, StringComparer.Ordinal).ToList());
         Assert.Equal(new AssetRef("res://models/car.dat", car), found.First(s => s.Attribute == "Spare").Value);
-        Assert.Equal(new AssetRef("res://models/car.dat", AssetUid.None), found.First(s => s.Document.EndsWith("b.ascene", StringComparison.Ordinal)).Value);
+        Assert.Equal(new AssetRef("res://models/car.dat", AssetUid.None), found.First(s => s.Document.EndsWith("b.wscn", StringComparison.Ordinal)).Value);
 
         // The definition folders are only looked at when they are named.
         Assert.DoesNotContain(AssetReferences.Find(project.Assets, target), s => s.Document.StartsWith("res://data", StringComparison.Ordinal));
@@ -127,7 +127,7 @@ public class AssetReferencesTests
         project.Write("models/car.dat", "car");
         project.Write("models/copy.dat", "copy");
         AssetUid car = project.Imported("models/car.dat");
-        project.Write("scenes/a.ascene", SceneOf(
+        project.Write("scenes/a.wscn", SceneOf(
             AssetUid.New(),
             Model($"res://long/gone/car.dat|{car}"), // the path is stale: the UID finds it
             Model(car.ToString()), // a UID alone
@@ -152,14 +152,14 @@ public class AssetReferencesTests
         AssetUid shared = project.Imported("models/car.dat");
         // A copy that was not imported yet: the same file and the same sidecar, so the UID is on two files, and the project's list says the original is the one the UID names.
         project.Write("models/copy.dat", "car");
-        project.Write("models/copy.dat.import.xml", project.Read("models/car.dat.import.xml"));
+        project.Write("models/copy.dat.wimp", project.Read("models/car.dat.wimp"));
         Assert.Equal("res://models/car.dat", project.Assets.PathOf(shared));
         string scene = SceneOf(
             AssetUid.New(),
             Model($"res://gone/car.dat|{shared}"), // stale: the engine resolves it to the original
             Model($"res://models/copy.dat|{shared}"), // the copy's own path
             Model($"res://models/car.dat|{shared}"));
-        project.Write("scenes/a.ascene", scene);
+        project.Write("scenes/a.wscn", scene);
 
         // Renaming the copy touches only the reference that spells its path.
         RewriteReport copy = AssetReferences.Rewrite(project.Assets, "res://models/copy.dat", "res://x/copy2.dat", dryRun: true);
@@ -171,7 +171,7 @@ public class AssetReferencesTests
         RewriteReport original = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://x/truck.dat");
 
         Assert.Equal([3, 5], original.Changes.Select(c => c.Site.Line).Order());
-        string after = project.Read("scenes/a.ascene");
+        string after = project.Read("scenes/a.wscn");
         Assert.Contains($"Model=\"res://x/truck.dat|{shared}\"", after, StringComparison.Ordinal);
         Assert.Contains($"Model=\"res://models/copy.dat|{shared}\"", after, StringComparison.Ordinal);
         Assert.DoesNotContain("res://gone/car.dat", after, StringComparison.Ordinal);
@@ -181,7 +181,7 @@ public class AssetReferencesTests
     public void FindIsEmptyForNothingToLookFor()
     {
         using var project = new Project();
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
 
         Assert.Empty(AssetReferences.Find(project.Assets, default));
     }
@@ -205,13 +205,13 @@ public class AssetReferencesTests
             + "\t\t<Note Text=\"a &gt; b, see res://models/car.dat.txt\"/>\r\n"
             + "\t</Entity>\r\n"
             + "</Scene>\r\n";
-        project.Write("scenes/a.ascene", before);
+        project.Write("scenes/a.wscn", before);
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://vehicles/truck.dat");
 
         string expected = before.Replace($"Model = 'res://models/car.dat|{car}'", $"Model = 'res://vehicles/truck.dat|{car}'", StringComparison.Ordinal);
-        Assert.Equal(expected, project.Read("scenes/a.ascene")); // every other character is as it was, including the byte order mark and the CRLF
-        Assert.Equal(["res://scenes/a.ascene"], report.Documents);
+        Assert.Equal(expected, project.Read("scenes/a.wscn")); // every other character is as it was, including the byte order mark and the CRLF
+        Assert.Equal(["res://scenes/a.wscn"], report.Documents);
         Assert.True(report.Applied);
         ReferenceChange change = Assert.Single(report.Changes);
         Assert.Equal(new AssetRef("res://vehicles/truck.dat", car), change.NewValue);
@@ -225,7 +225,7 @@ public class AssetReferencesTests
         project.Write("models/a.dat", "a");
         AssetUid a = project.Imported("models/a.dat");
         AssetUid other = AssetUid.New();
-        project.Write("scenes/s.ascene", SceneOf(
+        project.Write("scenes/s.wscn", SceneOf(
             AssetUid.New(),
             "<A p=\"res://models/a.dat\"/>",
             "<A p=\"res://models/a.dat.bak\"/>",
@@ -241,7 +241,7 @@ public class AssetReferencesTests
 
         Assert.Equal(
             SceneOf(
-                ReadUid(project.Read("scenes/s.ascene")),
+                ReadUid(project.Read("scenes/s.wscn")),
                 "<A p=\"res://x/b.dat\"/>",
                 "<A p=\"res://models/a.dat.bak\"/>",
                 "<A p=\"res://models/a.dat2\"/>",
@@ -251,7 +251,7 @@ public class AssetReferencesTests
                 "<A p=\"models/a.dat\"/>",
                 "<A p=\"res://x/b.dat|" + other + "\"/>", // the path is the asset's, and the path wins: the UID in the reference is kept as it is
                 $"<A p=\"res://x/b.dat|{a}\"/>"), // the UID is the asset's and its path leads nowhere
-            project.Read("scenes/s.ascene"));
+            project.Read("scenes/s.wscn"));
     }
 
     private static AssetUid ReadUid(string document) => AuthoredAssets.ReadUid(Encoding.UTF8.GetBytes(document));
@@ -264,11 +264,11 @@ public class AssetReferencesTests
         AssetUid car = project.Imported("models/car.dat");
         string upper = car.ToString().ToUpperInvariant(); // "UID://4K2M…": the same UID, written the way another tool wrote it
         Assert.True(AssetRef.TryParse($"res://models/car.dat|{upper}", out AssetRef parsed) && parsed.Uid == car);
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{upper}"), Model($"res://models/car.dat|{car}")));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{upper}"), Model($"res://models/car.dat|{car}")));
 
         AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://x/truck.dat");
 
-        string after = project.Read("scenes/a.ascene");
+        string after = project.Read("scenes/a.wscn");
         Assert.Contains($"Model=\"res://x/truck.dat|{upper}\"", after, StringComparison.Ordinal);
         Assert.Contains($"Model=\"res://x/truck.dat|{car}\"", after, StringComparison.Ordinal);
     }
@@ -280,11 +280,11 @@ public class AssetReferencesTests
         project.Write("models/a.dat", "a");
         AssetUid a = project.Imported("models/a.dat");
         string scene = SceneOf(AssetUid.New(), Model(a.ToString()), Model("res://x/b.dat"));
-        project.Write("scenes/s.ascene", scene);
+        project.Write("scenes/s.wscn", scene);
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/a.dat", "res://x/b.dat");
 
-        Assert.Equal(scene, project.Read("scenes/s.ascene"));
+        Assert.Equal(scene, project.Read("scenes/s.wscn"));
         Assert.Empty(report.Changes);
         Assert.Empty(report.Documents);
         Assert.Equal(2, report.Unchanged.Count);
@@ -296,14 +296,14 @@ public class AssetReferencesTests
         using var project = new Project();
         project.Write("models/a&b.dat", "a");
         AssetUid a = project.Imported("models/a&b.dat");
-        project.Write("scenes/s.ascene", $"<Scene version=\"1\" uid=\"{AssetUid.New()}\"><A p=\"res://models/a&amp;b.dat|{a}\" q='res://models/a&#38;b.dat'/></Scene>");
+        project.Write("scenes/s.wscn", $"<Scene version=\"1\" uid=\"{AssetUid.New()}\"><A p=\"res://models/a&amp;b.dat|{a}\" q='res://models/a&#38;b.dat'/></Scene>");
 
         AssetReferences.Rewrite(project.Assets, "res://models/a&b.dat", "res://x/it's.dat");
 
-        XmlNode after = XmlNode.Parse(project.Read("scenes/s.ascene"));
+        XmlNode after = XmlNode.Parse(project.Read("scenes/s.wscn"));
         Assert.Equal($"res://x/it's.dat|{a}", after.Children[0].Attribute("p"));
         Assert.Equal("res://x/it's.dat", after.Children[0].Attribute("q"));
-        Assert.Contains("q='res://x/it&apos;s.dat'", project.Read("scenes/s.ascene"), StringComparison.Ordinal); // the quote that wraps the value is the one that is escaped
+        Assert.Contains("q='res://x/it&apos;s.dat'", project.Read("scenes/s.wscn"), StringComparison.Ordinal); // the quote that wraps the value is the one that is escaped
     }
 
     [Fact]
@@ -314,23 +314,23 @@ public class AssetReferencesTests
         AssetUid car = project.Imported("models/car.dat");
         string a = SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"));
         string b = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
-        project.Write("scenes/a.ascene", a);
-        project.Write("scenes/b.ascene", b);
+        project.Write("scenes/a.wscn", a);
+        project.Write("scenes/b.wscn", b);
 
         RewriteReport preview = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat", dryRun: true);
 
         Assert.False(preview.Applied);
         Assert.Equal(2, preview.Changes.Count);
-        Assert.Equal(["res://scenes/a.ascene", "res://scenes/b.ascene"], preview.Documents.Order(StringComparer.Ordinal));
-        Assert.Equal(a, project.Read("scenes/a.ascene"));
-        Assert.Equal(b, project.Read("scenes/b.ascene"));
+        Assert.Equal(["res://scenes/a.wscn", "res://scenes/b.wscn"], preview.Documents.Order(StringComparer.Ordinal));
+        Assert.Equal(a, project.Read("scenes/a.wscn"));
+        Assert.Equal(b, project.Read("scenes/b.wscn"));
 
         RewriteReport done = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat");
 
         Assert.True(done.Applied);
         Assert.Equal(preview.Changes, done.Changes);
-        Assert.Equal(a.Replace("car.dat", "truck.dat", StringComparison.Ordinal), project.Read("scenes/a.ascene"));
-        Assert.Equal(b.Replace("car.dat", "truck.dat", StringComparison.Ordinal), project.Read("scenes/b.ascene"));
+        Assert.Equal(a.Replace("car.dat", "truck.dat", StringComparison.Ordinal), project.Read("scenes/a.wscn"));
+        Assert.Equal(b.Replace("car.dat", "truck.dat", StringComparison.Ordinal), project.Read("scenes/b.wscn"));
     }
 
     [Fact]
@@ -355,13 +355,13 @@ public class AssetReferencesTests
         using var project = new Project();
         project.Write("packages/core/models/car.dat", "car");
         AssetUid car = project.Imported("packages/core/models/car.dat");
-        project.Write("packages/core/scenes/a.ascene", SceneOf(AssetUid.New(), Model("mod://core/models/car.dat")));
-        project.Write("scenes/b.ascene", SceneOf(AssetUid.New(), Model("res://packages/core/models/car.dat"), Model($"mod://core/models/car.dat|{car}")));
+        project.Write("packages/core/scenes/a.wscn", SceneOf(AssetUid.New(), Model("mod://core/models/car.dat")));
+        project.Write("scenes/b.wscn", SceneOf(AssetUid.New(), Model("res://packages/core/models/car.dat"), Model($"mod://core/models/car.dat|{car}")));
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://packages/core/models/car.dat", "res://packages/core/vehicles/truck.dat");
 
-        Assert.Contains("Model=\"mod://core/vehicles/truck.dat\"", project.Read("packages/core/scenes/a.ascene"), StringComparison.Ordinal);
-        string b = project.Read("scenes/b.ascene");
+        Assert.Contains("Model=\"mod://core/vehicles/truck.dat\"", project.Read("packages/core/scenes/a.wscn"), StringComparison.Ordinal);
+        string b = project.Read("scenes/b.wscn");
         Assert.Contains("Model=\"res://packages/core/vehicles/truck.dat\"", b, StringComparison.Ordinal);
         Assert.Contains($"Model=\"mod://core/vehicles/truck.dat|{car}\"", b, StringComparison.Ordinal);
         Assert.Equal(3, report.Changes.Count);
@@ -379,16 +379,16 @@ public class AssetReferencesTests
         project.Write("models/car.dat", "car");
         AssetUid car = project.Imported("models/car.dat");
         string modScene = SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"));
-        mod.Write("scenes/m.ascene", modScene);
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        mod.Write("scenes/m.wscn", modScene);
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat");
 
-        Assert.Equal(["res://scenes/a.ascene"], report.Documents);
+        Assert.Equal(["res://scenes/a.wscn"], report.Documents);
         SkippedDocument skipped = Assert.Single(report.Skipped);
-        Assert.Equal("mod://pack/scenes/m.ascene", skipped.Document);
+        Assert.Equal("mod://pack/scenes/m.wscn", skipped.Document);
         Assert.Contains("read-only", skipped.Reason, StringComparison.Ordinal);
-        Assert.Equal(modScene, File.ReadAllText(Path.Combine(mod.Root, "scenes", "m.ascene")));
+        Assert.Equal(modScene, File.ReadAllText(Path.Combine(mod.Root, "scenes", "m.wscn")));
         Assert.Equal(2, report.Changes.Count + report.Skipped.Count); // the reference in the pack was found too, and its UID still finds the asset
     }
 
@@ -399,14 +399,14 @@ public class AssetReferencesTests
         using var project = new Project();
         using var outside = new TempFolder();
         project.Write("models/car.dat", "car");
-        string real = outside.Write("shared.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        string real = outside.Write("shared.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
         Directory.CreateDirectory(Path.Combine(project.Root, "scenes"));
-        string link = Path.Combine(project.Root, "scenes", "linked.ascene");
+        string link = Path.Combine(project.Root, "scenes", "linked.wscn");
         File.CreateSymbolicLink(link, real);
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat");
 
-        Assert.Equal(["res://scenes/linked.ascene"], report.Documents);
+        Assert.Equal(["res://scenes/linked.wscn"], report.Documents);
         Assert.NotNull(new FileInfo(link).LinkTarget); // the link is still there...
         Assert.Contains("res://models/truck.dat", File.ReadAllText(real), StringComparison.Ordinal); // ...and the file it leads to was rewritten
     }
@@ -423,25 +423,25 @@ public class AssetReferencesTests
         string notWellFormed = "<Scene version=\"1\"><A p=\"res://models/car.dat\"></Scene>";
         string withDoctype = "<!DOCTYPE Scene [<!ENTITY a \"b\">]><Scene version=\"1\"><A p=\"res://models/car.dat\"/></Scene>";
         byte[] cooked = XmlBinary.Write(XmlNode.Parse("<Scene version=\"1\"><A p=\"res://models/car.dat\"/></Scene>"));
-        project.WriteBytes("scenes/utf.ascene", notUtf8);
-        project.Write("scenes/bad.ascene", notWellFormed);
-        project.Write("scenes/dtd.ascene", withDoctype);
-        project.WriteBytes("scenes/cooked.ascene", cooked);
-        project.Write("scenes/good.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
+        project.WriteBytes("scenes/utf.wscn", notUtf8);
+        project.Write("scenes/bad.wscn", notWellFormed);
+        project.Write("scenes/dtd.wscn", withDoctype);
+        project.WriteBytes("scenes/cooked.wscn", cooked);
+        project.Write("scenes/good.wscn", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat", allowSkipped: true);
 
-        Assert.Equal(["res://scenes/good.ascene"], report.Documents);
+        Assert.Equal(["res://scenes/good.wscn"], report.Documents);
         Assert.All(report.Skipped, s => Assert.True(s.Blocking)); // these could have been written, and their references were not
         Dictionary<string, string> reasons = report.Skipped.ToDictionary(s => s.Document, s => s.Reason);
-        Assert.Contains("UTF-8", reasons["res://scenes/utf.ascene"], StringComparison.Ordinal);
-        Assert.Contains("well-formed", reasons["res://scenes/bad.ascene"], StringComparison.Ordinal);
-        Assert.Contains("well-formed", reasons["res://scenes/dtd.ascene"], StringComparison.Ordinal);
-        Assert.Contains("cooked", reasons["res://scenes/cooked.ascene"], StringComparison.Ordinal);
-        Assert.Equal(notUtf8, File.ReadAllBytes(Path.Combine(project.Root, "scenes", "utf.ascene")));
-        Assert.Equal(notWellFormed, project.Read("scenes/bad.ascene"));
-        Assert.Equal(withDoctype, project.Read("scenes/dtd.ascene"));
-        Assert.Equal(cooked, File.ReadAllBytes(Path.Combine(project.Root, "scenes", "cooked.ascene")));
+        Assert.Contains("UTF-8", reasons["res://scenes/utf.wscn"], StringComparison.Ordinal);
+        Assert.Contains("well-formed", reasons["res://scenes/bad.wscn"], StringComparison.Ordinal);
+        Assert.Contains("well-formed", reasons["res://scenes/dtd.wscn"], StringComparison.Ordinal);
+        Assert.Contains("cooked", reasons["res://scenes/cooked.wscn"], StringComparison.Ordinal);
+        Assert.Equal(notUtf8, File.ReadAllBytes(Path.Combine(project.Root, "scenes", "utf.wscn")));
+        Assert.Equal(notWellFormed, project.Read("scenes/bad.wscn"));
+        Assert.Equal(withDoctype, project.Read("scenes/dtd.wscn"));
+        Assert.Equal(cooked, File.ReadAllBytes(Path.Combine(project.Root, "scenes", "cooked.wscn")));
     }
 
     [Fact]
@@ -452,8 +452,8 @@ public class AssetReferencesTests
         AssetUid car = project.Imported("models/car.dat");
         string broken = "<Scene version=\"1\"><A p=\"res://models/car.dat\"></Scene>";
         string good = SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"));
-        project.Write("scenes/broken.ascene", broken);
-        project.Write("scenes/good.ascene", good);
+        project.Write("scenes/broken.wscn", broken);
+        project.Write("scenes/good.wscn", good);
 
         RewriteReport preview = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat", dryRun: true);
         var rewriteError = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat"));
@@ -461,12 +461,12 @@ public class AssetReferencesTests
 
         SkippedDocument skipped = Assert.Single(preview.Skipped); // a preview does not throw: it says what would be refused
         Assert.True(skipped.Blocking);
-        Assert.Contains("res://scenes/broken.ascene", rewriteError.Message, StringComparison.Ordinal);
+        Assert.Contains("res://scenes/broken.wscn", rewriteError.Message, StringComparison.Ordinal);
         Assert.Contains("well-formed", rewriteError.Message, StringComparison.Ordinal);
-        Assert.Contains("res://scenes/broken.ascene", moveError.Message, StringComparison.Ordinal);
+        Assert.Contains("res://scenes/broken.wscn", moveError.Message, StringComparison.Ordinal);
         Assert.Contains("Nothing was changed", moveError.Message, StringComparison.Ordinal);
-        Assert.Equal(good, project.Read("scenes/good.ascene"));
-        Assert.Equal(broken, project.Read("scenes/broken.ascene"));
+        Assert.Equal(good, project.Read("scenes/good.wscn"));
+        Assert.Equal(broken, project.Read("scenes/broken.wscn"));
         Assert.True(project.Has("models/car.dat")); // nothing moved
         Assert.False(project.Has("vehicles/truck.dat"));
 
@@ -475,8 +475,8 @@ public class AssetReferencesTests
 
         Assert.True(moved.Applied);
         Assert.True(Assert.Single(moved.References.Skipped).Blocking);
-        Assert.Contains("res://vehicles/truck.dat", project.Read("scenes/good.ascene"), StringComparison.Ordinal);
-        Assert.Equal(broken, project.Read("scenes/broken.ascene"));
+        Assert.Contains("res://vehicles/truck.dat", project.Read("scenes/good.wscn"), StringComparison.Ordinal);
+        Assert.Equal(broken, project.Read("scenes/broken.wscn"));
         Assert.True(project.Has("vehicles/truck.dat"));
     }
 
@@ -485,13 +485,13 @@ public class AssetReferencesTests
     {
         using var project = new Project();
         project.Write("models/car.dat", "car");
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
-        project.WriteBytes("scenes/latin1.ascene", [.. Encoding.UTF8.GetBytes("<Scene version=\"1\"><Name text=\"caf"), 0xE9, .. Encoding.UTF8.GetBytes("\"/></Scene>")]);
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        project.WriteBytes("scenes/latin1.wscn", [.. Encoding.UTF8.GetBytes("<Scene version=\"1\"><Name text=\"caf"), 0xE9, .. Encoding.UTF8.GetBytes("\"/></Scene>")]);
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat");
 
         Assert.Empty(report.Skipped);
-        Assert.Equal(["res://scenes/a.ascene"], report.Documents);
+        Assert.Equal(["res://scenes/a.wscn"], report.Documents);
     }
 
     [Fact]
@@ -500,7 +500,7 @@ public class AssetReferencesTests
         using var project = new Project();
         project.Write("models/car.dat", "car");
         // A sparse file: it takes no room on a file system that supports them, and the size is all that is looked at.
-        using (FileStream big = File.Create(Path.Combine(project.Root, "big.ascene")))
+        using (FileStream big = File.Create(Path.Combine(project.Root, "big.wscn")))
         {
             big.SetLength(AssetReferences.MaxDocumentBytes + 1);
         }
@@ -508,7 +508,7 @@ public class AssetReferencesTests
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat", dryRun: true);
 
         SkippedDocument skipped = Assert.Single(report.Skipped);
-        Assert.Equal("res://big.ascene", skipped.Document);
+        Assert.Equal("res://big.wscn", skipped.Document);
         Assert.Contains("larger than", skipped.Reason, StringComparison.Ordinal);
     }
 
@@ -596,18 +596,18 @@ public class AssetReferencesTests
         string a = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
         string b = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
         string c = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
-        folder.Write("scenes/a.ascene", a);
-        folder.Write("scenes/b.ascene", b);
-        folder.Write("scenes/c.ascene", c);
+        folder.Write("scenes/a.wscn", a);
+        folder.Write("scenes/b.wscn", b);
+        folder.Write("scenes/c.wscn", c);
         (VirtualFileSystem files, FlakySource source) = FlakyProject(folder);
         source.WritesBeforeFailure = 2; // the third write fails, after two files have been changed
 
         var error = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(new AssetDatabase(files), "res://models/car.dat", "res://models/truck.dat"));
 
         Assert.Contains("nothing was changed", error.Message, StringComparison.Ordinal);
-        Assert.Equal(a, File.ReadAllText(Path.Combine(folder.Root, "scenes", "a.ascene")));
-        Assert.Equal(b, File.ReadAllText(Path.Combine(folder.Root, "scenes", "b.ascene")));
-        Assert.Equal(c, File.ReadAllText(Path.Combine(folder.Root, "scenes", "c.ascene")));
+        Assert.Equal(a, File.ReadAllText(Path.Combine(folder.Root, "scenes", "a.wscn")));
+        Assert.Equal(b, File.ReadAllText(Path.Combine(folder.Root, "scenes", "b.wscn")));
+        Assert.Equal(c, File.ReadAllText(Path.Combine(folder.Root, "scenes", "c.wscn")));
     }
 
     private static (TempFolder Folder, VirtualFileSystem Files, FlakySource Source, string[] Scenes) ThreeScenes()
@@ -617,7 +617,7 @@ public class AssetReferencesTests
         string[] scenes = ["a", "b", "c"];
         for (int i = 0; i < scenes.Length; i++)
         {
-            folder.Write($"scenes/{scenes[i]}.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+            folder.Write($"scenes/{scenes[i]}.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
         }
 
         (VirtualFileSystem files, FlakySource source) = FlakyProject(folder);
@@ -626,7 +626,7 @@ public class AssetReferencesTests
 
     private static string ReadAllText(TempFolder folder, string relative) => File.ReadAllText(Path.Combine(folder.Root, relative));
 
-    private static string ReadScene(TempFolder folder, string name) => File.ReadAllText(Path.Combine(folder.Root, "scenes", name + ".ascene"));
+    private static string ReadScene(TempFolder folder, string name) => File.ReadAllText(Path.Combine(folder.Root, "scenes", name + ".wscn"));
 
     [Fact]
     public void AFileThatCannotBePutBackIsNamedAndStaysValid()
@@ -641,9 +641,9 @@ public class AssetReferencesTests
             var error = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(new AssetDatabase(files), "res://models/car.dat", "res://models/truck.dat"));
 
             Assert.Contains("could not be put back", error.Message, StringComparison.Ordinal);
-            Assert.Contains("res://scenes/a.ascene", error.Message, StringComparison.Ordinal);
-            Assert.Contains("res://scenes/b.ascene", error.Message, StringComparison.Ordinal);
-            Assert.DoesNotContain("res://scenes/c.ascene", error.Message, StringComparison.Ordinal); // never written, nothing to put back
+            Assert.Contains("res://scenes/a.wscn", error.Message, StringComparison.Ordinal);
+            Assert.Contains("res://scenes/b.wscn", error.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("res://scenes/c.wscn", error.Message, StringComparison.Ordinal); // never written, nothing to put back
             Assert.IsType<IOException>(error.InnerException);
             Assert.Equal(c, ReadScene(folder, "c"));
             Assert.Contains("res://models/truck.dat", ReadScene(folder, "a"), StringComparison.Ordinal); // whole, new text: valid, only half done
@@ -681,8 +681,8 @@ public class AssetReferencesTests
             {
                 if (count == 1)
                 {
-                    // the editor's auto-save writes a.ascene (already rewritten by this code) just before b's write goes wrong
-                    File.WriteAllText(Path.Combine(folder.Root, "scenes", "a.ascene"), saved);
+                    // the editor's auto-save writes a.wscn (already rewritten by this code) just before b's write goes wrong
+                    File.WriteAllText(Path.Combine(folder.Root, "scenes", "a.wscn"), saved);
                 }
             };
 
@@ -690,7 +690,7 @@ public class AssetReferencesTests
 
             Assert.Equal(saved, ReadScene(folder, "a")); // what the person saved stays
             Assert.Contains("saved since", error.Message, StringComparison.Ordinal);
-            Assert.Contains("res://scenes/a.ascene", error.Message, StringComparison.Ordinal);
+            Assert.Contains("res://scenes/a.wscn", error.Message, StringComparison.Ordinal);
         }
     }
 
@@ -707,13 +707,13 @@ public class AssetReferencesTests
                 if (count == 0)
                 {
                     // everything was checked; while a is being written, the editor saves c
-                    File.WriteAllText(Path.Combine(folder.Root, "scenes", "c.ascene"), saved);
+                    File.WriteAllText(Path.Combine(folder.Root, "scenes", "c.wscn"), saved);
                 }
             };
 
             var error = Assert.Throws<ContentException>(() => AssetReferences.Rewrite(new AssetDatabase(files), "res://models/car.dat", "res://models/truck.dat"));
 
-            Assert.Contains("res://scenes/c.ascene was saved", error.Message, StringComparison.Ordinal);
+            Assert.Contains("res://scenes/c.wscn was saved", error.Message, StringComparison.Ordinal);
             Assert.Equal(saved, ReadScene(folder, "c")); // not overwritten
             Assert.Equal(a, ReadScene(folder, "a")); // written, then put back
             Assert.Contains("res://models/car.dat", ReadScene(folder, "b"), StringComparison.Ordinal); // never reached
@@ -725,17 +725,17 @@ public class AssetReferencesTests
     {
         using var project = new Project();
         project.Write("models/car.dat", "car");
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
-        project.Write("scenes/b.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        project.Write("scenes/b.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
         AssetReferences.ReferencePlan plan = AssetReferences.Plan(project.Assets, AssetUid.None, "res://models/car.dat", "res://models/truck.dat", null, includeScripts: false);
         string edited = SceneOf(AssetUid.New(), Model("res://models/car.dat"), "<Added/>");
-        project.Write("scenes/b.ascene", edited); // the editor saved it in between
+        project.Write("scenes/b.wscn", edited); // the editor saved it in between
 
         var error = Assert.Throws<ContentException>(() => AssetReferences.Apply(project.Files, plan.Edits));
 
         Assert.Contains("changed", error.Message, StringComparison.Ordinal);
-        Assert.Contains("res://models/car.dat", project.Read("scenes/a.ascene"), StringComparison.Ordinal); // nothing was written, not even the first
-        Assert.Equal(edited, project.Read("scenes/b.ascene"));
+        Assert.Contains("res://models/car.dat", project.Read("scenes/a.wscn"), StringComparison.Ordinal); // nothing was written, not even the first
+        Assert.Equal(edited, project.Read("scenes/b.wscn"));
     }
 
     // ---- Reading goes wrong ---------------------------------------------------------------------------------------------------------
@@ -791,15 +791,15 @@ public class AssetReferencesTests
     [InlineData("list", "scenes", typeof(DirectoryNotFoundException), "FRM")] // a folder deleted while the scan was under way
     [InlineData("list", "scenes", typeof(UnauthorizedAccessException), "FRM")] // a folder that cannot be read
     [InlineData("list", "scenes", typeof(NotSupportedException), "FRM")] // whatever else a source of its own throws
-    [InlineData("open", "scenes/a.ascene", typeof(InvalidOperationException), "FRM")]
-    [InlineData("read", "models/car.dat.import.xml", typeof(IOException), "RM")] // the UID of the asset
+    [InlineData("open", "scenes/a.wscn", typeof(InvalidOperationException), "FRM")]
+    [InlineData("read", "models/car.dat.wimp", typeof(IOException), "RM")] // the UID of the asset
     [InlineData("read", "imported/index.xml", typeof(IOException), "M")] // the import index
     public void ASourceThatFailsWhileReadingGivesAContentExceptionAndChangesNothing(string operation, string at, Type exception, string entryPoints)
     {
         using var folder = new TempFolder();
         folder.Write("models/car.dat", "car");
         string scene = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
-        folder.Write("scenes/a.ascene", scene);
+        folder.Write("scenes/a.wscn", scene);
         (AssetDatabase assets, FaultySource source) = FaultyProject(folder);
         new AssetImporter(assets.Files, [new DatImporter()]).Run();
         AssetRef target = assets.RefOf("res://models/car.dat");
@@ -825,7 +825,7 @@ public class AssetReferencesTests
 
         Assert.Contains("Nothing was changed", error.Message, StringComparison.Ordinal);
         Assert.NotNull(error.InnerException);
-        Assert.Equal(scene, File.ReadAllText(Path.Combine(folder.Root, "scenes", "a.ascene")));
+        Assert.Equal(scene, File.ReadAllText(Path.Combine(folder.Root, "scenes", "a.wscn")));
         Assert.True(File.Exists(Path.Combine(folder.Root, "models", "car.dat")));
     }
 
@@ -841,7 +841,7 @@ public class AssetReferencesTests
         using var project = new Project();
         project.Write("models/car.dat", "car");
         string scene = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
-        project.Write("scenes/a.ascene", scene);
+        project.Write("scenes/a.wscn", scene);
         string locked = Path.Combine(project.Root, "locked");
         Directory.CreateDirectory(locked);
         File.SetUnixFileMode(locked, UnixFileMode.None);
@@ -858,7 +858,7 @@ public class AssetReferencesTests
             File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        Assert.Equal(scene, project.Read("scenes/a.ascene"));
+        Assert.Equal(scene, project.Read("scenes/a.wscn"));
         Assert.True(project.Has("models/car.dat"));
     }
 
@@ -881,7 +881,7 @@ public class AssetReferencesTests
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating a symbolic link needs a privilege on Windows.");
         using var project = new Project();
         project.Write("models/car.dat", "car");
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
         // Two links to the folder they are in: below each of them the same tree again, twice, without end.
         File.CreateSymbolicLink(Path.Combine(project.Root, "scenes", "again"), ".");
         File.CreateSymbolicLink(Path.Combine(project.Root, "scenes", "twice"), ".");
@@ -891,7 +891,7 @@ public class AssetReferencesTests
 
         Assert.Contains("folders", error.Message, StringComparison.Ordinal);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), $"took {watch.Elapsed}");
-        Assert.Contains("res://models/car.dat", project.Read("scenes/a.ascene"), StringComparison.Ordinal);
+        Assert.Contains("res://models/car.dat", project.Read("scenes/a.wscn"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -917,7 +917,7 @@ public class AssetReferencesTests
         AssetUid car = project.Imported("models/car.dat");
         string script = "local m = models:load(\"res://models/car.dat\")\n-- see res://models/car.dat.bak and res://models/car.dat.\nlocal u = assets:resolve(\"" + car + "\")\nlocal both = \"res://models/car.dat|" + car + "\"\nlocal fresh = \"res://models/truck.dat\"\n";
         project.Write("scripts/main.luau", script);
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat");
 
@@ -964,15 +964,15 @@ public class AssetReferencesTests
         project.Write("models/car.dat", "car");
         foreach (string name in new[] { "a", "b", "c" })
         {
-            project.Write($"scenes/{name}.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+            project.Write($"scenes/{name}.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
         }
 
-        int one = project.Files.ReadAllBytes("res://scenes/a.ascene").Length;
+        int one = project.Files.ReadAllBytes("res://scenes/a.wscn").Length;
         AssetReferences.ReferencePlan plan = AssetReferences.Plan(project.Assets, AssetUid.None, "res://models/car.dat", "res://models/truck.dat", null, includeScripts: false, maxPlannedBytes: (4L * one) + 8);
 
-        Assert.Equal(["res://scenes/a.ascene", "res://scenes/b.ascene"], plan.Edits.Select(e => e.Path)); // two documents, old and new text, fit
+        Assert.Equal(["res://scenes/a.wscn", "res://scenes/b.wscn"], plan.Edits.Select(e => e.Path)); // two documents, old and new text, fit
         SkippedDocument skipped = Assert.Single(plan.Report.Skipped);
-        Assert.Equal("res://scenes/c.ascene", skipped.Document);
+        Assert.Equal("res://scenes/c.wscn", skipped.Document);
         Assert.True(skipped.Blocking);
         Assert.Contains("memory", skipped.Reason, StringComparison.Ordinal);
     }
@@ -982,7 +982,7 @@ public class AssetReferencesTests
     {
         using var project = new Project();
         project.Write("models/car.dat", "car");
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), [.. Enumerable.Repeat(Model("res://models/car.dat"), AssetReferences.MaxReferencesPerDocument + 1)]));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), [.. Enumerable.Repeat(Model("res://models/car.dat"), AssetReferences.MaxReferencesPerDocument + 1)]));
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://models/truck.dat", dryRun: true);
 
@@ -999,21 +999,21 @@ public class AssetReferencesTests
         using var project = new Project();
         project.Write("models/car.dat", "car");
         AssetUid car = project.Imported("models/car.dat");
-        string sidecar = project.Read("models/car.dat.import.xml");
+        string sidecar = project.Read("models/car.dat.wimp");
         string key = AssetImporter.LoadIndex(project.Files).Single().Key;
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
 
         MoveReport report = project.Assets.Move("res://models/car.dat", "res://vehicles/truck.dat");
 
         Assert.True(report.Applied);
-        Assert.Equal(["res://vehicles/truck.dat", "res://vehicles/truck.dat.import.xml", "res://imported/vehicles/truck.dat.up"], report.Files);
+        Assert.Equal(["res://vehicles/truck.dat", "res://vehicles/truck.dat.wimp", "res://imported/vehicles/truck.dat.up"], report.Files);
         Assert.False(project.Has("models/car.dat"));
-        Assert.False(project.Has("models/car.dat.import.xml"));
+        Assert.False(project.Has("models/car.dat.wimp"));
         Assert.False(project.Has("imported/models/car.dat.up"));
         Assert.Equal("car", project.Read("vehicles/truck.dat"));
-        Assert.Equal(sidecar, project.Read("vehicles/truck.dat.import.xml")); // the UID went with it
+        Assert.Equal(sidecar, project.Read("vehicles/truck.dat.wimp")); // the UID went with it
         Assert.Equal("CAR", project.Read("imported/vehicles/truck.dat.up"));
-        Assert.Contains($"Model=\"res://vehicles/truck.dat|{car}\"", project.Read("scenes/a.ascene"), StringComparison.Ordinal);
+        Assert.Contains($"Model=\"res://vehicles/truck.dat|{car}\"", project.Read("scenes/a.wscn"), StringComparison.Ordinal);
         Assert.Contains($"uid=\"{car}\" path=\"res://vehicles/truck.dat\"", project.Read("imported/assets.xml"), StringComparison.Ordinal);
         ImportEntry entry = Assert.Single(AssetImporter.LoadIndex(project.Files));
         Assert.Equal(("vehicles/truck.dat", "imported/vehicles/truck.dat.up", key), (entry.Source, entry.Artifact, entry.Key));
@@ -1032,8 +1032,8 @@ public class AssetReferencesTests
         using var project = new Project();
         project.Write("models/car.dat", "car");
         AssetUid car = project.Imported("models/car.dat");
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
-        project.Write("scenes/b.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"), Model(car.ToString())));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
+        project.Write("scenes/b.wscn", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"), Model(car.ToString())));
         AssetRef oldReference = project.Assets.RefOf("res://models/car.dat");
 
         MoveReport report = project.Assets.Move("res://models/car.dat", "res://vehicles/truck.dat");
@@ -1042,7 +1042,7 @@ public class AssetReferencesTests
         // The reference the scenes held before the rename still finds the model (through its UID), and the scenes now say where it is.
         var fresh = new AssetDatabase(project.Files);
         Assert.Equal("res://vehicles/truck.dat", fresh.Resolve(oldReference));
-        foreach (string scene in new[] { "scenes/a.ascene", "scenes/b.ascene" })
+        foreach (string scene in new[] { "scenes/a.wscn", "scenes/b.wscn" })
         {
             XmlNode root = XmlNode.Parse(project.Read(scene));
             foreach (XmlNode renderer in root.Children)
@@ -1063,16 +1063,16 @@ public class AssetReferencesTests
         using var project = new Project();
         project.Write("models/car.dat", "car");
         AssetUid car = project.Imported("models/car.dat");
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"), Model("res://models/car.dat")));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"), Model("res://models/car.dat")));
         Directory.CreateDirectory(Path.Combine(project.Root, "vehicles"));
         File.Move(Path.Combine(project.Root, "models", "car.dat"), Path.Combine(project.Root, "vehicles", "truck.dat"));
-        File.Move(Path.Combine(project.Root, "models", "car.dat.import.xml"), Path.Combine(project.Root, "vehicles", "truck.dat.import.xml"));
+        File.Move(Path.Combine(project.Root, "models", "car.dat.wimp"), Path.Combine(project.Root, "vehicles", "truck.dat.wimp"));
 
         RewriteReport report = AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://vehicles/truck.dat");
 
         Assert.Equal(2, report.Changes.Count);
-        Assert.Contains($"\"res://vehicles/truck.dat|{car}\"", project.Read("scenes/a.ascene"), StringComparison.Ordinal);
-        Assert.Contains("Model=\"res://vehicles/truck.dat\"", project.Read("scenes/a.ascene"), StringComparison.Ordinal);
+        Assert.Contains($"\"res://vehicles/truck.dat|{car}\"", project.Read("scenes/a.wscn"), StringComparison.Ordinal);
+        Assert.Contains("Model=\"res://vehicles/truck.dat\"", project.Read("scenes/a.wscn"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1080,17 +1080,17 @@ public class AssetReferencesTests
     {
         using var project = new Project();
         AssetUid door = AssetUid.New();
-        string doorScene = $"<?xml version=\"1.0\"?>\n<!-- keep me -->\n<Scene version=\"1\" uid=\"{door}\">\n  <Entity id=\"1\"><Portal target=\"res://scenes/door.ascene|{door}\"/></Entity>\n</Scene>\n";
-        project.Write("scenes/door.ascene", doorScene); // a scene that refers to itself: the edit is made at its old path, then the file moves
-        project.Write("scenes/hall.ascene", SceneOf(AssetUid.New(), $"<Portal target=\"res://scenes/door.ascene|{door}\"/>"));
+        string doorScene = $"<?xml version=\"1.0\"?>\n<!-- keep me -->\n<Scene version=\"1\" uid=\"{door}\">\n  <Entity id=\"1\"><Portal target=\"res://scenes/door.wscn|{door}\"/></Entity>\n</Scene>\n";
+        project.Write("scenes/door.wscn", doorScene); // a scene that refers to itself: the edit is made at its old path, then the file moves
+        project.Write("scenes/hall.wscn", SceneOf(AssetUid.New(), $"<Portal target=\"res://scenes/door.wscn|{door}\"/>"));
 
-        MoveReport report = project.Assets.Move("res://scenes/door.ascene", "res://levels/door.ascene");
+        MoveReport report = project.Assets.Move("res://scenes/door.wscn", "res://levels/door.wscn");
 
-        Assert.Equal(["res://levels/door.ascene"], report.Files);
-        Assert.Equal(doorScene.Replace("res://scenes/door.ascene", "res://levels/door.ascene", StringComparison.Ordinal), project.Read("levels/door.ascene"));
-        Assert.Equal(door, project.Assets.UidOf("res://levels/door.ascene"));
-        Assert.Contains($"target=\"res://levels/door.ascene|{door}\"", project.Read("scenes/hall.ascene"), StringComparison.Ordinal);
-        Assert.False(project.Has("scenes/door.ascene"));
+        Assert.Equal(["res://levels/door.wscn"], report.Files);
+        Assert.Equal(doorScene.Replace("res://scenes/door.wscn", "res://levels/door.wscn", StringComparison.Ordinal), project.Read("levels/door.wscn"));
+        Assert.Equal(door, project.Assets.UidOf("res://levels/door.wscn"));
+        Assert.Contains($"target=\"res://levels/door.wscn|{door}\"", project.Read("scenes/hall.wscn"), StringComparison.Ordinal);
+        Assert.False(project.Has("scenes/door.wscn"));
     }
 
     [Fact]
@@ -1100,19 +1100,19 @@ public class AssetReferencesTests
         project.Write("models/car.dat", "car");
         project.Write("models/bike.dat", "bike");
         project.Import();
-        project.Write("models/stale.dat.import.xml", "<Import/>");
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        project.Write("models/stale.dat.wimp", "<Import/>");
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
 
         Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://models/bike.dat")); // exists
         Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://models/stale.dat")); // an orphan sidecar is there
         Assert.Throws<ContentException>(() => project.Assets.Move("res://models", "res://meshes")); // a folder
-        Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat.import.xml", "res://models/x.dat.import.xml")); // follows its asset
+        Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat.wimp", "res://models/x.dat.wimp")); // follows its asset
         Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://imported/car.dat")); // the cache
         Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://.hidden/car.dat"));
         Assert.Throws<ContentException>(() => project.Assets.Move("res://models/missing.dat", "res://models/m.dat"));
         Assert.Throws<ContentException>(() => project.Assets.Move("mod://x/a.dat", "res://models/m.dat")); // only the game folder
         Assert.True(project.Has("models/car.dat"));
-        Assert.Contains("res://models/car.dat", project.Read("scenes/a.ascene"), StringComparison.Ordinal);
+        Assert.Contains("res://models/car.dat", project.Read("scenes/a.wscn"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1122,22 +1122,22 @@ public class AssetReferencesTests
         project.Write("models/car.dat", "car");
         project.Write("models/bike.dat", "bike");
         string scene = SceneOf(AssetUid.New(), Model("res://models/car.dat"));
-        project.Write("scenes/a.ascene", scene);
+        project.Write("scenes/a.wscn", scene);
 
         var inside = Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://models/car.dat/sub/car.dat"));
         var file = Assert.Throws<ContentException>(() => project.Assets.Move("res://models/car.dat", "res://models/bike.dat/car.dat"));
 
         Assert.Contains("inside", inside.Message, StringComparison.Ordinal);
         Assert.Contains("is a file", file.Message, StringComparison.Ordinal);
-        Assert.Equal(scene, project.Read("scenes/a.ascene")); // the documents were not written and put back: they were never touched
+        Assert.Equal(scene, project.Read("scenes/a.wscn")); // the documents were not written and put back: they were never touched
         Assert.True(project.Has("models/car.dat"));
     }
 
     [Theory]
-    [InlineData("game.xml", "res://game.xml", "res://elsewhere/game.xml")]
-    [InlineData("packages/core/mod.xml", "res://packages/core/mod.xml", "res://packages/core/x/mod.xml")]
-    [InlineData("data/a.dat", "res://data/a.dat", "res://game.xml")]
-    [InlineData("data/a.dat", "res://data/a.dat", "res://data/mod.xml")]
+    [InlineData("game.wgam", "res://game.wgam", "res://elsewhere/game.wgam")]
+    [InlineData("packages/core/mod.wmod", "res://packages/core/mod.wmod", "res://packages/core/x/mod.wmod")]
+    [InlineData("data/a.dat", "res://data/a.dat", "res://game.wgam")]
+    [InlineData("data/a.dat", "res://data/a.dat", "res://data/mod.wmod")]
     [InlineData("packages/core/imported/index.xml", "res://packages/core/imported/index.xml", "res://x/index.xml")]
     [InlineData("data/a.dat", "res://data/a.dat", "res://packages/core/imported/a.dat")]
     [InlineData("data/a.dat", "res://data/a.dat", "res://dev_mods/core/imported/a.dat")]
@@ -1237,7 +1237,7 @@ public class AssetReferencesTests
         project.Write("models/car.dat", "car");
         AssetUid car = project.Imported("models/car.dat");
         string scene = SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"));
-        project.Write("scenes/a.ascene", scene);
+        project.Write("scenes/a.wscn", scene);
         string list = project.Read("imported/assets.xml");
 
         MoveReport preview = project.Assets.Move("res://models/car.dat", "res://vehicles/truck.dat", dryRun: true);
@@ -1246,9 +1246,9 @@ public class AssetReferencesTests
         Assert.Equal(3, preview.Files.Count);
         Assert.Single(preview.References.Changes);
         Assert.True(project.Has("models/car.dat"));
-        Assert.True(project.Has("models/car.dat.import.xml"));
+        Assert.True(project.Has("models/car.dat.wimp"));
         Assert.False(project.Has("vehicles/truck.dat"));
-        Assert.Equal(scene, project.Read("scenes/a.ascene"));
+        Assert.Equal(scene, project.Read("scenes/a.wscn"));
         Assert.Equal(list, project.Read("imported/assets.xml"));
     }
 
@@ -1260,18 +1260,18 @@ public class AssetReferencesTests
         (VirtualFileSystem files, FlakySource source) = FlakyProject(folder);
         var importer = new AssetImporter(files, [new DatImporter()]);
         importer.Run();
-        AssetUid car = ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(folder.Root, "models", "car.dat.import.xml")));
+        AssetUid car = ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(folder.Root, "models", "car.dat.wimp")));
         string scene = SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"));
-        folder.Write("scenes/a.ascene", scene);
+        folder.Write("scenes/a.wscn", scene);
         source.MovesBeforeFailure = 1; // the asset moves, its sidecar cannot
 
         var error = Assert.Throws<ContentException>(() => new AssetDatabase(files).Move("res://models/car.dat", "res://vehicles/truck.dat"));
 
         Assert.Contains("nothing was changed", error.Message, StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(folder.Root, "models", "car.dat")));
-        Assert.True(File.Exists(Path.Combine(folder.Root, "models", "car.dat.import.xml")));
+        Assert.True(File.Exists(Path.Combine(folder.Root, "models", "car.dat.wimp")));
         Assert.False(File.Exists(Path.Combine(folder.Root, "vehicles", "truck.dat")));
-        Assert.Equal(scene, File.ReadAllText(Path.Combine(folder.Root, "scenes", "a.ascene")));
+        Assert.Equal(scene, File.ReadAllText(Path.Combine(folder.Root, "scenes", "a.wscn")));
     }
 
     [Fact]
@@ -1281,8 +1281,8 @@ public class AssetReferencesTests
         folder.Write("models/car.dat", "car");
         (VirtualFileSystem files, FlakySource source) = FlakyProject(folder);
         new AssetImporter(files, [new DatImporter()]).Run();
-        AssetUid car = ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(folder.Root, "models", "car.dat.import.xml")));
-        folder.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"), Model("res://models/car.dat")));
+        AssetUid car = ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(folder.Root, "models", "car.dat.wimp")));
+        folder.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"), Model("res://models/car.dat")));
         source.MovesBeforeFailure = 1; // the asset moves, its sidecar cannot...
         source.Sticky = true; // ...and the asset cannot go back either
 
@@ -1290,16 +1290,16 @@ public class AssetReferencesTests
 
         Assert.Contains("run the same move again", error.Message, StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(folder.Root, "vehicles", "truck.dat"))); // the asset is where the documents say
-        Assert.True(File.Exists(Path.Combine(folder.Root, "models", "car.dat.import.xml")));
-        Assert.Equal(2, ReadAllText(folder, "scenes/a.ascene").Split("res://vehicles/truck.dat").Length - 1);
+        Assert.True(File.Exists(Path.Combine(folder.Root, "models", "car.dat.wimp")));
+        Assert.Equal(2, ReadAllText(folder, "scenes/a.wscn").Split("res://vehicles/truck.dat").Length - 1);
 
         source.Sticky = false;
         source.MovesBeforeFailure = int.MaxValue; // the lock is gone
         MoveReport done = new AssetDatabase(files).Move("res://models/car.dat", "res://vehicles/truck.dat");
 
         Assert.True(done.Applied);
-        Assert.Equal(["res://vehicles/truck.dat.import.xml", "res://imported/vehicles/truck.dat.up"], done.Files);
-        Assert.False(File.Exists(Path.Combine(folder.Root, "models", "car.dat.import.xml")));
+        Assert.Equal(["res://vehicles/truck.dat.wimp", "res://imported/vehicles/truck.dat.up"], done.Files);
+        Assert.False(File.Exists(Path.Combine(folder.Root, "models", "car.dat.wimp")));
         Assert.Equal(car, new AssetDatabase(files).UidOf("res://vehicles/truck.dat"));
         Assert.Equal("vehicles/truck.dat", Assert.Single(AssetImporter.LoadIndex(files)).Source);
         Assert.Empty(done.References.Changes);
@@ -1313,7 +1313,7 @@ public class AssetReferencesTests
         project.Write("models/car.dat", "car");
         AssetUid car = project.Imported("models/car.dat");
         string scene = SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}"));
-        project.Write("scenes/a.ascene", scene);
+        project.Write("scenes/a.wscn", scene);
 
         // The process died after the documents were written and before the first file moved.
         AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://vehicles/truck.dat");
@@ -1327,7 +1327,7 @@ public class AssetReferencesTests
         Assert.Equal("car", project.Read("vehicles/truck.dat"));
         Assert.Equal(car, project.Assets.UidOf("res://vehicles/truck.dat"));
         Assert.Equal("vehicles/truck.dat", Assert.Single(AssetImporter.LoadIndex(project.Files)).Source);
-        Assert.Contains($"Model=\"res://vehicles/truck.dat|{car}\"", project.Read("scenes/a.ascene"), StringComparison.Ordinal);
+        Assert.Contains($"Model=\"res://vehicles/truck.dat|{car}\"", project.Read("scenes/a.wscn"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1336,15 +1336,15 @@ public class AssetReferencesTests
         using var project = new Project();
         project.Write("models/car.dat", "car");
         AssetUid car = project.Imported("models/car.dat");
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model($"res://models/car.dat|{car}")));
         AssetReferences.Rewrite(project.Assets, "res://models/car.dat", "res://vehicles/truck.dat");
         Directory.CreateDirectory(Path.Combine(project.Root, "vehicles"));
         File.Move(Path.Combine(project.Root, "models", "car.dat"), Path.Combine(project.Root, "vehicles", "truck.dat")); // only the asset had moved
 
         MoveReport done = project.Assets.Move("res://models/car.dat", "res://vehicles/truck.dat");
 
-        Assert.Equal(["res://vehicles/truck.dat.import.xml", "res://imported/vehicles/truck.dat.up"], done.Files);
-        Assert.False(project.Has("models/car.dat.import.xml"));
+        Assert.Equal(["res://vehicles/truck.dat.wimp", "res://imported/vehicles/truck.dat.up"], done.Files);
+        Assert.False(project.Has("models/car.dat.wimp"));
         Assert.Equal(car, project.Assets.UidOf("res://vehicles/truck.dat"));
         Assert.Equal("CAR", project.Read("imported/vehicles/truck.dat.up"));
         Assert.Contains($"uid=\"{car}\" path=\"res://vehicles/truck.dat\"", project.Read("imported/assets.xml"), StringComparison.Ordinal);
@@ -1358,31 +1358,31 @@ public class AssetReferencesTests
     public void AMovedFileThatTheGameManifestNamesIsReportedAndNotRewritten()
     {
         using var project = new Project();
-        string game = "<Game name=\"G\" organization=\"O\" version=\"1.0.0\">\n  <EntryScene path=\"scenes/main.ascene\"/>\n  <Icon path=\"icon.png\"/>\n</Game>\n";
-        project.Write("game.xml", game);
-        project.Write("scenes/main.ascene", SceneOf(AssetUid.New()));
-        project.Write("scenes/other.ascene", SceneOf(AssetUid.New()));
+        string game = "<Game name=\"G\" organization=\"O\" version=\"1.0.0\">\n  <EntryScene path=\"scenes/main.wscn\"/>\n  <Icon path=\"icon.png\"/>\n</Game>\n";
+        project.Write("game.wgam", game);
+        project.Write("scenes/main.wscn", SceneOf(AssetUid.New()));
+        project.Write("scenes/other.wscn", SceneOf(AssetUid.New()));
         project.Write("icon.png", "png");
 
-        MoveReport entry = project.Assets.Move("res://scenes/main.ascene", "res://levels/main.ascene");
+        MoveReport entry = project.Assets.Move("res://scenes/main.wscn", "res://levels/main.wscn");
         MoveReport icon = project.Assets.Move("res://icon.png", "res://art/icon.png");
-        MoveReport unrelated = project.Assets.Move("res://scenes/other.ascene", "res://levels/other.ascene");
+        MoveReport unrelated = project.Assets.Move("res://scenes/other.wscn", "res://levels/other.wscn");
 
         AssetReferenceSite site = Assert.Single(entry.References.Unrewritable);
-        Assert.Equal(("res://game.xml", 2, "EntryScene", "path"), (site.Document, site.Line, site.Element, site.Attribute));
-        Assert.Equal("res://scenes/main.ascene", site.Value.Path);
-        Assert.Contains("res://game.xml:2", Assert.Single(entry.Warnings), StringComparison.Ordinal);
+        Assert.Equal(("res://game.wgam", 2, "EntryScene", "path"), (site.Document, site.Line, site.Element, site.Attribute));
+        Assert.Equal("res://scenes/main.wscn", site.Value.Path);
+        Assert.Contains("res://game.wgam:2", Assert.Single(entry.Warnings), StringComparison.Ordinal);
         Assert.Contains("EntryScene", entry.Warnings[0], StringComparison.Ordinal);
-        Assert.Contains("res://game.xml:3", Assert.Single(icon.Warnings), StringComparison.Ordinal);
+        Assert.Contains("res://game.wgam:3", Assert.Single(icon.Warnings), StringComparison.Ordinal);
         Assert.Empty(unrelated.Warnings);
-        Assert.Equal(game, project.Read("game.xml")); // never rewritten
+        Assert.Equal(game, project.Read("game.wgam")); // never rewritten
     }
 
     [Fact]
     public void AMovedScriptThatAPackageManifestNamesIsReported()
     {
         using var project = new Project();
-        project.Write("packages/core/mod.xml", "<Mod id=\"core\" name=\"c\" version=\"1.0.0\" apiVersion=\"1\">\n  <Script path=\"main.luau\"/>\n  <Content path=\"data\"/>\n</Mod>\n");
+        project.Write("packages/core/mod.wmod", "<Mod id=\"core\" name=\"c\" version=\"1.0.0\" apiVersion=\"1\">\n  <Script path=\"main.luau\"/>\n  <Content path=\"data\"/>\n</Mod>\n");
         project.Write("packages/core/main.luau", "return 1");
         project.Write("packages/core/util.luau", "return 2");
 
@@ -1390,7 +1390,7 @@ public class AssetReferencesTests
         MoveReport other = project.Assets.Move("res://packages/core/util.luau", "res://packages/core/lib/util.luau");
 
         AssetReferenceSite site = Assert.Single(preview.Unrewritable);
-        Assert.Equal(("res://packages/core/mod.xml", 2, "Script"), (site.Document, site.Line, site.Element));
+        Assert.Equal(("res://packages/core/mod.wmod", 2, "Script"), (site.Document, site.Line, site.Element));
         Assert.Empty(other.References.Unrewritable);
         Assert.Empty(other.Warnings);
     }
@@ -1434,13 +1434,13 @@ public class AssetReferencesTests
     {
         using var project = new Project();
         project.Write("models/car.dat", "car");
-        project.Write("scenes/a.ascene", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
+        project.Write("scenes/a.wscn", SceneOf(AssetUid.New(), Model("res://models/car.dat")));
 
         MoveReport report = project.Assets.Move("res://models/car.dat", "res://models/truck.dat");
 
         Assert.Equal(["res://models/truck.dat"], report.Files);
         Assert.False(project.Has("imported/assets.xml")); // a move does not make the project's list
-        Assert.Contains("Model=\"res://models/truck.dat\"", project.Read("scenes/a.ascene"), StringComparison.Ordinal);
+        Assert.Contains("Model=\"res://models/truck.dat\"", project.Read("scenes/a.wscn"), StringComparison.Ordinal);
     }
 
     // ---- The text editor ------------------------------------------------------------------------------------------------------------

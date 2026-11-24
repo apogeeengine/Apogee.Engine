@@ -123,10 +123,10 @@ Use `defs` for definitions, and `xml.load` for XML you read yourself.
 
 ## Cooked definitions
 
-`./build.sh pack … --cooked` ([Packs](packs.md)) writes the definition files of the base packages (the `.xml` files in the `Content` folders of each `packages/<id>/mod.xml`) in the binary form of
+`./build.sh pack … --cooked` ([Packs](packs.md)) writes the definition files of the base packages (the `.xml` files in the `Content` folders of each `packages/<id>/mod.wmod`) in the binary form of
 [cooked XML](import.md#cooked-xml), at the paths they have in the folder, so a shipped game parses no text for them. `DefDatabase` reads every file with `XmlFile.Read`, so cooked and text definitions load,
 merge, patch and report problems alike (a cooked file keeps the lines of its source, so a problem still points at the line you wrote). The folder in development is unchanged and a mod's files are never cooked, so
-a mod can patch a cooked definition of the base game as it patches a text one. The manifests `mod.xml` and schemas `.xsd` stay text.
+a mod can patch a cooked definition of the base game as it patches a text one. The manifests `mod.wmod` and schemas `.xsd` stay text.
 
 A definition's table is made the first time it is asked for and is **read-only all the way down** (assigning to it is an error), and it is the same table for every script, so scripts
 cannot change each other's view of the game; copy what you need to change. Setting `LuauVm.Defs` again (a reload) makes later calls see the new definitions, and tables that scripts

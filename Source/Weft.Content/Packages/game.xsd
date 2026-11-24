@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The game.xml at the root of a game folder: what the game is called, who made it, which version it is, and what a window and a player's folder look like. -->
+<!-- The game.wgam at the root of a game folder: what the game is called, who made it, which version it is, and what a window and a player's folder look like. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:simpleType name="GameVersion">
     <xs:restriction base="xs:string">
@@ -34,7 +34,7 @@
       <xs:all>
         <xs:element name="EntryScene" minOccurs="0">
           <xs:annotation>
-            <xs:documentation>The scene that is loaded before the packages' scripts run: a path inside the game, for example scenes/main.ascene.</xs:documentation>
+            <xs:documentation>The scene that is loaded before the packages' scripts run: a path inside the game, for example scenes/main.wscn.</xs:documentation>
           </xs:annotation>
           <xs:complexType>
             <xs:attribute name="path" type="xs:string" use="required"/>

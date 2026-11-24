@@ -237,9 +237,9 @@ public sealed class EditHistoryTests : IDisposable
         {
             var files = new VirtualFileSystem();
             files.Mount("res://", new DirectorySource(folder, writable: true));
-            File.WriteAllText(Path.Combine(folder, "pair.aprefab"), "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"1\" name=\"Pair\"><Entity id=\"2\" name=\"Left\"/><Entity id=\"3\" name=\"Right\"/></Entity></Prefab>");
+            File.WriteAllText(Path.Combine(folder, "pair.wprf"), "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"1\" name=\"Pair\"><Entity id=\"2\" name=\"Left\"/><Entity id=\"3\" name=\"Right\"/></Entity></Prefab>");
             using var world = new World { Files = files };
-            Entity pair = world.Instantiate("res://pair.aprefab");
+            Entity pair = world.Instantiate("res://pair.wprf");
             Entity left = world.Children(pair)[0];
             Entity right = world.Children(pair)[1];
             Entity other = world.CreateEntity("other");

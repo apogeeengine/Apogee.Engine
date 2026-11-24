@@ -49,7 +49,7 @@ public sealed class PrefabFileTests : IDisposable
         _files.Mount("res://", new DirectorySource(_folder, writable: true));
         _assets = new AssetDatabase(_files);
         _world = new World { Files = _files, Assets = _assets };
-        Write("prefabs/lamp.aprefab", Lamp(_lampUid));
+        Write("prefabs/lamp.wprf", Lamp(_lampUid));
     }
 
     public void Dispose()
@@ -109,7 +109,7 @@ public sealed class PrefabFileTests : IDisposable
     {
         Entity level = _world.CreateEntity("level");
 
-        Entity lamp = _world.Instantiate("res://prefabs/lamp.aprefab", level);
+        Entity lamp = _world.Instantiate("res://prefabs/lamp.wprf", level);
 
         Assert.Equal(level, _world.GetParent(lamp));
         Assert.Equal("Lamp", _world.GetName(lamp));
@@ -122,7 +122,7 @@ public sealed class PrefabFileTests : IDisposable
         Assert.True(_world.Has(bulb, _world.FindComponent("Flicker")));   // the file's own component definition came with it
 
         // Without a parent the root is at the top level, and a second instance is a separate set of entities (its root gets a free name).
-        Entity second = _world.Instantiate("res://prefabs/lamp.aprefab");
+        Entity second = _world.Instantiate("res://prefabs/lamp.wprf");
         Assert.True(_world.GetParent(second).IsNull);
         Assert.NotEqual(lamp, second);
         Assert.Equal(2, _world.UserEntities().Count(e => _world.GetName(e) == "Bulb"));
@@ -131,19 +131,19 @@ public sealed class PrefabFileTests : IDisposable
     [Fact]
     public void TheRootIsAnInstanceAndEachEntityKnowsItsId()
     {
-        Entity lamp = _world.Instantiate("res://prefabs/lamp.aprefab");
+        Entity lamp = _world.Instantiate("res://prefabs/lamp.wprf");
         Entity bulb = Child(lamp, "Bulb");
         Entity lampBase = Child(lamp, "Base");
 
         Assert.True(_world.IsPrefabInstance(lamp));
         Assert.False(_world.IsPrefabInstance(bulb));
-        Assert.Equal($"res://prefabs/lamp.aprefab|{_lampUid}", _world.PrefabOf(lamp));
+        Assert.Equal($"res://prefabs/lamp.wprf|{_lampUid}", _world.PrefabOf(lamp));
         Assert.Null(_world.PrefabOf(bulb));
         Assert.Equal(lamp, _world.InstanceOf(bulb));
         Assert.Equal(lamp, _world.InstanceOf(lamp));
         Assert.True(_world.InstanceOf(_world.CreateEntity("other")).IsNull);
 
-        uint handle = _world.Prefabs.Load("res://prefabs/lamp.aprefab");
+        uint handle = _world.Prefabs.Load("res://prefabs/lamp.wprf");
         Assert.Equal(handle, _world.Get<PrefabInstance>(lamp).Prefab);
         Assert.Equal([1u, 2u, 3u], new[] { lamp, bulb, lampBase }.Select(e => _world.Get<PrefabMember>(e).Id));
         Assert.All(new[] { lamp, bulb, lampBase }, e => Assert.Equal(handle, _world.Get<PrefabMember>(e).Prefab));
@@ -152,55 +152,55 @@ public sealed class PrefabFileTests : IDisposable
     [Fact]
     public void InstantiateAcceptsAPathAUidAndBoth()
     {
-        Entity byPath = _world.Instantiate("res://prefabs/lamp.aprefab");
+        Entity byPath = _world.Instantiate("res://prefabs/lamp.wprf");
         Entity byUid = _world.Instantiate(_lampUid.ToString());
-        Entity byBoth = _world.Instantiate($"res://prefabs/lamp.aprefab|{_lampUid}");
+        Entity byBoth = _world.Instantiate($"res://prefabs/lamp.wprf|{_lampUid}");
 
         Assert.All(new[] { byPath, byUid, byBoth }, e => Assert.Equal(2, _world.Children(e).Count));
         Assert.Single(new[] { byPath, byUid, byBoth }.Select(e => _world.Get<PrefabInstance>(e).Prefab).Distinct());
 
         // A prefab that moved is found through its UID, and the instance says where the file is now.
         Directory.CreateDirectory(Path.Combine(_folder, "moved"));
-        File.Move(Path.Combine(_folder, "prefabs/lamp.aprefab"), Path.Combine(_folder, "moved/lamp.aprefab"));
+        File.Move(Path.Combine(_folder, "prefabs/lamp.wprf"), Path.Combine(_folder, "moved/lamp.wprf"));
         _assets.Refresh();
         using var other = new World { Files = _files, Assets = _assets };
-        Entity moved = other.Instantiate($"res://prefabs/lamp.aprefab|{_lampUid}");
-        Assert.Equal($"res://moved/lamp.aprefab|{_lampUid}", other.PrefabOf(moved));
+        Entity moved = other.Instantiate($"res://prefabs/lamp.wprf|{_lampUid}");
+        Assert.Equal($"res://moved/lamp.wprf|{_lampUid}", other.PrefabOf(moved));
 
         // What cannot be instantiated says why, with the exception a script turns into its error.
-        Assert.Throws<FileNotFoundException>(() => _world.Instantiate("res://prefabs/none.aprefab"));
+        Assert.Throws<FileNotFoundException>(() => _world.Instantiate("res://prefabs/none.wprf"));
         Assert.Throws<ContentException>(() => _world.Instantiate("uid://4k2m9x7q1w3ze"));
         Assert.Throws<FormatException>(() => _world.Instantiate("res://prefabs/a|b|c"));
         using var bare = new World();
-        Assert.Throws<InvalidOperationException>(() => bare.Instantiate("res://prefabs/lamp.aprefab"));
+        Assert.Throws<InvalidOperationException>(() => bare.Instantiate("res://prefabs/lamp.wprf"));
     }
 
     [Fact]
     public void APrefabWithNoRootOrTwoRootsIsAFormatError()
     {
-        Write("bad/none.aprefab", "<Prefab version=\"1\" nextId=\"1\"/>");
-        Write("bad/two.aprefab", "<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\"/><Entity id=\"2\"/></Prefab>");
-        Write("bad/scene.aprefab", "<Scene version=\"1\"><Entity id=\"1\"/></Scene>");
-        Write("bad/twice.aprefab", "<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\"><Entity id=\"1\"/></Entity></Prefab>");
-        Write("bad/zero.aprefab", "<Prefab version=\"1\" nextId=\"3\"><Entity id=\"0\"/></Prefab>");
-        Write("bad/noid.aprefab", "<Prefab version=\"1\" nextId=\"3\"><Entity name=\"x\"/></Prefab>");
-        Write("bad/newer.aprefab", "<Prefab version=\"2\" nextId=\"2\"><Entity id=\"1\"/></Prefab>");
-        Write("bad/broken.aprefab", "<Prefab version=\"1\"><Entity id=\"1\">");
+        Write("bad/none.wprf", "<Prefab version=\"1\" nextId=\"1\"/>");
+        Write("bad/two.wprf", "<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\"/><Entity id=\"2\"/></Prefab>");
+        Write("bad/scene.wprf", "<Scene version=\"1\"><Entity id=\"1\"/></Scene>");
+        Write("bad/twice.wprf", "<Prefab version=\"1\" nextId=\"3\"><Entity id=\"1\"><Entity id=\"1\"/></Entity></Prefab>");
+        Write("bad/zero.wprf", "<Prefab version=\"1\" nextId=\"3\"><Entity id=\"0\"/></Prefab>");
+        Write("bad/noid.wprf", "<Prefab version=\"1\" nextId=\"3\"><Entity name=\"x\"/></Prefab>");
+        Write("bad/newer.wprf", "<Prefab version=\"2\" nextId=\"2\"><Entity id=\"1\"/></Prefab>");
+        Write("bad/broken.wprf", "<Prefab version=\"1\"><Entity id=\"1\">");
 
         foreach (string name in new[] { "none", "two", "scene", "twice", "zero", "noid", "newer", "broken" })
         {
-            Assert.Throws<FormatException>(() => _world.Instantiate($"res://bad/{name}.aprefab"));
+            Assert.Throws<FormatException>(() => _world.Instantiate($"res://bad/{name}.wprf"));
         }
 
         Assert.Empty(_world.UserEntities());   // nothing was made by any of them
-        Assert.Contains("2 root", Assert.Throws<FormatException>(() => _world.Instantiate("res://bad/two.aprefab")).Message, StringComparison.Ordinal);
+        Assert.Contains("2 root", Assert.Throws<FormatException>(() => _world.Instantiate("res://bad/two.wprf")).Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public void AnEntityFieldInAPrefabPointsInsideItsInstance()
     {
-        Entity first = _world.Instantiate("res://prefabs/lamp.aprefab");
-        Entity second = _world.Instantiate("res://prefabs/lamp.aprefab");
+        Entity first = _world.Instantiate("res://prefabs/lamp.wprf");
+        Entity second = _world.Instantiate("res://prefabs/lamp.wprf");
 
         Assert.Equal(first, _world.Get<Marks>(Child(first, "Bulb")).Target);
         Assert.Equal(second, _world.Get<Marks>(Child(second, "Bulb")).Target);
@@ -217,17 +217,17 @@ public sealed class PrefabFileTests : IDisposable
     {
         var library = new PrefabLibrary(_files, _assets);
 
-        uint byPath = library.Load("res://prefabs/lamp.aprefab");
+        uint byPath = library.Load("res://prefabs/lamp.wprf");
         uint byUid = library.Load(_lampUid.ToString());
-        uint byBoth = library.Load($"res://prefabs/lamp.aprefab|{_lampUid}");
-        uint other = library.Load("res://prefabs/other.aprefab");
+        uint byBoth = library.Load($"res://prefabs/lamp.wprf|{_lampUid}");
+        uint other = library.Load("res://prefabs/other.wprf");
 
         Assert.NotEqual(0u, byPath);
         Assert.Equal(byPath, byUid);
         Assert.Equal(byPath, byBoth);
         Assert.NotEqual(byPath, other);
-        Assert.Equal("res://prefabs/lamp.aprefab", library.PathOf(byPath));
-        Assert.Equal(new AssetRef("res://prefabs/lamp.aprefab", _lampUid), library.RefOf(byPath));
+        Assert.Equal("res://prefabs/lamp.wprf", library.PathOf(byPath));
+        Assert.Equal(new AssetRef("res://prefabs/lamp.wprf", _lampUid), library.RefOf(byPath));
         Assert.Equal("Prefab", library.Document(byPath)!.Name);
         Assert.Same(library.Document(byPath), library.Document(byUid));   // read once
         Assert.Equal(0u, library.Load(""));
@@ -236,25 +236,25 @@ public sealed class PrefabFileTests : IDisposable
         // A reference that names no file still has a handle, which keeps what it was asked for; once the file is there it is that file's handle.
         Assert.Null(library.PathOf(other));
         Assert.Null(library.Document(other));
-        Assert.Equal(AssetRef.FromPath("res://prefabs/other.aprefab"), library.RefOf(other));
-        Assert.Equal(other, library.Load("res://prefabs/other.aprefab"));
-        Write("prefabs/other.aprefab", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\"/></Prefab>");
-        Assert.Equal(other, library.Load("res://prefabs/other.aprefab"));
-        Assert.Equal("res://prefabs/other.aprefab", library.PathOf(other));
+        Assert.Equal(AssetRef.FromPath("res://prefabs/other.wprf"), library.RefOf(other));
+        Assert.Equal(other, library.Load("res://prefabs/other.wprf"));
+        Write("prefabs/other.wprf", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\"/></Prefab>");
+        Assert.Equal(other, library.Load("res://prefabs/other.wprf"));
+        Assert.Equal("res://prefabs/other.wprf", library.PathOf(other));
         Assert.NotNull(library.Document(other));
     }
 
     [Fact]
     public void SavePrefabFileKeepsIdsUidAndNextId()
     {
-        Entity lamp = _world.Instantiate("res://prefabs/lamp.aprefab");
+        Entity lamp = _world.Instantiate("res://prefabs/lamp.wprf");
         _world.Destroy(Child(lamp, "Base"));   // id 3 goes
         Entity sign = _world.CreateEntity("Sign", lamp);
         _world.Set(sign, new Transform(new Double3(0, 2, 0), Quaternion.Identity, Vector3.One));
 
-        _world.SavePrefabFile("res://prefabs/lamp.aprefab", lamp);
+        _world.SavePrefabFile("res://prefabs/lamp.wprf", lamp);
 
-        XmlNode saved = XmlNode.Parse(Read("prefabs/lamp.aprefab"));
+        XmlNode saved = XmlNode.Parse(Read("prefabs/lamp.wprf"));
         Assert.Equal("Prefab", saved.Name);
         Assert.Equal(_lampUid.ToString(), saved.Attribute("uid"));
         Assert.Equal("5", saved.Attribute("nextId"));
@@ -267,17 +267,17 @@ public sealed class PrefabFileTests : IDisposable
         Assert.Equal(4u, _world.Get<PrefabMember>(sign).Id);
         Entity lamp2 = _world.CreateEntity("Lens", lamp);
         _world.Destroy(sign);
-        _world.SavePrefabFile("res://prefabs/lamp.aprefab", lamp);
-        XmlNode again = XmlNode.Parse(Read("prefabs/lamp.aprefab"));
+        _world.SavePrefabFile("res://prefabs/lamp.wprf", lamp);
+        XmlNode again = XmlNode.Parse(Read("prefabs/lamp.wprf"));
         Assert.Equal("6", again.Attribute("nextId"));
         Assert.Equal([("2", "Bulb"), ("5", "Lens")], again.Children.Single(c => c.Name == "Entity").Children.Where(c => c.Name == "Entity").Select(c => (c.Attribute("id")!, c.Attribute("name")!)));
         Assert.Equal(5u, _world.Get<PrefabMember>(lamp2).Id);
 
         // The file still instantiates, and the script component it defines is in it.
         using var fresh = new World { Files = _files, Assets = _assets };
-        Entity loaded = fresh.Instantiate("res://prefabs/lamp.aprefab");
+        Entity loaded = fresh.Instantiate("res://prefabs/lamp.wprf");
         Assert.Equal(["Bulb", "Lens"], fresh.Children(loaded).Select(c => fresh.GetName(c)));
-        Assert.Equal(_lampUid, _assets.UidOf("res://prefabs/lamp.aprefab"));
+        Assert.Equal(_lampUid, _assets.UidOf("res://prefabs/lamp.wprf"));
     }
 
     [Fact]
@@ -290,12 +290,12 @@ public sealed class PrefabFileTests : IDisposable
         Entity elsewhere = _world.CreateEntity("Elsewhere");
         _world.Set(_world.CreateEntity("Pointer", crate), new Marks { Target = elsewhere });   // points outside what is saved
 
-        _world.SavePrefabFile("res://prefabs/props/crate.aprefab", crate);
+        _world.SavePrefabFile("res://prefabs/props/crate.wprf", crate);
 
-        string text = Read("prefabs/props/crate.aprefab");
-        AssetUid uid = AuthoredAssets.ReadUid(File.ReadAllBytes(Path.Combine(_folder, "prefabs/props/crate.aprefab")));
+        string text = Read("prefabs/props/crate.wprf");
+        AssetUid uid = AuthoredAssets.ReadUid(File.ReadAllBytes(Path.Combine(_folder, "prefabs/props/crate.wprf")));
         Assert.False(uid.IsNone);
-        Assert.Equal(uid, _assets.UidOf("res://prefabs/props/crate.aprefab"));
+        Assert.Equal(uid, _assets.UidOf("res://prefabs/props/crate.wprf"));
         XmlNode saved = XmlNode.Parse(text);
         Assert.Equal("4", saved.Attribute("nextId"));
         XmlNode root = saved.Children.Single(c => c.Name == "Entity");
@@ -311,22 +311,22 @@ public sealed class PrefabFileTests : IDisposable
 
         // A path that is not a prefab's, and something that is not an entity of the world, are refused before anything is written.
         Assert.Throws<ArgumentException>(() => _world.SavePrefabFile("res://prefabs/crate.xml", crate));
-        Assert.Throws<ArgumentException>(() => _world.SavePrefabFile("res://prefabs/none.aprefab", default));
-        Assert.False(File.Exists(Path.Combine(_folder, "prefabs/none.aprefab")));
+        Assert.Throws<ArgumentException>(() => _world.SavePrefabFile("res://prefabs/none.wprf", default));
+        Assert.False(File.Exists(Path.Combine(_folder, "prefabs/none.wprf")));
         using var bare = new World();
-        Assert.Throws<InvalidOperationException>(() => bare.SavePrefabFile("res://prefabs/x.aprefab", bare.CreateEntity("x")));
+        Assert.Throws<InvalidOperationException>(() => bare.SavePrefabFile("res://prefabs/x.wprf", bare.CreateEntity("x")));
     }
 
     [Fact]
     public void AnInstanceSavedAsASceneIsOneElementThatLoadsBackAsAnInstance()
     {
-        Entity lamp = _world.Instantiate("res://prefabs/lamp.aprefab");
+        Entity lamp = _world.Instantiate("res://prefabs/lamp.wprf");
 
         string scene = _world.SaveScene();
 
         Assert.DoesNotContain("PrefabInstance", scene, StringComparison.Ordinal);   // the link is the element's prefab attribute, not a component
         Assert.DoesNotContain("PrefabMember", scene, StringComparison.Ordinal);
-        Assert.Contains($"prefab=\"res://prefabs/lamp.aprefab|{_lampUid}\"", scene, StringComparison.Ordinal);
+        Assert.Contains($"prefab=\"res://prefabs/lamp.wprf|{_lampUid}\"", scene, StringComparison.Ordinal);
         using var other = new World { Files = _files, Assets = _assets };
         List<Entity> loaded = other.LoadScene(scene);
         Assert.Equal(3, loaded.Count);
@@ -343,18 +343,18 @@ public sealed class PrefabFileTests : IDisposable
     [Fact]
     public void ASnapshotKeepsInstancesInAnotherWorld()
     {
-        Write("prefabs/first.aprefab", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"First\"/></Prefab>");
-        Entity lamp = _world.Instantiate("res://prefabs/lamp.aprefab");
+        Write("prefabs/first.wprf", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"First\"/></Prefab>");
+        Entity lamp = _world.Instantiate("res://prefabs/lamp.wprf");
         WorldSnapshot snapshot = _world.Snapshot();
 
         // The other world numbers its prefabs differently (the lamp is its second one): the snapshot names the file, not the number.
         using var other = new World { Files = _files, Assets = _assets };
-        _ = other.Prefabs.Load("res://prefabs/first.aprefab");
+        _ = other.Prefabs.Load("res://prefabs/first.wprf");
         other.Restore(snapshot);
 
         Assert.Equal(_world.PrefabOf(lamp), other.PrefabOf(lamp));
-        Assert.Equal(other.Prefabs.Load("res://prefabs/lamp.aprefab"), other.Get<PrefabMember>(Child2(other, lamp, "Bulb")).Prefab);
-        Assert.NotEqual(_world.Prefabs.Load("res://prefabs/lamp.aprefab"), other.Prefabs.Load("res://prefabs/lamp.aprefab"));
+        Assert.Equal(other.Prefabs.Load("res://prefabs/lamp.wprf"), other.Get<PrefabMember>(Child2(other, lamp, "Bulb")).Prefab);
+        Assert.NotEqual(_world.Prefabs.Load("res://prefabs/lamp.wprf"), other.Prefabs.Load("res://prefabs/lamp.wprf"));
 
         static Entity Child2(World world, Entity parent, string name) => world.Children(parent).Single(c => world.GetName(c) == name);
     }
@@ -362,22 +362,22 @@ public sealed class PrefabFileTests : IDisposable
     [Fact]
     public void AHandWrittenPrefabWithoutNextIdIsWorkedOutWithAWarning()
     {
-        Write("prefabs/hand.aprefab", "<Prefab version=\"1\"><Entity id=\"1\" name=\"Hand\"><Entity id=\"7\" name=\"Finger\"/></Entity></Prefab>");
+        Write("prefabs/hand.wprf", "<Prefab version=\"1\"><Entity id=\"1\" name=\"Hand\"><Entity id=\"7\" name=\"Finger\"/></Entity></Prefab>");
 
-        Entity hand = WithWarnings(() => _world.Instantiate("res://prefabs/hand.aprefab"), out List<string> warnings);
+        Entity hand = WithWarnings(() => _world.Instantiate("res://prefabs/hand.wprf"), out List<string> warnings);
 
         Assert.Contains(warnings, w => w.Contains("nextId", StringComparison.Ordinal));
         Assert.Equal(7u, _world.Get<PrefabMember>(_world.Children(hand).Single()).Id);
-        _world.SavePrefabFile("res://prefabs/hand.aprefab", hand);
-        Assert.Equal("8", XmlNode.Parse(Read("prefabs/hand.aprefab")).Attribute("nextId"));
+        _world.SavePrefabFile("res://prefabs/hand.wprf", hand);
+        Assert.Equal("8", XmlNode.Parse(Read("prefabs/hand.wprf")).Attribute("nextId"));
     }
 
     [Fact]
     public void AnInstanceElementInsideAPrefabIsExpandedWithItsPatches()
     {
-        Write("prefabs/nested.aprefab", "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"1\" name=\"Outer\"><Entity id=\"2\" name=\"Inner\" prefab=\"res://prefabs/lamp.aprefab\"><Transform Position=\"2 0 0\"/></Entity><Entity id=\"3\" name=\"Plain\"/></Entity></Prefab>");
+        Write("prefabs/nested.wprf", "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"1\" name=\"Outer\"><Entity id=\"2\" name=\"Inner\" prefab=\"res://prefabs/lamp.wprf\"><Transform Position=\"2 0 0\"/></Entity><Entity id=\"3\" name=\"Plain\"/></Entity></Prefab>");
 
-        Entity outer = _world.Instantiate("res://prefabs/nested.aprefab");
+        Entity outer = _world.Instantiate("res://prefabs/nested.wprf");
 
         Assert.Equal(["Inner", "Plain"], _world.Children(outer).Select(c => _world.GetName(c)));
         Entity inner = Child(outer, "Inner");
@@ -389,9 +389,9 @@ public sealed class PrefabFileTests : IDisposable
     [Fact]
     public void TheWrittenPrefabMatchesItsSchema()
     {
-        Entity lamp = _world.Instantiate("res://prefabs/lamp.aprefab");
-        _world.SavePrefabFile("res://prefabs/copy.aprefab", lamp);
-        XmlNode saved = XmlFile.Read(_files, "res://prefabs/copy.aprefab");
+        Entity lamp = _world.Instantiate("res://prefabs/lamp.wprf");
+        _world.SavePrefabFile("res://prefabs/copy.wprf", lamp);
+        XmlNode saved = XmlFile.Read(_files, "res://prefabs/copy.wprf");
 
         var schemas = new SchemaSet();
         using (Stream stream = typeof(World).Assembly.GetManifestResourceStream("Scene/prefab.xsd") ?? throw new InvalidOperationException("prefab.xsd is not embedded"))
@@ -406,7 +406,7 @@ public sealed class PrefabFileTests : IDisposable
         Assert.NotNull(saved.Child("Components"));   // the script component travels with the file
 
         // The hand-written file is valid too, and a second root is not.
-        Assert.Empty(schemas.Decode(XmlFile.Read(_files, "res://prefabs/lamp.aprefab"), "prefab").Problems);
+        Assert.Empty(schemas.Decode(XmlFile.Read(_files, "res://prefabs/lamp.wprf"), "prefab").Problems);
         Assert.NotEmpty(schemas.Decode(XmlNode.Parse("<Prefab version=\"1\"><Entity id=\"1\"/><Entity id=\"2\"/></Prefab>"), "prefab").Problems);
     }
 

@@ -37,7 +37,7 @@ public class RealPeRewriteTests
     private static GameManifest Manifest()
     {
         const string Xml = """<Game name="Real Game" organization="Test Studio" version="2.0.1" executable="FixtureGame" description="Checks real files." copyright="(c) Test"/>""";
-        Assert.True(GameManifest.TryParse(Xml, "game.xml", out GameManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
+        Assert.True(GameManifest.TryParse(Xml, "game.wgam", out GameManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
         return manifest!;
     }
 

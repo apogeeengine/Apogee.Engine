@@ -16,7 +16,7 @@ namespace Weft.Host.Tests;
 /// <summary>A game that is run with watching follows its prefab files: a prefab that is edited on disk changes its instances in the running world.</summary>
 public sealed class PrefabReloadTests : IDisposable
 {
-    private const string LampPath = "res://packages/core/prefabs/lamp.aprefab";
+    private const string LampPath = "res://packages/core/prefabs/lamp.wprf";
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "weft-prefab-reload-" + Guid.NewGuid().ToString("N")).Replace('\\', '/');
 
@@ -60,8 +60,8 @@ public sealed class PrefabReloadTests : IDisposable
     [Fact]
     public void AWatchedSessionReloadsAChangedPrefab()
     {
-        Write("game/packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"/>");
-        string file = Write("game/packages/core/prefabs/lamp.aprefab", Lamp(1.8));
+        Write("game/packages/core/mod.wmod", "<Mod id=\"core\" version=\"1.0.0\"/>");
+        string file = Write("game/packages/core/prefabs/lamp.wprf", Lamp(1.8));
         string user = Path.Combine(_root, "user").Replace('\\', '/');
         string scene = $"""
             <Scene version="2">
@@ -108,8 +108,8 @@ public sealed class PrefabReloadTests : IDisposable
     [Fact]
     public void AnUnwatchedSessionLeavesItsInstancesAlone()
     {
-        Write("game/packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"/>");
-        string file = Write("game/packages/core/prefabs/lamp.aprefab", Lamp(1.8));
+        Write("game/packages/core/mod.wmod", "<Mod id=\"core\" version=\"1.0.0\"/>");
+        string file = Write("game/packages/core/prefabs/lamp.wprf", Lamp(1.8));
         string scene = $"<Scene version=\"2\"><Entity id=\"1\" name=\"One\" prefab=\"{LampPath}\"/></Scene>";
 
         using ScriptSession session = ScriptSession.StartGame(Path.Combine(_root, "game").Replace('\\', '/'), Path.Combine(_root, "user").Replace('\\', '/'), watch: false, runScripts: false, scene: scene);

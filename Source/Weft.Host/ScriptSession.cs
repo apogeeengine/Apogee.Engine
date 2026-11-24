@@ -273,7 +273,7 @@ public sealed class ScriptSession : IDisposable
     {
         foreach (string path in paths)
         {
-            if (!path.EndsWith(".aprefab", StringComparison.OrdinalIgnoreCase))
+            if (!path.EndsWith(".wprf", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -370,7 +370,7 @@ public sealed class ScriptSession : IDisposable
     /// The folder of the player's files (<c>user://</c>) of the game in <paramref name="folder"/>: <paramref name="userFolder"/> when one is given, else the one <paramref name="manifest"/> names
     /// (<see cref="GameManifest.UserDirectory"/>), else one named after the game folder.
     /// </summary>
-    /// <param name="manifest">The game's <c>game.xml</c>; null when it has none.</param>
+    /// <param name="manifest">The game's <c>game.wgam</c>; null when it has none.</param>
     public static string UserDirectoryFor(string folder, string? userFolder, GameManifest? manifest)
     {
         if (userFolder is not null)
@@ -384,10 +384,10 @@ public sealed class ScriptSession : IDisposable
     }
 
     /// <summary>
-    /// Starts a game as <see cref="StartGame(string, string?, bool, bool, bool, bool, string?)"/> does, and reads its <c>game.xml</c> if it has one: the user folder (unless one is given),
+    /// Starts a game as <see cref="StartGame(string, string?, bool, bool, bool, bool, string?)"/> does, and reads its <c>game.wgam</c> if it has one: the user folder (unless one is given),
     /// the Steam app id and the version that the packages' <c>gameVersion</c> are checked against come from it, and so does the entry scene.
     /// </summary>
-    /// <exception cref="ContentException">The game's <c>game.xml</c> is wrong, or its entry scene is missing.</exception>
+    /// <exception cref="ContentException">The game's <c>game.wgam</c> is wrong, or its entry scene is missing.</exception>
     public static ScriptSession StartGame(GameStart start)
     {
         string folder = start.Folder;
@@ -521,7 +521,7 @@ public sealed class ScriptSession : IDisposable
             RegisterSceneSupport(world, files, models, content.Assets);
             assets = InstallAssets(vm, content, packages);
 
-            // The player's settings before any script runs: scripts define their keys at load and find the saved values waiting. The window of game.xml is what the engine's window keys default to.
+            // The player's settings before any script runs: scripts define their keys at load and find the saved values waiting. The window of game.wgam is what the engine's window keys default to.
             GameWindow window = manifest?.Window ?? GameWindow.Default;
             settings = InstallSettings(vm, SettingsStore.Open(files), input, audio, new EngineSettingDefaults(window.Width, window.Height, window.Fullscreen));
             if (start.Scene is not null)
@@ -605,10 +605,10 @@ public sealed class ScriptSession : IDisposable
     }
 
     /// <summary>
-    /// The game's Steam app id: the one in its <c>game.xml</c> (when it names one); else the number in <c>steam_appid.txt</c> in the game's folder, with a warning that the file is deprecated;
+    /// The game's Steam app id: the one in its <c>game.wgam</c> (when it names one); else the number in <c>steam_appid.txt</c> in the game's folder, with a warning that the file is deprecated;
     /// else 0.
     /// </summary>
-    /// <param name="manifest">The game's <c>game.xml</c>, or null.</param>
+    /// <param name="manifest">The game's <c>game.wgam</c>, or null.</param>
     /// <param name="folder">The game's folder.</param>
     /// <param name="warning">What to tell the developer, or null.</param>
     public static uint SteamAppIdFor(GameManifest? manifest, string folder, out string? warning)
@@ -625,13 +625,13 @@ public sealed class ScriptSession : IDisposable
             return 0;
         }
 
-        warning = "steam_appid.txt in the game folder is deprecated: put steamAppId in game.xml.";
+        warning = "steam_appid.txt in the game folder is deprecated: put steamAppId in game.wgam.";
         return uint.TryParse(File.ReadAllText(file).Trim(), out uint id) ? id : 0;
     }
 
     /// <summary>
-    /// The packs of a game: the <c>.pack</c> files in its <c>data</c> folder, by name, so that a later one (a patch) is mounted over an earlier one. The parts of a split pack
-    /// (<c>game_001.pack</c>) are found by their first part and are not packs of their own.
+    /// The packs of a game: the <c>.wpak</c> files in its <c>data</c> folder, by name, so that a later one (a patch) is mounted over an earlier one. The parts of a split pack
+    /// (<c>game_001.wpak</c>) are found by their first part and are not packs of their own.
     /// </summary>
     private static List<string> FindPacks(string folder)
     {
@@ -641,8 +641,8 @@ public sealed class ScriptSession : IDisposable
             return [];
         }
 
-        return [.. Directory.EnumerateFiles(data, "*.pack")
-            .Where(f => !(Regex.Match(Path.GetFileName(f), @"^(.*)_\d{3}\.pack$") is { Success: true } part && File.Exists(Path.Combine(data, part.Groups[1].Value + ".pack"))))
+        return [.. Directory.EnumerateFiles(data, "*.wpak")
+            .Where(f => !(Regex.Match(Path.GetFileName(f), @"^(.*)_\d{3}\.wpak$") is { Success: true } part && File.Exists(Path.Combine(data, part.Groups[1].Value + ".wpak"))))
             .Order(StringComparer.Ordinal)];
     }
 

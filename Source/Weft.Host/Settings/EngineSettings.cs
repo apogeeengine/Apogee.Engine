@@ -4,7 +4,7 @@ using Weft.Platform;
 
 namespace Weft.Host;
 
-/// <summary>What a game's <c>game.xml</c> says about its window, as the defaults of the engine's window settings.</summary>
+/// <summary>What a game's <c>game.wgam</c> says about its window, as the defaults of the engine's window settings.</summary>
 /// <param name="Width">The window's width, in points.</param>
 /// <param name="Height">The window's height, in points.</param>
 /// <param name="Fullscreen">Whether the window starts fullscreen.</param>
@@ -32,7 +32,7 @@ public static class EngineSettings
     /// <summary>The start of the keys of the audio buses: <c>audio.bus.music</c> is the volume of the bus <c>music</c>.</summary>
     public const string AudioBusPrefix = "audio.bus.";
 
-    /// <summary>Defines the engine's settings; scripts cannot define these keys again. The defaults of the window come from the game's <c>game.xml</c>.</summary>
+    /// <summary>Defines the engine's settings; scripts cannot define these keys again. The defaults of the window come from the game's <c>game.wgam</c>.</summary>
     /// <param name="store">The store to define them in.</param>
     /// <param name="defaults">The game's defaults.</param>
     public static void Register(SettingsStore store, EngineSettingDefaults defaults)

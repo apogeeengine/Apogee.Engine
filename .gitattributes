@@ -5,3 +5,14 @@ ThirdParty/*/lib/win-*/** filter=lfs diff=lfs merge=lfs -text
 ThirdParty/*/lib/osx-*/** filter=lfs diff=lfs merge=lfs -text
 Samples/**/Assets/** filter=lfs diff=lfs merge=lfs -text
 Samples/**/Assets/**/*.md !filter !diff !merge text
+
+# The engine's XML formats (scene, prefab, import settings, game and package manifests): text with LF endings, shown and diffed as XML.
+# Its binary formats (imported models, compiled shaders, packs) are binary.
+*.wscn text eol=lf linguist-language=XML diff
+*.wprf text eol=lf linguist-language=XML diff
+*.wimp text eol=lf linguist-language=XML diff
+*.wgam text eol=lf linguist-language=XML diff
+*.wmod text eol=lf linguist-language=XML diff
+*.wmdl binary
+*.wshd binary
+*.wpak binary

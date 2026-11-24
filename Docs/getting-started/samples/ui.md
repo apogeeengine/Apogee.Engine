@@ -35,7 +35,7 @@ sets: no time is added to the simulation while it is true, so the world stays wh
 
 ## The mod
 
-`game/dev_mods/crate_panel` is a mod: a `mod.xml` that depends on `base_ui`, a script, an RML fragment and its RCSS.
+`game/dev_mods/crate_panel` is a mod: a `mod.wmod` that depends on `base_ui`, a script, an RML fragment and its RCSS.
 
 ```lua
 local hud = require("@base_ui/lib/hud")

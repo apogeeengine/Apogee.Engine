@@ -9,11 +9,11 @@
     <ProjectReference Include="../Weft.Native.Zstd/Weft.Native.Zstd.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The schema of a package's mod.xml. -->
+    <!-- The schema of a package's mod.wmod. -->
     <EmbeddedResource Include="Packages/mod.xsd" LogicalName="Packages/mod.xsd" />
-    <!-- The schema of a game folder's game.xml. -->
+    <!-- The schema of a game folder's game.wgam. -->
     <EmbeddedResource Include="Packages/game.xsd" LogicalName="Packages/game.xsd" />
-    <!-- The schema of the <asset>.import.xml settings files. -->
+    <!-- The schema of the <asset>.wimp settings files. -->
     <EmbeddedResource Include="Import/import.xsd" LogicalName="Import/import.xsd" />
   </ItemGroup>
   <ItemGroup>

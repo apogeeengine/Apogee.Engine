@@ -38,7 +38,7 @@ public sealed class PrefabKeptTests : PrefabTestBase
 
     private static Transform At(double x, double y, double z) => new(new Double3(x, y, z), Quaternion.Identity, Vector3.One);
 
-    private string LampWithANinth() => Read("prefabs/lamp.aprefab")
+    private string LampWithANinth() => Read("prefabs/lamp.wprf")
         .Replace("<Entity id=\"3\" name=\"Base\">", "<Entity id=\"9\" name=\"Ninth\"><Flicker speed=\"1\" lamp=\"1\"/></Entity><Entity id=\"3\" name=\"Base\">", StringComparison.Ordinal)
         .Replace("nextId=\"4\"", "nextId=\"10\"", StringComparison.Ordinal);
 
@@ -80,9 +80,9 @@ public sealed class PrefabKeptTests : PrefabTestBase
     public void ARootPatchKeptForAMissingPrefabDoesNotWinWhenThePrefabIsBack()
     {
         World.LoadScene(LampScene("<Transform Position=\"9 0 0\"/>"));
-        string lampText = Read("prefabs/lamp.aprefab");
+        string lampText = Read("prefabs/lamp.wprf");
         string saved = World.SaveScene();
-        Delete("prefabs/lamp.aprefab");
+        Delete("prefabs/lamp.wprf");
         Assets.Refresh();
 
         using World without = OtherWorld();
@@ -92,7 +92,7 @@ public sealed class PrefabKeptTests : PrefabTestBase
         without.Set(root, At(5, 0, 0));                                                          // the empty instance is edited while the prefab is away
         string during = without.SaveScene();
 
-        Write("prefabs/lamp.aprefab", lampText);
+        Write("prefabs/lamp.wprf", lampText);
         Assets.Refresh();
         using World back = OtherWorld();
         back.LoadScene(during);
@@ -111,8 +111,8 @@ public sealed class PrefabKeptTests : PrefabTestBase
               <Entity id="3" name="Switch"><Marks Target="2/2"/></Entity>
             </Scene>
             """;
-        string lampText = Read("prefabs/lamp.aprefab");
-        Delete("prefabs/lamp.aprefab");
+        string lampText = Read("prefabs/lamp.wprf");
+        Delete("prefabs/lamp.wprf");
         Assets.Refresh();
         using World without = OtherWorld();
         without.LoadScene(scene);
@@ -122,7 +122,7 @@ public sealed class PrefabKeptTests : PrefabTestBase
         string text = without.SaveScene();
 
         Assert.Equal("1/2", Element(text, "Switch").Child("Marks")!.Attribute("Target"));        // still what it was, below the instance, which is entity 1 now
-        Write("prefabs/lamp.aprefab", lampText);
+        Write("prefabs/lamp.wprf", lampText);
         Assets.Refresh();
         using World back = OtherWorld();
         back.LoadScene(text);
@@ -146,20 +146,20 @@ public sealed class PrefabKeptTests : PrefabTestBase
         string text = World.SaveScene();
 
         Assert.Equal("2", Element(text, "Lamp").Child("Override")!.Child("Flicker")!.Attribute("lamp"));
-        Write("prefabs/lamp.aprefab", LampWithANinth());                                         // the lamp has its entity 9 now
+        Write("prefabs/lamp.wprf", LampWithANinth());                                         // the lamp has its entity 9 now
         using World back = OtherWorld();
         back.LoadScene(text);
         Assert.Equal(back.Lookup("Player").Id, EntityField(back, Child(back, back.Lookup("Lamp"), "Ninth"), "Flicker", "lamp"));
 
         // The same when a deletion comes between a save and the next load.
-        string lampText = Read("prefabs/lamp.aprefab");
-        Write("prefabs/lamp.aprefab", lampText.Replace("<Entity id=\"9\" name=\"Ninth\"><Flicker speed=\"1\" lamp=\"1\"/></Entity>", "", StringComparison.Ordinal));
+        string lampText = Read("prefabs/lamp.wprf");
+        Write("prefabs/lamp.wprf", lampText.Replace("<Entity id=\"9\" name=\"Ninth\"><Flicker speed=\"1\" lamp=\"1\"/></Entity>", "", StringComparison.Ordinal));
         using World middle = OtherWorld();
         middle.LoadScene(text);
         middle.Destroy(middle.Lookup("Spare"));
         string later = middle.SaveScene();
         Assert.Equal("1", Element(later, "Lamp").Child("Override")!.Child("Flicker")!.Attribute("lamp"));
-        Write("prefabs/lamp.aprefab", lampText);
+        Write("prefabs/lamp.wprf", lampText);
         using World last = OtherWorld();
         last.LoadScene(later);
         Assert.Equal(last.Lookup("Player").Id, EntityField(last, Child(last, last.Lookup("Lamp"), "Ninth"), "Flicker", "lamp"));
@@ -184,7 +184,7 @@ public sealed class PrefabKeptTests : PrefabTestBase
         string number = added.Attribute("id")!;
         Assert.Equal(number, Element(text, "Switch").Child("Marks")!.Attribute("Target"));       // the number of the kept entity and what names it agree
         Assert.NotEqual("7", number);                                                            // it does not keep the number of the save that kept it (and cannot meet an entity's)
-        Write("prefabs/lamp.aprefab", LampWithANinth());
+        Write("prefabs/lamp.wprf", LampWithANinth());
         using World back = OtherWorld();
         back.LoadScene(text);
         Assert.Equal(Child(back, Child(back, back.Lookup("Lamp"), "Ninth"), "Added"), back.Get<Marks>(back.Lookup("Switch")).Target);
@@ -203,9 +203,9 @@ public sealed class PrefabKeptTests : PrefabTestBase
             </Scene>
             """);
 
-        World.SavePrefabFile("res://prefabs/group.aprefab", World.Lookup("Group"));
+        World.SavePrefabFile("res://prefabs/group.wprf", World.Lookup("Group"));
 
-        XmlNode saved = XmlNode.Parse(Read("prefabs/group.aprefab"));
+        XmlNode saved = XmlNode.Parse(Read("prefabs/group.wprf"));
         var ids = new List<string>();
         void Collect(XmlNode node)
         {
@@ -220,9 +220,9 @@ public sealed class PrefabKeptTests : PrefabTestBase
         Collect(saved.Child("Entity")!);
         Assert.Equal(ids.Count, ids.Distinct().Count());                                          // the kept entity has a number of the file's, not the scene's
         using World fresh = OtherWorld();
-        Entity group = fresh.Instantiate("res://prefabs/group.aprefab");                         // it loads
+        Entity group = fresh.Instantiate("res://prefabs/group.wprf");                         // it loads
         Assert.True(fresh.IsPrefabInstance(Child(fresh, group, "Lamp")));
-        Assert.Contains("name=\"Ghost\"", Read("prefabs/group.aprefab"), StringComparison.Ordinal);   // and still holds what could not be applied
+        Assert.Contains("name=\"Ghost\"", Read("prefabs/group.wprf"), StringComparison.Ordinal);   // and still holds what could not be applied
     }
 
     // ---- Budgets, references that are none, assets that did not load
@@ -240,10 +240,10 @@ public sealed class PrefabKeptTests : PrefabTestBase
         bool broken = true;
         var names = new Dictionary<uint, AssetRef> { [7] = new("res://models/box.glb", AssetUid.New()) };
         World Make() => RegisterModels(OtherWorld(), names, () => broken);
-        Write("prefabs/crate.aprefab", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Crate\"><Furnished Count=\"1\" Model=\"{names[7]}\"/></Entity></Prefab>");
+        Write("prefabs/crate.wprf", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Crate\"><Furnished Count=\"1\" Model=\"{names[7]}\"/></Entity></Prefab>");
 
         using World world = Make();
-        world.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Crate\" prefab=\"res://prefabs/crate.aprefab\"/><Entity id=\"2\" name=\"Plain\"><Furnished Count=\"2\" Model=\"res://models/gone.glb\"/></Entity></Scene>");
+        world.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Crate\" prefab=\"res://prefabs/crate.wprf\"/><Entity id=\"2\" name=\"Plain\"><Furnished Count=\"2\" Model=\"res://models/gone.glb\"/></Entity></Scene>");
         Assert.Equal(0u, world.Get<Furnished>(world.Lookup("Crate")).Model);                     // the model could not be loaded
         string text = world.SaveScene();
 
@@ -267,8 +267,8 @@ public sealed class PrefabKeptTests : PrefabTestBase
     {
         World.LoadScene(LampScene());
         string text = World.SaveScene();
-        Write("prefabs/moved.aprefab", Read("prefabs/lamp.aprefab"));
-        Delete("prefabs/lamp.aprefab");
+        Write("prefabs/moved.wprf", Read("prefabs/lamp.wprf"));
+        Delete("prefabs/lamp.wprf");
         Assets.Refresh();
 
         string after = World.SaveScene();
@@ -276,7 +276,7 @@ public sealed class PrefabKeptTests : PrefabTestBase
         XmlNode element = Element(after, "Lamp");
         Assert.Contains(LampUid.ToString(), element.Attribute("prefab"), StringComparison.Ordinal);
         Assert.Empty(element.Children);                                                          // still the same instance of the same prefab, not an instance of a prefab that is missing
-        Assert.Equal(text.Replace("res://prefabs/lamp.aprefab", "res://prefabs/moved.aprefab", StringComparison.Ordinal), after);
+        Assert.Equal(text.Replace("res://prefabs/lamp.wprf", "res://prefabs/moved.wprf", StringComparison.Ordinal), after);
     }
 
     [Fact]

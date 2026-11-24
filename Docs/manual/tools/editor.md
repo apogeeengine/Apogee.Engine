@@ -32,7 +32,7 @@ The layout (a dock space: hierarchy on the left, inspector on the right, the vie
 - **Inspector.** The components of the selected entities, drawn from the registry's descriptions: see [The inspector](#the-inspector). With several entities selected it shows the active entity's components
   that all of them have, and an edit changes every one.
 - **Assets.** The virtual file system: `res://` and, when listed, the packages' `mod://id/` folders; each importable file shows whether it is imported, out of date, or not imported yet (`AssetImporter.StatusOf`),
-  and *Re-import* imports one file again (`Reimport`). Double click a `.ascene` to open it; drag a model into the viewport, or any file onto an asset field of the inspector (see [Asset fields](#asset-fields)); drop files from the system on the panel to add them to the folder it shows (see [Bringing files in](#bringing-files-in)).
+  and *Re-import* imports one file again (`Reimport`). Double click a `.wscn` to open it; drag a model into the viewport, or any file onto an asset field of the inspector (see [Asset fields](#asset-fields)); drop files from the system on the panel to add them to the folder it shows (see [Bringing files in](#bringing-files-in)).
 - **Console.** The log, filtered by level; while files are being imported its header shows the progress and a *Cancel import* button.
 - **Profiler.** The dev overlay's ImPlot plots: frame times, and the GPU time of every pass stacked over the last 240 frames, with the table.
 - **Engine objects** (*Debug > Engine objects*). A floating window that inspects the session's engine objects (the world, the UI, physics, audio, assets, models, input actions, network, Steam and the settings) through their registered properties: see [Engine objects](#engine-objects).
@@ -78,9 +78,9 @@ An asset field is a number in memory (a handle that only means something in this
 
 - **The button** shows the file's name; hover it for the full path and the `uid://` (a file that has not been imported yet has none, and the tooltip says so: it gets one at its first import). An empty field says *None*, and several selected
   entities that differ say `---`. Click it to open the picker.
-- **The picker** is a popup with a filter box (focused when it opens) and the game's files of that kind: a model field lists `.glb` and `.gltf`, a texture field images, a scene field `.ascene`. The filter matches the file name first and then the rest of the path, whatever the case.
+- **The picker** is a popup with a filter box (focused when it opens) and the game's files of that kind: a model field lists `.glb` and `.gltf`, a texture field images, a scene field `.wscn`. The filter matches the file name first and then the rest of the path, whatever the case.
   The list is drawn a screen at a time, so a project with fifty thousand files opens as fast as one with fifty. Files of `res://` come first, then those of each package (`mod://id/…`), each in path order. The list leaves out the import cache (`imported/`), names
-  that start with a dot and `.import.xml` files; a package that sits under `res://packages/` and is also mounted as `mod://id/` is listed once, as `mod://`. The listing is made on another thread (the popup says so for the very first one), is repeated at most every two
+  that start with a dot and `.wimp` files; a package that sits under `res://packages/` and is also mounted as `mod://id/` is listed once, as `mod://`. The listing is made on another thread (the popup says so for the very first one), is repeated at most every two
   seconds while a picker is in use and at once when the hot reloader reports changed files, and stops at 200,000 files, 100,000 folders or 24 levels (the popup says the list is cut short).
 - **Drop a file** from the Assets panel on the button. A file of another kind (a texture on a model field) is refused with a message under the field.
 - **Clear** (the small button) empties the field. **Show in assets** (right click the button) switches to the Assets panel, opens the file's folder and marks the file.
@@ -118,7 +118,7 @@ InspectorDrawers.RegisterComponent("Health", (in ComponentEdit edit) => false); 
 ```
 
 `FieldEdit.Ui` is an `IInspectorUi`: the widgets (drag fields, checkbox, combo, colour, entity reference, asset reference) with the mixed flag, which `ImGuiInspectorUi` draws with ImGui and the tests answer with a fake, so a drawer is tested with no window. The built-in drawers
-(`BuiltInDrawers.Numbers`, `EntityReference`, `AssetReference`, `Enum`, `Color`) are public, to call for part of a field. `FieldEdit.Entity` is the active entity, for a drawer that looks something up in the world. A package or an extension that adds a kind of asset registers it with `AssetKinds.Register("prefab", [".aprefab"], "Prefab")` (in `Weft.Host.Editing`): its files are then listed
+(`BuiltInDrawers.Numbers`, `EntityReference`, `AssetReference`, `Enum`, `Color`) are public, to call for part of a field. `FieldEdit.Entity` is the active entity, for a drawer that looks something up in the world. A package or an extension that adds a kind of asset registers it with `AssetKinds.Register("prefab", [".wprf"], "Prefab")` (in `Weft.Host.Editing`): its files are then listed
 for every field of that asset type, which gets the picker unless a drawer is registered for it. A component drawer gets the whole value and a mixed flag for each field; only the fields whose bytes it changed are written to the selected entities.
 
 A class of objects (see [Engine objects](#engine-objects)) has its own hook, `RegisterClass`. The drawer gets the object, its class, the widgets and the inspector that is drawing it; `edit.DrawProperties()` draws the default look, so a
@@ -260,7 +260,7 @@ mods, is replaced when Play starts, and every mod can read it. The file is the e
   <value key="editor.camera.speed">12</value>
   <value key="keys.edit.undo">Ctrl+Alt+U</value>
   <value key="recent.0">/home/me/games/farm</value>
-  <value key="project.5b0c7e1d2a9f4c38.scene">res://scenes/barn.ascene</value>
+  <value key="project.5b0c7e1d2a9f4c38.wscn">res://scenes/barn.wscn</value>
 </settings>
 ```
 
@@ -272,7 +272,7 @@ mods, is replaced when Play starts, and every mod can read it. The file is the e
 | `editor.helpers`, `editor.game_camera` | the viewport's helpers, and the game camera while playing |
 | `editor.ui.scale` | the interface scale (1; 0.5 to 3) |
 | `recent.0` to `recent.9` | the recent projects as full paths, the latest first |
-| `project.<16 hex digits>.scene` | the scene that was open last in a project (the first 16 hex digits of the SHA-256 of the project's full path), reopened the next time the project opens if it is still there |
+| `project.<16 hex digits>.wscn` | the scene that was open last in a project (the first 16 hex digits of the SHA-256 of the project's full path), reopened the next time the project opens if it is still there |
 | `keys.<action id>` | a key binding that differs from the default |
 
 The gizmo's state is kept as you work (the toolbar and the window edit the same values), the scene is noted when it changes, and the file is written within a second of a change and when the editor quits (a slider that is
@@ -300,7 +300,7 @@ The code is `Source/Weft.Editor/EditorPreferences.cs` (the typed keys, the recen
 
 ## Scenes and undo
 
-*File* creates, opens and saves scenes (`.ascene` XML, see [scenes](../content/scenes.md)); *Open scene...* and *Save as...* use the system's [file dialogs](#file-dialogs). Every edit is a command on an `EditHistory`
+*File* creates, opens and saves scenes (`.wscn` XML, see [scenes](../content/scenes.md)); *Open scene...* and *Save as...* use the system's [file dialogs](#file-dialogs). Every edit is a command on an `EditHistory`
 (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z): component values (a drag is one step), adding and removing components, creating, duplicating and deleting entities (a deleted branch comes back under the same ids; deleting or
 moving several at once is one step), renaming and reparenting. Opening or creating a scene clears the history.
 
@@ -311,12 +311,12 @@ history's `Limit`) the oldest are forgotten, and if the saved state was among th
 ## File dialogs
 
 *Open scene...*, *Save as...* (Ctrl+Shift+S, and *Save* on a scene that has no file yet) and *Open project...* show the operating system's own dialog: the open dialog starts in the game's `scenes` folder (or the game folder) and filters
-on `.ascene`; the save dialog adds `.ascene` when the name has none. The dialogs come from SDL ([`FileDialog`](../platform/platform.md#file-dialogs)); they are asynchronous, so the editor goes on running while one is open, and the
+on `.wscn`; the save dialog adds `.wscn` when the name has none. The dialogs come from SDL ([`FileDialog`](../platform/platform.md#file-dialogs)); they are asynchronous, so the editor goes on running while one is open, and the
 *New scene*, *Open scene*, *Save as* and *Open project* entries are greyed until it closes (a second dialog is never opened; a shortcut pressed meanwhile opens the editor's own entry instead). A dialog that is cancelled changes
 nothing. A dialog that never answers (a desktop portal that crashed) is given up on after ten minutes: the editor is free again, and an answer that arrives later is ignored.
 
-A scene belongs to the game, so only a file **inside the game folder** can be opened or saved: the dialog gives an operating system path, and the editor turns it into the game's virtual path (`<game folder>/scenes/level.ascene`
-becomes `res://scenes/level.ascene`). A path outside the folder (a game folder that is a symbolic link, or sits at the root of a drive, is understood), a file that is not an `.ascene`, a name the game cannot use, a place in a read-only part of the game, or a file that
+A scene belongs to the game, so only a file **inside the game folder** can be opened or saved: the dialog gives an operating system path, and the editor turns it into the game's virtual path (`<game folder>/scenes/level.wscn`
+becomes `res://scenes/level.wscn`). A path outside the folder (a game folder that is a symbolic link, or sits at the root of a drive, is understood), a file that is not a `.wscn`, a name the game cannot use, a place in a read-only part of the game, or a file that
 a pack of the game already answers for is refused with a message that says why, and nothing is written. If the project was switched while a dialog was open, its late result is dropped; a result that arrives while the game is running
 is applied like the menu entry would: Open scene and Save as end the run first (the scene saved is the edited one, not the run's).
 
@@ -330,9 +330,9 @@ scene*, a path field for *Save as* and for *Open project*), so everything stays 
 ## The start screen and opening a project
 
 Started without a game folder, the editor opens its window on a start screen with an *Open project...* button (and *File > Open project...*) and the list of [recent projects](#preferences): choose a game folder in the system's folder
-dialog, or click a recent one. Only a folder that has a `game.xml` or a `packages` folder is taken for a game (a mistaken pick, such as the home folder, is refused with a message and nothing closes); choosing the folder that is already open does nothing. The same entry in the *File* menu of an open project **switches projects inside the same process**: if the scene has unsaved changes the editor asks first (*Save and open*, *Open without saving*, *Cancel*); then the
+dialog, or click a recent one. Only a folder that has a `game.wgam` or a `packages` folder is taken for a game (a mistaken pick, such as the home folder, is refused with a message and nothing closes); choosing the folder that is already open does nothing. The same entry in the *File* menu of an open project **switches projects inside the same process**: if the scene has unsaved changes the editor asks first (*Save and open*, *Open without saving*, *Cancel*); then the
 old project is closed (the GPU is waited for, the viewport and the session are disposed, since one session exists at a time) and the new folder is opened at the start of the next frame, with a fresh camera, panels and undo history. The window title
-and the crash reports' *Edited game* line follow the project. `--user <folder>` belongs to the game folder given on the command line: a project opened later from the dialog gets its own user folder (what its `game.xml` says), so two games never share `user://`. If the folder cannot be opened (a `game.xml` that is wrong, say) the editor says why and opens the previous project again. A folder that does not exist is refused
+and the crash reports' *Edited game* line follow the project. `--user <folder>` belongs to the game folder given on the command line: a project opened later from the dialog gets its own user folder (what its `game.wgam` says), so two games never share `user://`. If the folder cannot be opened (a `game.wgam` that is wrong, say) the editor says why and opens the previous project again. A folder that does not exist is refused
 without closing anything.
 
 ## Bringing files in
@@ -349,17 +349,17 @@ no project is open, the game is playing, a dialog is open, an import is already 
 
 Only folders of the game itself take files: `res://`, which must be writable. A folder of a package (`mod://`) or of a pack is read-only, and the drop is refused.
 
-**What is taken.** Files the game can use: what an importer takes (`.glb` and `.gltf`, `.png`, `.jpg` and `.jpeg`, `.slang` shaders), scenes and prefabs (`.ascene`, `.aprefab`), and scripts, definitions, sounds, fonts and UI documents
+**What is taken.** Files the game can use: what an importer takes (`.glb` and `.gltf`, `.png`, `.jpg` and `.jpeg`, `.slang` shaders), scenes and prefabs (`.wscn`, `.wprf`), and scripts, definitions, sounds, fonts and UI documents
 (`.luau`, `.xml`, `.wav`, `.ogg`, `.flac`, `.mp3`, `.ttf`, `.otf`, `.rml`, `.rcss`). Anything else is refused by name with the list of what is taken. Also refused, each with its reason:
 a name the game cannot use on every system (a colon, a trailing dot or space, a Windows device name such as `con`), a hidden file or folder (a name that starts with a dot; hidden entries inside a dropped folder are skipped without a word), the **game folder itself or a folder that holds it** (it would copy the game into itself), anything into **`res://imported`** (the importer's own folder: its index and UID list; a dropped folder of that name too), an empty file, a file over 512 MB or a drop over 2 GB in all, and
 **links**: a symbolic link or a junction (dropped or inside a dropped folder) is never followed, because its target can be anywhere. A dropped folder is read to at most 10,000 files, 10,000 folders and 64 levels (this walk, and the reading of a `.gltf`, run on the main thread when the files are dropped: they are capped for that reason). The paths the files get are built only from names that passed these checks, so a name cannot climb out of the folder.
 
 **Models with files of their own.** A `.gltf` brings the buffers and images its `uri`s name (beside it or below it, `%20` and other escapes read as the glTF standard has them, so `a.bin` and `a%2Ebin` are one file; a file or a folder on the way that is a link is refused; data URIs need nothing). A model that names a file that is missing, an absolute path, a drive, or a path that climbs
-(`..`) is refused whole, with the reason. The companions are copied with it and imported *as part of the model*, not as assets of their own. A file's `.import.xml` beside it comes along; a dropped `.import.xml` without its asset is refused.
+(`..`) is refused whole, with the reason. The companions are copied with it and imported *as part of the model*, not as assets of their own. A file's `.wimp` beside it comes along; a dropped `.wimp` without its asset is refused.
 A sidecar that arrives with a UID that another asset of the project has (you copied an asset together with its settings) gets a new UID, so two assets never share one; the console says which.
 
 **Names the project has.** A dropped file is never written over a file the project has unless you choose it. When some names clash, a question lists them: *Keep both* (the default: the new file gets a free name, `car 2.glb`; a model with files of its own goes into a new folder, since the names inside it cannot change),
-*Skip them*, *Replace* (overwrites; **this cannot be undone**; the asset keeps its own `.import.xml`, so its UID and settings stay; a link in the project is never written through, that file is kept and the new one gets a free name instead) or *Cancel*. A name that appears between the plan and the copy (another program wrote it) is left alone and reported.
+*Skip them*, *Replace* (overwrites; **this cannot be undone**; the asset keeps its own `.wimp`, so its UID and settings stay; a link in the project is never written through, that file is kept and the new one gets a free name instead) or *Cancel*. A name that appears between the plan and the copy (another program wrote it) is left alone and reported.
 Two dropped files with the same name both arrive (the second is numbered).
 
 **The copy and the import run on a worker thread**, so a large model or a texture compression does not stop the editor. The menu bar and the console header show the progress (*Importing 2/5: res://models/car.glb*), and the console lists each step. *Cancel import* stops at the next file;
@@ -387,7 +387,7 @@ Editing is off while playing: the panels show the game's world, read-only.
 
 ## What is not here
 
-An import settings editor and an import dialog (files are [dropped in](#bringing-files-in); their settings are the `.import.xml` next to them, see [Asset import](../content/import.md)), materials, animations, an Export dialog (a game is exported with [`./build.sh export`](export.md)), material and logic graph editors (imnodes is ready for them), multi-viewport windows, and a physics ray cast for picking (an editing session has no physics bodies).
+An import settings editor and an import dialog (files are [dropped in](#bringing-files-in); their settings are the `.wimp` next to them, see [Asset import](../content/import.md)), materials, animations, an Export dialog (a game is exported with [`./build.sh export`](export.md)), material and logic graph editors (imnodes is ready for them), multi-viewport windows, and a physics ray cast for picking (an editing session has no physics bodies).
 Sound plays in play mode through OpenAL Soft ([Audio](../audio/index.md)), which ships beside the editor like any other library.
 
 ## Tests

@@ -99,16 +99,16 @@ public class ModelFileTests
     {
         byte[] file = ModelFile.Write(SampleModel());
 
-        Assert.Contains("is not a model file", Assert.Throws<ContentException>(() => ModelFile.Read("junk junk"u8, "x.amodel")).Message);
+        Assert.Contains("is not a model file", Assert.Throws<ContentException>(() => ModelFile.Read("junk junk"u8, "x.wmdl")).Message);
         byte[] future = [.. file];
         future[4] = 9;
-        Assert.Contains("version 9", Assert.Throws<ContentException>(() => ModelFile.Read(future, "x.amodel")).Message);
-        Assert.Throws<ContentException>(() => ModelFile.Read(file.AsSpan(0, file.Length / 2), "cut.amodel"));
+        Assert.Contains("version 9", Assert.Throws<ContentException>(() => ModelFile.Read(future, "x.wmdl")).Message);
+        Assert.Throws<ContentException>(() => ModelFile.Read(file.AsSpan(0, file.Length / 2), "cut.wmdl"));
         byte[] damaged = [.. file];
         damaged[file.Length / 2] ^= 0xFF;
         try
         {
-            ModelFile.Read(damaged, "damaged.amodel"); // a flipped byte may land in a float and still read; it must never crash otherwise
+            ModelFile.Read(damaged, "damaged.wmdl"); // a flipped byte may land in a float and still read; it must never crash otherwise
         }
         catch (ContentException)
         {
@@ -187,7 +187,7 @@ public class ImporterTests
 
         Assert.True(report.Success);
         Assert.Equal(["models/car.gltf", "textures/ground.png"], report.Imported); // wood.png belongs to the model
-        Assert.True(project.Files.FileExists("res://imported/models/car.gltf.amodel"));
+        Assert.True(project.Files.FileExists("res://imported/models/car.gltf.wmdl"));
         Assert.True(project.Files.FileExists("res://imported/textures/ground.png.ktx2"));
         Assert.False(project.Files.Exists("res://imported/models/wood.png.ktx2"));
         string index = project.Files.ReadAllText("res://imported/index.xml");
@@ -205,13 +205,13 @@ public class ImporterTests
         using var project = new Project();
         Car(project);
         project.Import();
-        DateTime written = File.GetLastWriteTimeUtc(Path.Combine(project.Root, "imported", "models", "car.gltf.amodel"));
+        DateTime written = File.GetLastWriteTimeUtc(Path.Combine(project.Root, "imported", "models", "car.gltf.wmdl"));
 
         ImportReport second = project.Import();
 
         Assert.Empty(second.Imported);
         Assert.Equal(["models/car.gltf"], second.UpToDate);
-        Assert.Equal(written, File.GetLastWriteTimeUtc(Path.Combine(project.Root, "imported", "models", "car.gltf.amodel")));
+        Assert.Equal(written, File.GetLastWriteTimeUtc(Path.Combine(project.Root, "imported", "models", "car.gltf.wmdl")));
         Assert.Equal(["models/car.gltf"], project.Import(force: true).Imported);
     }
 
@@ -233,7 +233,7 @@ public class ImporterTests
         project.Write("textures/ground.png", Png(8, 8, 3)); // the image itself
         Assert.Contains("textures/ground.png", project.Import().Imported);
 
-        project.Write("textures/ground.png.import.xml", "<Import srgb=\"false\" mips=\"false\"/>"); // its settings
+        project.Write("textures/ground.png.wimp", "<Import srgb=\"false\" mips=\"false\"/>"); // its settings
         ImportReport settings = project.Import();
         Assert.Equal(["textures/ground.png"], settings.Imported);
         TextureData ground = Ktx2Loader.Load("g", project.Files.ReadAllBytes("res://imported/textures/ground.png.ktx2"), false, TextureCaps.None, SamplerData.Default);
@@ -269,7 +269,7 @@ public class ImporterTests
         project.Write("textures/bad.png", "this is not a png");
         project.Write("textures/good.png", Png(8, 8, 5));
         project.Write("textures/odd.png", Png(4, 4, 6));
-        project.Write("textures/odd.png.import.xml", "<Import srgb=\"maybe\"/>");
+        project.Write("textures/odd.png.wimp", "<Import srgb=\"maybe\"/>");
         ImportReport report = project.Import();
 
         Assert.False(report.Success);
@@ -299,8 +299,8 @@ public class ImporterTests
         using var project = new Project();
         Car(project);
         project.Write("textures/ground.png", Png(16, 16, 4));
-        project.Write("models/car.gltf.import.xml", "<Import compression=\"none\"/>"); // RGBA8, so that the textures come back exactly
-        project.Write("textures/ground.png.import.xml", "<Import compression=\"none\"/>");
+        project.Write("models/car.gltf.wimp", "<Import compression=\"none\"/>"); // RGBA8, so that the textures come back exactly
+        project.Write("textures/ground.png.wimp", "<Import compression=\"none\"/>");
         var loader = new ContentLoader(project.Files);
 
         ModelData fromSource = loader.LoadModel("res://models/car.gltf", new ContentOptions { TextureCaps = TextureCaps.None });
@@ -351,9 +351,9 @@ public class ImporterTests
     [Fact]
     public void SettingsAreCheckedAgainstTheirSchema()
     {
-        Assert.Equal(new ImportSettings(), ImportSettings.Parse("<Import/>", "x.import.xml"));
-        ImportSettings settings = ImportSettings.Parse("<Import srgb=\"false\" mips=\"false\" optimize=\"false\"/>", "x.import.xml");
+        Assert.Equal(new ImportSettings(), ImportSettings.Parse("<Import/>", "x.wimp"));
+        ImportSettings settings = ImportSettings.Parse("<Import srgb=\"false\" mips=\"false\" optimize=\"false\"/>", "x.wimp");
         Assert.Equal((false, false, false), (settings.Srgb, settings.Mips, settings.Optimize));
-        Assert.Contains("'quality' is not an attribute of <Import>", Assert.Throws<ContentException>(() => ImportSettings.Parse("<Import quality=\"9\"/>", "x.import.xml")).Message);
+        Assert.Contains("'quality' is not an attribute of <Import>", Assert.Throws<ContentException>(() => ImportSettings.Parse("<Import quality=\"9\"/>", "x.wimp")).Message);
     }
 }

@@ -8,10 +8,10 @@ using Weft.Core.Assets;
 
 namespace Weft.Content.Import;
 
-/// <summary>A shader compiled with one set of preprocessor defines, listed in a shader's <c>.import.xml</c> as <c>&lt;Variant&gt;&lt;Define name="" value=""/&gt;&lt;/Variant&gt;</c>.</summary>
+/// <summary>A shader compiled with one set of preprocessor defines, listed in a shader's <c>.wimp</c> as <c>&lt;Variant&gt;&lt;Define name="" value=""/&gt;&lt;/Variant&gt;</c>.</summary>
 public sealed record ShaderVariant(IReadOnlyDictionary<string, string> Defines);
 
-/// <summary>What an <c>&lt;asset&gt;.import.xml</c> file next to an asset says about importing it.</summary>
+/// <summary>What an <c>&lt;asset&gt;.wimp</c> file next to an asset says about importing it.</summary>
 public sealed record ImportSettings
 {
     private static readonly Lazy<SchemaSet> s_schema = new(() =>

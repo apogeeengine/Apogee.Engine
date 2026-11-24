@@ -1,17 +1,17 @@
 # Packages and mods
 
-The game's content and the mods that change it are all *packages*: a folder (or a `.zip`) with a `mod.xml` at its root. The game's own packages are *base* packages; mods are
+The game's content and the mods that change it are all *packages*: a folder (or a `.zip`) with a `mod.wmod` at its root. The game's own packages are *base* packages; mods are
 packages too, with the same layout and the same tools, so the base game is just the first thing that loads. Mods are Luau and data, never native code.
 
 ```text
 my_mod/
-  mod.xml          what it is, what it needs, what it brings
-  main.luau        scripts listed in mod.xml
+  mod.wmod          what it is, what it needs, what it brings
+  main.luau        scripts listed in mod.wmod
   data/*.xml       definitions (see Definitions and schemas)
   schemas/*.xsd    schemas for the definitions it adds
 ```
 
-## mod.xml
+## mod.wmod
 
 ```xml
 <Mod id="bigger_crates" name="Bigger Crates" version="1.2.0" author="Ada" description="Crates, but bigger."
@@ -28,7 +28,7 @@ my_mod/
 | `id` | lowercase letters, digits and underscores, up to 64; **the name of the package's folder** (or of its `.zip` without the extension). Not `engine`, `self`, `res`, `user` or `mod`. |
 | `version` | `major.minor.patch`; missing parts are 0, a leading `v` and a `-suffix` are ignored |
 | `apiVersion` | the package API it was written for (default 1); a package that needs a newer one than the engine has does not load |
-| `gameVersion` | which versions of the game it works with (a version range, default any), checked against the `version` of the game's [`game.xml`](game-manifest.md); a game without one has no version and the range is not checked |
+| `gameVersion` | which versions of the game it works with (a version range, default any), checked against the `version` of the game's [`game.wgam`](game-manifest.md); a game without one has no version and the range is not checked |
 | `Dependency` | a package that must be there, and which versions of it (a range, default any) |
 | `Script` | a `.luau` file inside the package, run when it loads, in the order written |
 | `Content`, `Schema` | folders of definitions and of schemas inside the package |
@@ -68,7 +68,7 @@ DefDatabase defs = packages.LoadDefs();    // the packages' schemas and content 
 foreach (var (package, path) in packages.Scripts) { /* run the scripts */ }
 ```
 
-Trouble with the search itself (a `mod.xml` that does not parse, an id that is not its folder's name, a zip that is not a zip, a schema that is wrong) is in `packages.Problems`, not an
+Trouble with the search itself (a `mod.wmod` that does not parse, an id that is not its folder's name, a zip that is not a zip, a schema that is wrong) is in `packages.Problems`, not an
 exception: one broken mod does not stop the game. `PackageSolver.Solve` is the same decision on a plain list of candidates, which is what the tests drive.
 
 ## Running packages in Luau (`PackageLoader`)
@@ -116,7 +116,7 @@ backslash, a drive) is refused before anything is looked up. `fs.exists` says `f
 ## Shaders in a mod
 
 A mod may bring Slang shaders. The shipped game has no shader compiler, so a mod's shaders must be **compiled by the modder**: run the engine's dev runtime on the mod's folder
-(`Weft.Runtime --import <mod folder>`) and ship the result with the mod. The compiled files are in the mod's `imported/` folder (`imported/shaders/x.slang.ashader` and an `index.xml`), which
+(`Weft.Runtime --import <mod folder>`) and ship the result with the mod. The compiled files are in the mod's `imported/` folder (`imported/shaders/x.slang.wshd` and an `index.xml`), which
 `ShaderLibrary` and `ContentLoader` find at `mod://id/imported`. A bundle records the engine's shader ABI; after an engine update that changes it, the game says to import the mod again. In development, where
 the compiler is present, a mod's `.slang` source loads without importing. See [Asset import](import.md).
 

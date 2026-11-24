@@ -130,7 +130,7 @@ public class HotReloaderTests
         using var reloader = new HotReloader(game.Files, game.Vm!, game.Packages, s_debounce);
 
         Edit(game, "main.luau", "print('a different entry script')");
-        File.WriteAllText(Core(game, "mod.xml"), "<Mod id=\"core\" version=\"2.0.0\"><Script path=\"main.luau\"/></Mod>");
+        File.WriteAllText(Core(game, "mod.wmod"), "<Mod id=\"core\" version=\"2.0.0\"><Script path=\"main.luau\"/></Mod>");
         var restart = new List<string>();
         DateTime end = DateTime.UtcNow.AddSeconds(10);
         while (restart.Count < 4 && DateTime.UtcNow < end)
@@ -140,7 +140,7 @@ public class HotReloaderTests
         }
 
         Assert.Contains("mod://core/main.luau", restart);
-        Assert.Contains("mod://core/mod.xml", restart);
+        Assert.Contains("mod://core/mod.wmod", restart);
     }
 
     [Fact]

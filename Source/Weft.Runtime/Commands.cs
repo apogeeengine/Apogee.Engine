@@ -58,7 +58,7 @@ internal static class Commands
     }
 
     /// <summary>
-    /// Runs the game that is next to the program: <paramref name="root"/> holds its <c>game.xml</c> and its <c>data/*.pack</c>, and nothing else of the folder is the game's (<see cref="GameStart.PacksOnly"/>).
+    /// Runs the game that is next to the program: <paramref name="root"/> holds its <c>game.wgam</c> and its <c>data/*.wpak</c>, and nothing else of the folder is the game's (<see cref="GameStart.PacksOnly"/>).
     /// The window is the manifest's.
     /// </summary>
     /// <param name="key">The key of the packs; null: the one an export wrote into the executable, else the environment's.</param>
@@ -195,9 +195,9 @@ internal static class Commands
         Console.WriteLine($"  title:      {upload.Title ?? "(unchanged)"}");
         Console.WriteLine($"  visibility: {options.WorkshopVisibility}");
         Console.WriteLine($"  tags:       {(upload.Tags.Count == 0 ? "(none)" : string.Join(", ", upload.Tags))}");
-        if (!File.Exists(System.IO.Path.Combine(folder, "mod.xml")))
+        if (!File.Exists(System.IO.Path.Combine(folder, "mod.wmod")))
         {
-            Console.Error.WriteLine($"{folder} has no mod.xml: it is not a mod folder.");
+            Console.Error.WriteLine($"{folder} has no mod.wmod: it is not a mod folder.");
             return 1;
         }
 

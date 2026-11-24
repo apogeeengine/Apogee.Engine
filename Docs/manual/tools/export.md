@@ -1,7 +1,7 @@
 # Exporting a game
 
 An export turns a game folder into a folder that runs on its own: the runtime built for a platform, renamed to the game's executable name, its native libraries and compiled shaders, the game's files in
-`data/game.pack`, and the game's `game.xml`. It is made from the command line (`Weft.Runtime --export`, wrapped by `./build.sh export`) or from code (`GameExporter` in `Source/Weft.Export`). The editor
+`data/game.wpak`, and the game's `game.wgam`. It is made from the command line (`Weft.Runtime --export`, wrapped by `./build.sh export`) or from code (`GameExporter` in `Source/Weft.Export`). The editor
 has no Export dialog yet.
 
 ```sh
@@ -16,7 +16,7 @@ Weft.Runtime --export <game folder> <out folder> --target <rid> [--cooked] [--ru
 
 | | |
 | --- | --- |
-| `<game folder>` | the game: a folder with a [`game.xml`](../content/game-manifest.md). It is never written to. |
+| `<game folder>` | the game: a folder with a [`game.wgam`](../content/game-manifest.md). It is never written to. |
 | `<out folder>` | where the export goes: it does not exist, is empty, or is an earlier export (it holds a file `.weft-export`), which is then replaced. Anything else is an error, so that nothing of yours is deleted. It cannot be inside the game folder, nor contain it. |
 | `--target <rid>` | the platform: `linux-x64`, `win-x64`, `osx-arm64` or `osx-x64` (the platforms the engine has complete native libraries for). Anything else is an error that lists these. |
 | `--cooked` | pack the [imported](../content/import.md) artifacts and the [cooked](../content/packs.md#making-one) documents instead of the sources they replace (the game is imported first, in a copy). |
@@ -36,7 +36,7 @@ export copies from such a folder. It reads the header of the program in it (PE, 
 
 So exporting for the machine you are on needs nothing but `./build.sh aot`; exporting for another platform needs a runtime published there (or downloaded from CI) and `--runtime`. A macOS runtime has to
 be a thin binary for one processor, not a universal one. Left out of the copy: debug files (`*.pdb`, `*.dbg`, `*.dSYM`), import libraries (`*.lib`, `*.exp`), the Slang compiler's libraries and the shader
-sources and their import settings (`Shaders/*.slang` and `Shaders/*.slang.import.xml`; the compiled `Shaders/imported` stays: a shipped game never loads the compiler), `steam_appid.txt`, and the runtime folder's own `game.xml` and `data/`.
+sources and their import settings (`Shaders/*.slang` and `Shaders/*.slang.wimp`; the compiled `Shaders/imported` stays: a shipped game never loads the compiler), `steam_appid.txt`, and the runtime folder's own `game.wgam` and `data/`.
 
 The continuous integration publishes the runtime of each platform it builds (`weft-linux-x64`, `weft-win-x64`, `weft-osx-arm64`, `weft-osx-x64`) as a workflow artifact for 14 days: download one,
 unzip it (an archive does not keep the executable bit; the export sets it on the program it writes), and pass the folder with `--runtime`. This is how to export for Windows or macOS without a computer of that kind.
@@ -46,19 +46,19 @@ unzip it (an archive does not keep the executable bit; the export sets it on the
 | | Linux and Windows | macOS |
 | --- | --- | --- |
 | executable and native libraries, `Shaders/` | `<out>/` | `<out>/<Name>.app/Contents/MacOS/` |
-| `game.xml`, `data/game.pack` | `<out>/` | `<out>/<Name>.app/Contents/Resources/` |
-| executable name | `<executable>` (`.exe` on Windows), from `game.xml` | the same; the bundle is `<name>.app` |
+| `game.wgam`, `data/game.wpak` | `<out>/` | `<out>/<Name>.app/Contents/Resources/` |
+| executable name | `<executable>` (`.exe` on Windows), from `game.wgam` | the same; the bundle is `<name>.app` |
 
-The folder that holds `game.xml` and `data/` is the game's **root**: the runtime finds it next to its executable, or in `../Resources` from a bundle's `MacOS` folder (see
-[how the runtime finds it](../content/game-manifest.md#how-the-runtime-finds-it)), and mounts only `data/*.pack` as `res://`. A game that is exported does not read the files of the folder it
+The folder that holds `game.wgam` and `data/` is the game's **root**: the runtime finds it next to its executable, or in `../Resources` from a bundle's `MacOS` folder (see
+[how the runtime finds it](../content/game-manifest.md#how-the-runtime-finds-it)), and mounts only `data/*.wpak` as `res://`. A game that is exported does not read the files of the folder it
 came from, only its pack.
 
-`data/game.pack` holds the game folder as [`GamePacker`](../content/packs.md#from-code-gamepacker) packs it (a very big game continues in `game_001.pack`…), less what a shipped game does not have:
-`data/` (the packs of the development folder), `dev_mods/` (a shipped game has no development mods), `game.xml` (it is written beside the pack), the icon file, `steam_appid.txt` (the Steam app id
-comes from `game.xml`), and names that start with a dot. A cooked export imports a **copy** of the game folder (the existing `imported/` is reused, so only what changed is imported again), so the game
+`data/game.wpak` holds the game folder as [`GamePacker`](../content/packs.md#from-code-gamepacker) packs it (a very big game continues in `game_001.wpak`…), less what a shipped game does not have:
+`data/` (the packs of the development folder), `dev_mods/` (a shipped game has no development mods), `game.wgam` (it is written beside the pack), the icon file, `steam_appid.txt` (the Steam app id
+comes from `game.wgam`), and names that start with a dot. A cooked export imports a **copy** of the game folder (the existing `imported/` is reused, so only what changed is imported again), so the game
 folder gets no `imported/` and no changed file.
 
-The exported `game.xml` is the game's, with the icon changed: the icon is in the executable or the bundle on Windows and macOS, and a file `icon.png` beside `game.xml` on Linux, which the platform steps below write.
+The exported `game.wgam` is the game's, with the icon changed: the icon is in the executable or the bundle on Windows and macOS, and a file `icon.png` beside `game.wgam` on Linux, which the platform steps below write.
 
 ## The pack key
 
@@ -95,7 +95,7 @@ writes the executable's headers and resource section itself, with no Windows API
 - **The icon.** The game's `Icon` (a square PNG, 256x256 or more advised) is written as an icon group with seven images: 16, 24, 32, 48, 64 and 128 pixels as 32-bit images with an alpha channel
   (what every Windows version reads), and 256 pixels as a PNG (Windows Vista and later), each scaled from your image with a box filter. Explorer picks the size it needs; the window and the task bar take
   the first group, which is number 1. A smaller image is scaled up for the sizes above it and the export warns. A game without an icon keeps the runtime's.
-- **The version information** (the Details tab of the file's properties, the name task managers show) is made from `game.xml`: `CompanyName` is the organization, `FileDescription` the description (the
+- **The version information** (the Details tab of the file's properties, the name task managers show) is made from `game.wgam`: `CompanyName` is the organization, `FileDescription` the description (the
   name when there is none), `FileVersion` and `ProductVersion` the version as `major.minor.patch.0`, `InternalName` the executable's name, `OriginalFilename` the executable's file name,
   `LegalCopyright` the copyright, `ProductName` the name; language English (United States), code page Unicode. Each part of the version must be at most 65535. Any version or icon resource the runtime
   had is replaced; its other resources (the application manifest above all) are kept as they are.
@@ -111,7 +111,7 @@ its sections (an installer, an attached archive), and one that is damaged: the m
 - **Signing.** Signing the game (Authenticode, `signtool sign`) is outside the export: sign `<executable>.exe`, and
   the DLLs if you like, after the export. An unsigned program from the internet is held by Windows SmartScreen until enough people have run it, or until it is signed with a certificate that has a reputation;
   a game on Steam is not affected by that.
-- **Version suffixes.** The version in `game.xml` is `major.minor.patch` and nothing else: a suffix such as `-beta` or `+build` is an error when the manifest is read. The file version, the product version and the
+- **Version suffixes.** The version in `game.wgam` is `major.minor.patch` and nothing else: a suffix such as `-beta` or `+build` is an error when the manifest is read. The file version, the product version and the
   strings `FileVersion` and `ProductVersion` all say `1.2.3.0`. Put a label such as "beta" in the `description` if players should see it.
 - **Signed runtimes.** A signed runtime loses its signature (the changes invalidate it) and the export warns. A runtime with `IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY`, which Windows loads only when signed,
   is refused instead, because the unsigned result could not start.
@@ -141,22 +141,22 @@ An export for `linux-x64` is a folder that runs from anywhere:
 FixtureGame                      the program (mode 755), the game's executable name
 lib*.so, libSDL3.so.0 ...        the native libraries, beside it
 Shaders/imported/                compiled shaders
-game.xml, data/game.pack         the game
+game.wgam, data/game.wpak        the game
 icon.png                         the icon, 256x256
 org.weft.fixturegame.desktop     the desktop entry
 ```
 
 - **The executable bit.** The step sets the executable's mode to `rwxr-xr-x` (`File.SetUnixFileMode`). On a Windows computer there are no Unix modes, so the export warns that the bit is not set: set it
   (`chmod +x`) when the folder is unpacked on Linux, or export Linux from Linux or WSL, where the bit is kept (an archive made on Windows loses it again).
-- **The icon.** The game's `Icon` is written as `icon.png`, scaled to 256x256 (a smaller icon is made bigger and the export warns, as it does for an icon below 256 pixels), and the exported `game.xml`
+- **The icon.** The game's `Icon` is written as `icon.png`, scaled to 256x256 (a smaller icon is made bigger and the export warns, as it does for an icon below 256 pixels), and the exported `game.wgam`
   names it (`<Icon path="icon.png"/>`), which is the file the runtime draws the window's icon from. A game without an icon gets no `icon.png` and no `Icon` line.
 - **The desktop entry**, `<identifier>.desktop`, follows the [Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/latest/): `Type`, `Name` and `Comment` (from
-  `game.xml`'s `name` and `description`), `Exec=<executable>`, `Icon=<identifier>`, `Categories=Game;` and `StartupWMClass=<identifier>`, which is the application id the runtime gives its window, so
+  `game.wgam`'s `name` and `description`), `Exec=<executable>`, `Icon=<identifier>`, `Categories=Game;` and `StartupWMClass=<identifier>`, which is the application id the runtime gives its window, so
   that a desktop matches the window to the entry. Values are escaped as the specification says (a backslash, a line break and a leading space). It is a **template for whoever packages the game**
   (a distribution package, a Flatpak, an AppImage, an installer): `Exec` is the program's name as found on the `PATH` and `Icon` is the name of an icon in a theme, which is where an installer puts
   `icon.png`. Nothing in the export reads it, and a game run through Steam does not use it.
 
-**It does not depend on the working directory.** The runtime finds the game (`game.xml`, `data/`), the compiled shaders and the native libraries from the folder of the executable, not from where it was
+**It does not depend on the working directory.** The runtime finds the game (`game.wgam`, `data/`), the compiled shaders and the native libraries from the folder of the executable, not from where it was
 started (`AppContext.BaseDirectory`), and the libraries that load other libraries (for example `libcimgui.so`, `librmlui.so`, `libktx.so`) have the run path `$ORIGIN`, so they find them beside
 themselves. No `LD_LIBRARY_PATH` is needed: `cd /tmp && /path/to/export/FixtureGame` works. The player's files are written under `~/.local/share/<organization>/<user folder>` (or `--user <dir>`), never in the
 game's folder.
@@ -181,25 +181,25 @@ An export for `osx-arm64` or `osx-x64` is an application bundle. The runtime for
 ```text
 Fixture Game.app/                      the bundle, named after the game's name
   Contents/
-    Info.plist                         generated from game.xml
+    Info.plist                         generated from game.wgam
     PkgInfo                            APPL????
     MacOS/
       FixtureGame                      the program (mode 755), the game's executable name
       lib*.dylib                       the native libraries, beside it
       Shaders/imported/                compiled shaders
     Resources/
-      game.xml, data/game.pack         the game: its root, see "The layout"
+      game.wgam, data/game.wpak        the game: its root, see "The layout"
       game.icns                        the icon
 ```
 
-- **`Info.plist`** is written as an XML property list (the text of `game.xml` is escaped, so a name with `&` or `<` is fine). It holds `CFBundleName` and `CFBundleDisplayName` (the game's name),
-  `CFBundleIdentifier` (its `identifier`), `CFBundleExecutable`, `CFBundleVersion` and `CFBundleShortVersionString` (its version, `major.minor.patch`: `game.xml` accepts no suffix such as `-beta`, which `CFBundleVersion` could not hold, since it takes only integers separated by dots), `CFBundlePackageType` `APPL`, `CFBundleIconFile` `game.icns` (when the
+- **`Info.plist`** is written as an XML property list (the text of `game.wgam` is escaped, so a name with `&` or `<` is fine). It holds `CFBundleName` and `CFBundleDisplayName` (the game's name),
+  `CFBundleIdentifier` (its `identifier`), `CFBundleExecutable`, `CFBundleVersion` and `CFBundleShortVersionString` (its version, `major.minor.patch`: `game.wgam` accepts no suffix such as `-beta`, which `CFBundleVersion` could not hold, since it takes only integers separated by dots), `CFBundlePackageType` `APPL`, `CFBundleIconFile` `game.icns` (when the
   game has an icon), `CFBundleInfoDictionaryVersion` `6.0`, `LSMinimumSystemVersion`, `NSHighResolutionCapable`, `LSApplicationCategoryType` `public.app-category.games` and
   `NSHumanReadableCopyright` (its copyright, when it has one). `LSMinimumSystemVersion` is the newest minimum system version (`LC_BUILD_VERSION`) among the program and the `.dylib` files beside it, for
   the target's processor, and never below 11.0, the first macOS for Apple silicon (also what it is when none of them says).
 - **The icon** is made into `game.icns`, with PNG images at 16, 32, 64, 128, 256, 512 and 1024 pixels and the `@2x` images of 16 to 256 (the sizes Finder and the Dock use). A size above the game's icon is left
   out, not enlarged: macOS then scales the biggest image there is. **1024x1024 is advised**; below that the export warns that the 512 and 1024 pixel images are missing. The window's icon is the application's
-  icon, so the exported `game.xml` names no `Icon`.
+  icon, so the exported `game.wgam` names no `Icon`.
 - **The executable bit** is set as on Linux (`rwxr-xr-x`); a Windows computer has no Unix modes, so the export warns that it must be set where the bundle is unpacked, and an archive made on Windows loses
   it again. Archive a bundle on a Mac with `ditto -c -k --keepParent "Fixture Game.app" Game.zip`.
 

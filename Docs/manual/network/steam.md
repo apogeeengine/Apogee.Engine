@@ -69,8 +69,8 @@ off is not copied into the cloud later.
 
 ## Workshop mods
 
-A Workshop item is a mod: a folder with a `mod.xml` at its root, uploaded by its author, that Steam downloads and keeps up to date for subscribers. When Steam runs, the game mounts the installed items at
-`workshop://` (Steam's own folders, read-only), each listed under its `mod.xml` id, and the package finder searches it (`PackageOptions.ExtraUserModsPaths`) next to `user://mods`: a Workshop mod is one of
+A Workshop item is a mod: a folder with a `mod.wmod` at its root, uploaded by its author, that Steam downloads and keeps up to date for subscribers. When Steam runs, the game mounts the installed items at
+`workshop://` (Steam's own folders, read-only), each listed under its `mod.wmod` id, and the package finder searches it (`PackageOptions.ExtraUserModsPaths`) next to `user://mods`: a Workshop mod is one of
 the player's mods in every way (the same solver, the same "switch it off" list in `user://mods.xml`, the same limits for mods). If an own mod and a Workshop item share an id, the one found first (the player's own) wins.
 
 Mods are read when the game starts. `workshop_item_installed(id)` says a subscription finished installing: tell the player to restart. `subscribe(id)`, `unsubscribe(id)`, `subscribed_items()`,
@@ -86,13 +86,13 @@ Weft.Runtime --workshop-upload Mods/my_mod --item 1234567890 --note "Fixed the h
 ```
 
 Uploading makes something visible under the author's Steam account, so **without `--confirm` the command only prints what it would send**. A new item starts `private`: change it to `public` on the Workshop page, or
-upload with `--visibility public` once it is ready. The first time, Steam wants the Workshop legal agreement accepted (the command prints the link). The folder must have a `mod.xml`; everything in it is sent.
+upload with `--visibility public` once it is ready. The first time, Steam wants the Workshop legal agreement accepted (the command prints the link). The folder must have a `mod.wmod`; everything in it is sent.
 
 ## Starting a game under Steam
 
-A game that ships on Steam names its app id as `steamAppId` in its [`game.xml`](../content/game-manifest.md). `StartGame` hands it to Steam and asks Steam to relaunch the game through itself when
+A game that ships on Steam names its app id as `steamAppId` in its [`game.wgam`](../content/game-manifest.md). `StartGame` hands it to Steam and asks Steam to relaunch the game through itself when
 it was started some other way (`SteamAPI_RestartAppIfNecessary`): the process then ends at once (`RestartRequested`). A game folder that has no `steamAppId` but a `steam_appid.txt` (the app id alone on one line)
-still works, with a warning that the file is deprecated: move the number into `game.xml`. A **`steam_appid.txt` next to the program** (or in the current folder) is not the game's setting but the Steam
+still works, with a warning that the file is deprecated: move the number into `game.wgam`. A **`steam_appid.txt` next to the program** (or in the current folder) is not the game's setting but the Steam
 library's development switch, and it turns the relaunch off: that is how you run a game during development (Steam reads the app id from the file; use 480, Valve's *Spacewar*, to try the API without an app of
 your own). A watched game (`--watch`) never asks for a relaunch. `--workshop-upload` still reads the `steam_appid.txt` of the current folder.
 

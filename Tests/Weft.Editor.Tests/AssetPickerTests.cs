@@ -57,7 +57,7 @@ public sealed class AssetPickerTests
         public string Model(string name, AssetUid uid)
         {
             _inspector.Write($"game/models/{name}.glb", "not a real model");           // only that the file is there matters to the library
-            _inspector.Write($"game/models/{name}.glb.import.xml", $"<Import uid=\"{uid}\"/>");
+            _inspector.Write($"game/models/{name}.glb.wimp", $"<Import uid=\"{uid}\"/>");
             return $"res://models/{name}.glb";
         }
 
@@ -300,7 +300,7 @@ public sealed class AssetPickerTests
         Assert.False(rig.Ui.Single("asset", "Model").Asset!.Value.Broken);
 
         File.Delete(Path.Combine(rig.Inspector.Root, "game/models/truck.glb"));
-        File.Delete(Path.Combine(rig.Inspector.Root, "game/models/truck.glb.import.xml"));
+        File.Delete(Path.Combine(rig.Inspector.Root, "game/models/truck.glb.wimp"));
         rig.Project.Catalog.Invalidate();                              // what the reloader's report does
         rig.Ui.NextFrame();
         rig.Draw(e, keep: true);

@@ -31,15 +31,15 @@ with `HighPixelDensity`. `ConsumeResize()` returns true once after the pixel siz
 ## Application metadata and the window icon
 
 `PlatformHost.SetAppMetadata(name, version, identifier)` tells SDL what the application is, and goes before `Initialize`: the name the platform shows (the macOS menu, the audio mixer), the version, and the
-reverse-DNS identifier (`org.weft.fixturegame`) that Wayland uses as the window's application id and that the sound server uses for the stream. The runtime passes the ones in `game.xml`.
+reverse-DNS identifier (`org.weft.fixturegame`) that Wayland uses as the window's application id and that the sound server uses for the stream. The runtime passes the ones in `game.wgam`.
 
 `window.SetIcon(width, height, rgba)` gives a window an icon from RGBA8 pixels (it returns false when the driver cannot show one; a buffer smaller than the image is an `ArgumentException`).
-The runtime uses it on Linux, with the `<Icon>` file of `game.xml`; Windows and macOS take the icon from the executable and the bundle instead.
+The runtime uses it on Linux, with the `<Icon>` file of `game.wgam`; Windows and macOS take the icon from the executable and the bundle instead.
 
 ## File dialogs
 
 `FileDialog` shows SDL's native dialogs: `OpenFile(window, filters, defaultLocation, many, done)`, `SaveFile(window, filters, defaultLocation, done)` and `OpenFolder(window, defaultLocation, many, done)`. A filter is a name and a
-pattern (`("Scenes", "ascene")`, `("Models", "glb;gltf")`, `("All files", "*")`); the platform may let the user ignore it. Each call returns at once with a request id, and `done` receives a `FileDialogResult` later:
+pattern (`("Scenes", "wscn")`, `("Models", "glb;gltf")`, `("All files", "*")`); the platform may let the user ignore it. Each call returns at once with a request id, and `done` receives a `FileDialogResult` later:
 `Paths` (operating system paths) when the user chose, `Cancelled` when the dialog was closed, or an `Error` (SDL's own text) when it could not be shown, which is what a Linux machine with neither `xdg-desktop-portal` nor `zenity` reports.
 
 SDL reports the result on a callback that may run on **another thread** (Windows, the Linux portal and zenity) or before the call has returned, so `done` is never called from it. The callback only copies the paths into managed strings

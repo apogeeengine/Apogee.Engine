@@ -9,7 +9,7 @@
     </Entity>
   </Entity>
   <!-- an instance of the crate prefab, which holds the lid prefab: it moves the crate and the lid's handle, and nothing else -->
-  <Entity id="3" name="stack" prefab="mod://core/prefabs/crate.aprefab|uid://3k7w2d9p5q8xe">
+  <Entity id="3" name="stack" prefab="mod://core/prefabs/crate.wprf|uid://3k7w2d9p5q8xe">
     <Transform Position="4 0 2"/>
     <Override entity="2/2"><Transform Position="0 0.9 0"/></Override>
   </Entity>

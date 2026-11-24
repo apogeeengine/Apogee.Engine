@@ -89,7 +89,7 @@ has finished with them. Limits: transients have no multisampling, a storage view
 ## Where shaders come from: `ShaderLibrary`
 
 Renderers get their shaders from a `ShaderLibrary` (`SceneRenderer(device, shaders)`; the default is `ShaderLibrary.Standard(cacheDirectory)`, the `Shaders` folder next to the
-program mounted as `shaders://`). `Load("shaders://forward.slang")` takes the compiled artifact when the folder was imported (`imported/forward.slang.ashader`, made by
+program mounted as `shaders://`). `Load("shaders://forward.slang")` takes the compiled artifact when the folder was imported (`imported/forward.slang.wshd`, made by
 `Weft.Runtime --import`, which `./build.sh aot` runs on the published programs) and never touches the Slang compiler. A module without an artifact is compiled (development), if the
 compiler library is there; if it is not, the error says to import the folder. A mod's shaders are loaded the same way from `mod://id/…` and its own `imported/`.
 
@@ -181,7 +181,7 @@ A `RenderScene` is one model with its own lights. A game draws *entities*: any n
 
 - **`GpuModel`** is a `ModelData` on the GPU: its vertex, index and material buffers, its textures in the bindless heap, and a record per mesh instance (`ModelNode`: its matrices without the translation, its box,
   its first index). It is placed any number of times at no cost but one instance record per mesh. `renderer.CreateModel(data)` makes one; a `RenderScene` is a `GpuModel` plus an origin, a sun and lights.
-- **`ModelLibrary`** gives models ids: `Load(path)` returns the same id for the same path, however many entities show it, and reads the model through the virtual file system (imported `.amodel` when there is one).
+- **`ModelLibrary`** gives models ids: `Load(path)` returns the same id for the same path, however many entities show it, and reads the model through the virtual file system (imported `.wmdl` when there is one).
   Ids exist before there is a GPU, because a game's scripts run before the renderer is made: the model is read and uploaded the first time a frame needs it (`Attach(renderer, caps)` says where), a file that does not
   load is logged once and draws nothing, and `Reload(path)` swaps a changed file in under the same id (the runtime does it for the `--watch` run, after the importer). `Detach()` frees the GPU side before the device goes.
   Scripts see the library as the global `models`: `models:load("res://packages/car/car.glb")` (or `models:load("uid://…")`, see [asset identity](../content/assets.md#from-luau)). It reads any mounted path, as `audio` does: the engine's classes do not know which mod called them.

@@ -7,7 +7,7 @@ namespace Weft.Export;
 /// <summary>
 /// macOS: the export is a bundle, <c>Name.app</c>. This step writes its <c>Contents/Info.plist</c> and <c>PkgInfo</c>, the icon as <c>Contents/Resources/game.icns</c>, marks the executable as executable,
 /// and last makes the executable's ad-hoc code signature match the bytes it has now that the pack key is in it (see <see cref="MachOSignature"/>, which also says what is not done: no Developer ID
-/// signature, no notarization). The program and its libraries are already in <c>Contents/MacOS</c>, and <c>game.xml</c> and <c>data/</c> in <c>Contents/Resources</c>, put there by the export.
+/// signature, no notarization). The program and its libraries are already in <c>Contents/MacOS</c>, and <c>game.wgam</c> and <c>data/</c> in <c>Contents/Resources</c>, put there by the export.
 /// </summary>
 internal sealed class MacPackaging : IPlatformPackaging
 {

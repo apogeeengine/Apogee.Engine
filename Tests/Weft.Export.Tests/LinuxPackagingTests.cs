@@ -14,7 +14,7 @@ public class LinuxPackagingTests
 
     private static GameManifest Manifest(string xml)
     {
-        Assert.True(GameManifest.TryParse(xml, "game.xml", out GameManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
+        Assert.True(GameManifest.TryParse(xml, "game.wgam", out GameManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
         return manifest!;
     }
 
@@ -67,7 +67,7 @@ public class LinuxPackagingTests
         }
 
         using var scratch = new Scratch();
-        scratch.Write("game/game.xml", """<Game name="Fixture Game" organization="Test Studio" version="1.2.3" executable="FixtureGame" identifier="org.test.fixturegame"/>""");
+        scratch.Write("game/game.wgam", """<Game name="Fixture Game" organization="Test Studio" version="1.2.3" executable="FixtureGame" identifier="org.test.fixturegame"/>""");
         string runtime = FakeRuntime.Make(scratch, s_linux);
         File.SetUnixFileMode(Path.Combine(runtime, "Weft.Runtime"), UnixFileMode.UserRead | UnixFileMode.UserWrite); // a copy that lost its mode, as from an archive
 
@@ -188,7 +188,7 @@ public class LinuxPackagingTests
     public void AnExportForLinuxHasTheIconInItsManifestAndTheEntryBesideIt()
     {
         using var scratch = new Scratch();
-        scratch.Write("game/game.xml", """<Game name="Fixture Game" organization="Test Studio" version="1.2.3" executable="FixtureGame" identifier="org.test.fixturegame"><Icon path="art/logo.png"/></Game>""");
+        scratch.Write("game/game.wgam", """<Game name="Fixture Game" organization="Test Studio" version="1.2.3" executable="FixtureGame" identifier="org.test.fixturegame"><Icon path="art/logo.png"/></Game>""");
         scratch.Write("game/art/logo.png", Png.Encode(256, 256, new byte[256 * 256 * 4]));
         string runtime = FakeRuntime.Make(scratch, s_linux);
 

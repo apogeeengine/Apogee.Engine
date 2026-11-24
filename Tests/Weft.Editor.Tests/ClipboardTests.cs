@@ -283,7 +283,7 @@ public sealed class ClipboardTests
         string[] texts =
         [
             "", "just some words", "<Foo><Entity id=\"1\"/></Foo>", "<Scenery/>", "<Scene><Entity id=\"1\"", "<Scene version=\"99\"><Entity id=\"1\" name=\"Future\"/></Scene>",
-            "<!DOCTYPE Scene [<!ENTITY x \"y\">]><Scene><Entity id=\"1\" name=\"&x;\"/></Scene>", "<Scene version=\"1\"/>", "<Scene version=\"1\"><Entity id=\"1\" prefab=\"res://p.aprefab\"/></Scene>",
+            "<!DOCTYPE Scene [<!ENTITY x \"y\">]><Scene><Entity id=\"1\" name=\"&x;\"/></Scene>", "<Scene version=\"1\"/>", "<Scene version=\"1\"><Entity id=\"1\" prefab=\"res://p.wprf\"/></Scene>",
             "<Scene>" + new string('x', ClipboardScene.MaxLength) + "</Scene>",
         ];
         foreach (string text in texts)

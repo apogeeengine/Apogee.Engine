@@ -215,17 +215,17 @@ public sealed class PreferencesTests : IDisposable
         EditorPreferences prefs = Open();
         Assert.Null(prefs.LastScene(a));
 
-        prefs.SetLastScene(a, "res://scenes/one.ascene");
-        prefs.SetLastScene(b, "res://other.ascene");
+        prefs.SetLastScene(a, "res://scenes/one.wscn");
+        prefs.SetLastScene(b, "res://other.wscn");
         prefs.Flush();
 
-        Assert.Matches(@"^project\.[0-9a-f]{16}\.scene$", EditorPreferences.SceneKey(a));
+        Assert.Matches(@"^project\.[0-9a-f]{16}\.wscn$", EditorPreferences.SceneKey(a));
         Assert.NotEqual(EditorPreferences.SceneKey(a), EditorPreferences.SceneKey(b));
         Assert.Equal(EditorPreferences.SceneKey(a), EditorPreferences.SceneKey(a + Path.DirectorySeparatorChar));
 
         EditorPreferences second = Open();
-        Assert.Equal("res://scenes/one.ascene", second.LastScene(a));
-        Assert.Equal("res://other.ascene", second.LastScene(b));
+        Assert.Equal("res://scenes/one.wscn", second.LastScene(a));
+        Assert.Equal("res://other.wscn", second.LastScene(b));
 
         second.SetLastScene(a, null);
         second.Flush();

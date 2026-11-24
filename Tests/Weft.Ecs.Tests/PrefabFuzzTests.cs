@@ -47,10 +47,10 @@ public sealed class PrefabFuzzTests : PrefabFuzzBase
         AssertNamesAreUnique(World);
 
         string saved = World.SaveScene();
-        string mended = Read("prefabs/lamp.aprefab");
+        string mended = Read("prefabs/lamp.wprf");
 
         // The lamp loses its Base and the Bulb its Health, and the scene is loaded, edited a little (in the part that is not the lamp, in both worlds), and saved again against that.
-        Write("prefabs/lamp.aprefab", mended
+        Write("prefabs/lamp.wprf", mended
             .Replace("<Entity id=\"3\" name=\"Base\"><Transform Position=\"0 0 0\" Rotation=\"0 0 0 1\" Scale=\"1 1 1\"/></Entity>", "", StringComparison.Ordinal)
             .Replace("<Health Current=\"5\" Max=\"9\" Regen=\"0.5\"/>", "", StringComparison.Ordinal));
         using World broken = OtherWorld();
@@ -64,7 +64,7 @@ public sealed class PrefabFuzzTests : PrefabFuzzBase
         again.LoadScene(whileBroken);
         Same(whileBroken, again.SaveScene());
 
-        Write("prefabs/lamp.aprefab", mended);
+        Write("prefabs/lamp.wprf", mended);
         using World back = OtherWorld();
         back.LoadScene(whileBroken);
         Same(Dump(World), Dump(back));

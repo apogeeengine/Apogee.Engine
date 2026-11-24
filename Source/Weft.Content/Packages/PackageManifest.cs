@@ -12,7 +12,7 @@ namespace Weft.Content.Packages;
 public sealed record PackageDependency(string Id, VersionRange Version);
 
 /// <summary>
-/// The <c>mod.xml</c> at the root of a package. Checked against the engine's schema (<c>Packages/mod.xsd</c>) and further: the id is lowercase letters, digits and underscores
+/// The <c>mod.wmod</c> at the root of a package. Checked against the engine's schema (<c>Packages/mod.xsd</c>) and further: the id is lowercase letters, digits and underscores
 /// (and not one the engine uses: <c>engine</c>, <c>self</c>, <c>res</c>, <c>user</c>, <c>mod</c>), versions and ranges parse, and the paths it names are relative and stay inside the package.
 /// </summary>
 public sealed class PackageManifest
@@ -57,7 +57,7 @@ public sealed class PackageManifest
 
     private static SchemaSet LoadSchema()
     {
-        using Stream stream = typeof(PackageManifest).Assembly.GetManifestResourceStream("Packages/mod.xsd") ?? throw new InvalidOperationException("The embedded schema of mod.xml is missing.");
+        using Stream stream = typeof(PackageManifest).Assembly.GetManifestResourceStream("Packages/mod.xsd") ?? throw new InvalidOperationException("The embedded schema of mod.wmod is missing.");
         using var reader = new StreamReader(stream);
         var set = new SchemaSet();
         set.LoadText(reader.ReadToEnd(), "mod.xsd");

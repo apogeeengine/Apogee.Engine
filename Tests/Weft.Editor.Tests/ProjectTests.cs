@@ -26,7 +26,7 @@ internal sealed class ProjectRig : IDisposable
         NativeRequirements.Require(typeof(Lua).Assembly, "luau");
         NativeRequirements.Require(typeof(Flecs).Assembly, "flecs");
         Root = Path.Combine(Path.GetTempPath(), "weft-editor-" + Guid.NewGuid().ToString("N")).Replace('\\', '/');
-        Write("game/packages/scene/mod.xml", "<Mod id=\"scene\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        Write("game/packages/scene/mod.wmod", "<Mod id=\"scene\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
         Write("game/packages/scene/main.luau", script ?? "print('scene ran')");
         Project = new EditorProject(Path.Combine(Root, "game"), Path.Combine(Root, "user"));
     }
@@ -139,10 +139,10 @@ public sealed class ProjectTests
 
         Assert.False(project.SaveScene());                              // no file yet
         project.SaveSceneAs("res://scenes/level");
-        Assert.Equal("res://scenes/level.ascene", project.ScenePath);
+        Assert.Equal("res://scenes/level.wscn", project.ScenePath);
         Assert.False(project.Dirty);
-        Assert.Equal(["res://scenes/level.ascene"], project.SceneFiles());
-        string text = File.ReadAllText(Path.Combine(rig.Root, "game/scenes/level.ascene"));
+        Assert.Equal(["res://scenes/level.wscn"], project.SceneFiles());
+        string text = File.ReadAllText(Path.Combine(rig.Root, "game/scenes/level.wscn"));
         Assert.StartsWith("<?xml", text, StringComparison.Ordinal);                // a scene file is XML
         Assert.Contains("<Scene version=\"1\" uid=\"uid://", text, StringComparison.Ordinal);       // and has an identity
         Assert.Contains("Model=\"res://models/box.glb\"", text, StringComparison.Ordinal);   // the model by its path, not by a number
@@ -151,8 +151,8 @@ public sealed class ProjectTests
         Assert.Empty(rig.World.Roots());
         Assert.Null(project.ScenePath);
 
-        project.OpenScene("res://scenes/level.ascene");
-        Assert.Equal("res://scenes/level.ascene", project.ScenePath);
+        project.OpenScene("res://scenes/level.wscn");
+        Assert.Equal("res://scenes/level.wscn", project.ScenePath);
         Entity root = rig.World.Roots().Single();
         Assert.Equal(new Vector3(2, 2, 2), rig.World.Get<Transform>(root).Scale);
         Entity loaded = rig.World.Children(root).Single();
@@ -174,7 +174,7 @@ public sealed class ProjectTests
         project.CreateEmpty();
 
         project.SaveSceneAs("res://scenes/level");
-        string file = Path.Combine(rig.Root, "game/scenes/level.ascene");
+        string file = Path.Combine(rig.Root, "game/scenes/level.wscn");
         AssetUid uid = AuthoredAssets.ReadUid(File.ReadAllBytes(file));
         Assert.False(uid.IsNone);
 
@@ -184,7 +184,7 @@ public sealed class ProjectTests
 
         // Open again, change, save: still the same asset, and it opens by its UID.
         project.NewScene();
-        project.OpenScene("res://scenes/level.ascene");
+        project.OpenScene("res://scenes/level.wscn");
         project.CreateEmpty();
         Assert.True(project.SaveScene());
         Assert.Equal(uid, AuthoredAssets.ReadUid(File.ReadAllBytes(file)));
@@ -192,7 +192,7 @@ public sealed class ProjectTests
         project.NewScene();
         project.OpenScene(uid.ToString());
         Assert.Equal(3, rig.World.Roots().Count);
-        Assert.Throws<FileNotFoundException>(() => project.OpenScene("res://scenes/none.ascene"));
+        Assert.Throws<FileNotFoundException>(() => project.OpenScene("res://scenes/none.wscn"));
         Assert.Equal(3, rig.World.Roots().Count); // a scene that is not there leaves the open one alone
     }
 
@@ -387,7 +387,7 @@ public sealed class ProjectTests
         project.NewScene();
         Assert.False(project.Dirty);
         project.CreateEmpty();
-        project.OpenScene("res://scenes/level.ascene");
+        project.OpenScene("res://scenes/level.wscn");
         Assert.False(project.Dirty);
     }
 
@@ -443,9 +443,9 @@ public sealed class ProjectTests
         var boxUid = AssetUid.New();
         var ballUid = AssetUid.New();
         rig.Write("game/models/box.glb", "not a real model");
-        rig.Write("game/models/box.glb.import.xml", $"<Import uid=\"{boxUid}\"/>");
+        rig.Write("game/models/box.glb.wimp", $"<Import uid=\"{boxUid}\"/>");
         rig.Write("game/models/ball.glb", "not a real model");
-        rig.Write("game/models/ball.glb.import.xml", $"<Import uid=\"{ballUid}\"/>");
+        rig.Write("game/models/ball.glb.wimp", $"<Import uid=\"{ballUid}\"/>");
         ComponentInfo info = TypeRegistry.GetComponent<ModelRenderer>();
         Entity id = rig.World.Component<ModelRenderer>();
         Entity e = rig.World.CreateEntity("e");
@@ -456,14 +456,14 @@ public sealed class ProjectTests
         rig.Draw(e, info: info, id: id);
         rig.Project.SaveSceneAs("res://scenes/level");
 
-        string text = File.ReadAllText(Path.Combine(rig.Root, "game/scenes/level.ascene"));
+        string text = File.ReadAllText(Path.Combine(rig.Root, "game/scenes/level.wscn"));
         Assert.Contains($"Model=\"res://models/ball.glb|{ballUid}\"", text, StringComparison.Ordinal);   // the path and the uid, not the number of this run
         Assert.DoesNotContain("box.glb", text, StringComparison.Ordinal);                                   // and nothing of the old model
         Assert.DoesNotContain(boxUid.ToString(), text, StringComparison.Ordinal);
 
         // Opened again, the field names the picked file.
         rig.Project.NewScene();
-        rig.Project.OpenScene("res://scenes/level.ascene");
+        rig.Project.OpenScene("res://scenes/level.wscn");
         Entity loaded = rig.World.Roots().Single();
         Assert.Equal("res://models/ball.glb", rig.Project.Session.Models.PathOf(rig.World.Get<ModelRenderer>(loaded).Model));
     }
@@ -473,8 +473,8 @@ public sealed class ProjectTests
     {
         using var rig = new ProjectRig();
         const string Lamp = "<Prefab version=\"1\" nextId=\"4\"><Entity id=\"1\" name=\"Lamp\"><Entity id=\"2\" name=\"Bulb\"/><Entity id=\"3\" name=\"Base\"/></Entity></Prefab>";
-        string file = rig.Write("game/packages/scene/prefabs/lamp.aprefab", Lamp);
-        rig.World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"One\" prefab=\"res://packages/scene/prefabs/lamp.aprefab\"/></Scene>");
+        string file = rig.Write("game/packages/scene/prefabs/lamp.wprf", Lamp);
+        rig.World.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"One\" prefab=\"res://packages/scene/prefabs/lamp.wprf\"/></Scene>");
         Entity one = rig.World.Lookup("One");
         Entity bulb = rig.World.Children(one).Single(e => rig.World.GetName(e) == "Bulb");
         Entity foot = rig.World.Children(one).Single(e => rig.World.GetName(e) == "Base");

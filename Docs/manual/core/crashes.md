@@ -17,7 +17,7 @@ which command line the run had. `Log.MinimumLevel` filters what reaches it, as i
 
 ## Where the files are
 
-`<user>` is the player's folder of the game (`user://`): `--user <dir>`, else `<local application data>/<organization>/<userFolder>` from `game.xml` (see [The game manifest](../content/game-manifest.md#what-it-drives)).
+`<user>` is the player's folder of the game (`user://`): `--user <dir>`, else `<local application data>/<organization>/<userFolder>` from `game.wgam` (see [The game manifest](../content/game-manifest.md#what-it-drives)).
 
 | OS | `<local application data>` | Example |
 | --- | --- | --- |

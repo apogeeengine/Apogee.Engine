@@ -59,9 +59,9 @@ internal static class EcsSmoke
         Log.Info("Runtime", $"Scene: {scene.Length} characters, loaded back");
 
         // Cooked XML is a plain byte format with no reflection: write a tree, read it back, compare the text of both.
-        XmlNode tree = XmlNode.Parse("<Scene version=\"1\"><Entity id=\"1\" name=\"smoke\">caf\u00e9</Entity><Empty/></Scene>", "smoke.ascene");
+        XmlNode tree = XmlNode.Parse("<Scene version=\"1\"><Entity id=\"1\" name=\"smoke\">caf\u00e9</Entity><Empty/></Scene>", "smoke.wscn");
         byte[] cooked = XmlBinary.Write(tree);
-        XmlNode back = XmlFile.Read(cooked, "smoke.ascene");
+        XmlNode back = XmlFile.Read(cooked, "smoke.wscn");
         if (!XmlBinary.IsBinary(cooked) || back.ToXml() != tree.ToXml() || back.Children[0].Line != tree.Children[0].Line)
         {
             throw new InvalidOperationException("The cooked XML smoke test failed.");
@@ -91,14 +91,14 @@ internal static class EcsSmoke
         string folder = Directory.CreateTempSubdirectory("weft-prefab-smoke").FullName;
         try
         {
-            string file = Path.Combine(folder, "lamp.aprefab");
+            string file = Path.Combine(folder, "lamp.wprf");
             File.WriteAllText(file, Lamp);
             var files = new VirtualFileSystem();
             files.Mount("res://", new DirectorySource(folder, writable: true));
             var assets = new AssetDatabase(files);
 
             string text = SceneWithAnEditedLamp(files, assets);
-            File.WriteAllBytes(file, XmlBinary.Write(XmlNode.Parse(Lamp, "lamp.aprefab")));   // the same prefab, cooked
+            File.WriteAllBytes(file, XmlBinary.Write(XmlNode.Parse(Lamp, "lamp.wprf")));   // the same prefab, cooked
             string cookedText = SceneWithAnEditedLamp(files, assets);
 
             using var again = new World { Files = files, Assets = assets };
@@ -121,7 +121,7 @@ internal static class EcsSmoke
     private static string SceneWithAnEditedLamp(VirtualFileSystem files, AssetDatabase assets)
     {
         using var world = new World { Files = files, Assets = assets };
-        Entity lamp = world.Instantiate("res://lamp.aprefab");
+        Entity lamp = world.Instantiate("res://lamp.wprf");
         Entity bulb = world.Children(lamp).First(c => world.GetName(c) == "Bulb");
         world.Set(bulb, new Ticks { Count = 5 });
         return world.SaveScene();

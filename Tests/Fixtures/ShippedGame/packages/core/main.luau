@@ -21,7 +21,7 @@ end)
 
 -- A scene and a definition file. A pack made with --cooked holds them as binary XML at the same paths, so they are read with world:load_scene_file, defs and xml.load, which take a text file
 -- and a cooked one alike (fs.read_text of a cooked file would give the bytes).
-local made = world:load_scene_file("mod://core/scenes/start.ascene")
+local made = world:load_scene_file("mod://core/scenes/start.wscn")
 local camera = world:lookup("camera")
 local MainCamera = world:component("MainCamera")
 assert(camera and world:has(camera, MainCamera), "the scene's camera is there")
@@ -36,7 +36,7 @@ local function height(path: string): number
 end
 local stack = assert(world:lookup("stack"), "the scene's instance is there")
 assert(world:prefab_of(stack), "and is an instance")
-local made_crate = world:instantiate("mod://core/prefabs/crate.aprefab")
+local made_crate = world:instantiate("mod://core/prefabs/crate.wprf")
 assert(world:prefab_of(made_crate) and world:prefab_of(world:lookup("Crate.Lid")), "the crate, and the lid inside it, are instances")
 assert(fs.write_text("user://prefab.txt", "scene handle " .. height("stack.Lid.Handle") .. ", made handle " .. height("Crate.Lid.Handle") .. ", " .. #world:children(made_crate) .. " children, " .. #world:children(stack) .. " in the scene's"))
 

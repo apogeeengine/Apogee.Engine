@@ -10,7 +10,7 @@ public class GameManifestTests
     private const string Full = """
         <Game name="Fixture Game" organization="Weft" version="1.4.2" executable="FixtureGame" identifier="org.weft.fixturegame" userFolder="fixture-game"
               steamAppId="480" description="A game &amp; its fixture." copyright="Copyright 2026 The Weft Authors">
-          <EntryScene path="scenes/main.ascene"/>
+          <EntryScene path="scenes/main.wscn"/>
           <Icon path="art/icon.png"/>
           <Window width="1920" height="1080" fullscreen="true" resizable="false"/>
         </Game>
@@ -18,14 +18,14 @@ public class GameManifestTests
 
     private static GameManifest Parse(string text)
     {
-        Assert.True(GameManifest.TryParse(text, "game.xml", out GameManifest? manifest, out System.Collections.Generic.IReadOnlyList<string> problems), string.Join("\n", problems));
+        Assert.True(GameManifest.TryParse(text, "game.wgam", out GameManifest? manifest, out System.Collections.Generic.IReadOnlyList<string> problems), string.Join("\n", problems));
         Assert.Empty(problems);
         return manifest!;
     }
 
     private static string[] Problems(string text)
     {
-        Assert.False(GameManifest.TryParse(text, "game.xml", out GameManifest? manifest, out System.Collections.Generic.IReadOnlyList<string> problems));
+        Assert.False(GameManifest.TryParse(text, "game.wgam", out GameManifest? manifest, out System.Collections.Generic.IReadOnlyList<string> problems));
         Assert.Null(manifest);
         Assert.NotEmpty(problems);
         return [.. problems];
@@ -45,7 +45,7 @@ public class GameManifestTests
         Assert.Equal(480u, game.SteamAppId);
         Assert.Equal("A game & its fixture.", game.Description);
         Assert.Equal("Copyright 2026 The Weft Authors", game.Copyright);
-        Assert.Equal("scenes/main.ascene", game.EntryScene);
+        Assert.Equal("scenes/main.wscn", game.EntryScene);
         Assert.Equal("art/icon.png", game.Icon);
         Assert.Equal(new GameWindow(1920, 1080, true, false), game.Window);
     }
@@ -90,7 +90,7 @@ public class GameManifestTests
     public void MistakesAreReportedWithTheirLine()
     {
         string[] noName = Problems("<Game organization=\"a\" version=\"1.0.0\"/>");
-        Assert.Contains(noName, p => p.StartsWith("game.xml:1: ", StringComparison.Ordinal) && p.Contains("name", StringComparison.Ordinal));
+        Assert.Contains(noName, p => p.StartsWith("game.wgam:1: ", StringComparison.Ordinal) && p.Contains("name", StringComparison.Ordinal));
 
         string[] shortVersion = Problems("<Game name=\"a\" organization=\"b\" version=\"1.0\"/>");
         Assert.Contains(shortVersion, p => p.Contains("version", StringComparison.Ordinal));
@@ -105,16 +105,16 @@ public class GameManifestTests
         Assert.Contains(identifier, p => p.Contains("identifier", StringComparison.Ordinal));
 
         string[] small = Problems("<Game name=\"a\" organization=\"b\" version=\"1.0.0\">\n  <Window width=\"8\"/>\n</Game>");
-        Assert.Contains(small, p => p.StartsWith("game.xml:2: ", StringComparison.Ordinal) && p.Contains("width", StringComparison.Ordinal));
+        Assert.Contains(small, p => p.StartsWith("game.wgam:2: ", StringComparison.Ordinal) && p.Contains("width", StringComparison.Ordinal));
 
         string[] twice = Problems("<Game name=\"a\" organization=\"b\" version=\"1.0.0\">\n  <Icon path=\"a.png\"/>\n  <Icon path=\"b.png\"/>\n</Game>");
         Assert.NotEmpty(twice);
 
         string[] root = Problems("<Mod id=\"a\" version=\"1.0.0\"/>");
-        Assert.Equal(["game.xml:1: the root element is <Mod>, not <Game>."], root);
+        Assert.Equal(["game.wgam:1: the root element is <Mod>, not <Game>."], root);
 
         string[] broken = Problems("<Game name=\"a\"");
-        Assert.StartsWith("game.xml:", broken[0], StringComparison.Ordinal);
+        Assert.StartsWith("game.wgam:", broken[0], StringComparison.Ordinal);
     }
 
     [Theory]
@@ -127,10 +127,10 @@ public class GameManifestTests
     public void PathsHaveToStayInsideTheGame(string path)
     {
         string[] icon = Problems($"<Game name=\"a\" organization=\"b\" version=\"1.0.0\">\n<Icon path=\"{path}\"/>\n</Game>");
-        Assert.Contains(icon, p => p.StartsWith("game.xml:2: ", StringComparison.Ordinal) && p.Contains("Icon", StringComparison.Ordinal));
+        Assert.Contains(icon, p => p.StartsWith("game.wgam:2: ", StringComparison.Ordinal) && p.Contains("Icon", StringComparison.Ordinal));
 
         string[] scene = Problems($"<Game name=\"a\" organization=\"b\" version=\"1.0.0\">\n<EntryScene path=\"{path}\"/>\n</Game>");
-        Assert.Contains(scene, p => p.StartsWith("game.xml:2: ", StringComparison.Ordinal) && p.Contains("EntryScene", StringComparison.Ordinal));
+        Assert.Contains(scene, p => p.StartsWith("game.wgam:2: ", StringComparison.Ordinal) && p.Contains("EntryScene", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class GameManifestTests
     {
         string[] problems = Problems("<Game name=\"a\" organization=\"b\" version=\"1.0.0\">\n<Icon path=\"icon.jpg\"/>\n</Game>");
 
-        Assert.Contains(problems, p => p.StartsWith("game.xml:2: ", StringComparison.Ordinal) && p.Contains(".png", StringComparison.Ordinal));
+        Assert.Contains(problems, p => p.StartsWith("game.wgam:2: ", StringComparison.Ordinal) && p.Contains(".png", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -208,7 +208,7 @@ public class GameManifestTests
 
             File.WriteAllText(Path.Combine(folder, GameManifest.FileName), "<Game/>");
             Assert.Null(GameManifest.Load(folder, out System.Collections.Generic.IReadOnlyList<string> wrong));
-            Assert.All(wrong, p => Assert.Contains("game.xml:1:", p, StringComparison.Ordinal));
+            Assert.All(wrong, p => Assert.Contains("game.wgam:1:", p, StringComparison.Ordinal));
             Assert.NotEmpty(wrong);
         }
         finally

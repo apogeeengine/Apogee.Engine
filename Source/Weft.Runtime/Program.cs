@@ -12,7 +12,7 @@ var recent = new RecentLogSink();
 Log.AddSink(recent);
 CrashHandler.Install(Path.Combine(VirtualFileSystem.DefaultUserDirectory("Weft", "Runtime"), "crashes"), recent);
 
-// A shipped game is this program with a game.xml and its packs beside it (or in a macOS bundle's Resources).
+// A shipped game is this program with a game.wgam and its packs beside it (or in a macOS bundle's Resources).
 string? gameRoot = GameLocator.Find(AppContext.BaseDirectory);
 
 if (!RuntimeOptions.TryParse(args, out RuntimeOptions options, out string? problem, gameNextToProgram: gameRoot is not null))
@@ -53,7 +53,7 @@ switch (options.Command)
     default:
         if (gameRoot is null)
         {
-            Console.Error.WriteLine($"No game.xml next to the program ({AppContext.BaseDirectory}): pass --game <folder>, --smoke or --help.");
+            Console.Error.WriteLine($"No game.wgam next to the program ({AppContext.BaseDirectory}): pass --game <folder>, --smoke or --help.");
             return 1;
         }
 

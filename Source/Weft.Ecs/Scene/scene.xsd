@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A .ascene file: the entities of a scene, with their components. The structure is described here; what the components and their fields are comes from the engine's registry when the scene is loaded. -->
+<!-- A .wscn file: the entities of a scene, with their components. The structure is described here; what the components and their fields are comes from the engine's registry when the scene is loaded. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:simpleType name="Uid">
     <xs:restriction base="xs:string">

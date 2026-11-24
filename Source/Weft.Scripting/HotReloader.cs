@@ -37,7 +37,7 @@ public sealed record ReloadReport(
 /// stays if the new one fails); a definition or schema in a package's content or schema folders makes the definitions be read again (<see cref="LuauVm.Defs"/> is replaced and
 /// <c>defs.on_change</c> listeners are called); an image or model is imported again (when the project has been imported: <c>imported/index.xml</c>) and <see cref="AssetsChanged"/> says
 /// which; a <c>.slang</c> file raises <see cref="ShadersChanged"/>, for the renderer to rebuild what uses it (the engine's renderers do not yet). A change that cannot be applied to a
-/// running game (a package's <c>mod.xml</c>, a script that only runs once) is listed in <see cref="ReloadReport.NeedsRestart"/>.
+/// running game (a package's <c>mod.wmod</c>, a script that only runs once) is listed in <see cref="ReloadReport.NeedsRestart"/>.
 /// </summary>
 public sealed class HotReloader : IDisposable
 {
@@ -108,11 +108,11 @@ public sealed class HotReloader : IDisposable
                     restart.Add(path);
                 }
             }
-            else if (name == "mod.xml")
+            else if (name == "mod.wmod")
             {
                 restart.Add(path);
             }
-            else if (name.EndsWith(".import.xml", StringComparison.OrdinalIgnoreCase) || s_assetExtensions.Contains(extension))
+            else if (name.EndsWith(".wimp", StringComparison.OrdinalIgnoreCase) || s_assetExtensions.Contains(extension))
             {
                 if (path.StartsWith("res://", StringComparison.Ordinal))
                 {

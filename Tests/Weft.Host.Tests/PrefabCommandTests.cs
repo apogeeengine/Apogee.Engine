@@ -22,7 +22,7 @@ public struct Watcher
 /// <summary>The edits of the prefab overrides API as steps of an undo history: revert, unpack, make a prefab, instantiate.</summary>
 public sealed class PrefabCommandTests : IDisposable
 {
-    private const string LampPath = "res://prefabs/lamp.aprefab";
+    private const string LampPath = "res://prefabs/lamp.wprf";
 
     private readonly string _folder = Directory.CreateTempSubdirectory("weft-prefab-commands").FullName;
     private readonly World _world;
@@ -33,7 +33,7 @@ public sealed class PrefabCommandTests : IDisposable
         NativeRequirements.Require(typeof(Flecs).Assembly, "flecs");
         string full = Path.Combine(_folder, "prefabs");
         Directory.CreateDirectory(full);
-        File.WriteAllText(Path.Combine(full, "lamp.aprefab"), """
+        File.WriteAllText(Path.Combine(full, "lamp.wprf"), """
             <?xml version="1.0" encoding="utf-8"?>
             <Prefab version="1" uid="uid://k3m5n7p9q1r3s" nextId="4">
               <Entity id="1" name="Lamp">
@@ -171,13 +171,13 @@ public sealed class PrefabCommandTests : IDisposable
     [Fact]
     public void UnpackingGivesTheReportOfWhatWasLeftWithNothingToApplyTo()
     {
-        File.WriteAllText(Path.Combine(_folder, "prefabs/corner.aprefab"), $"""
+        File.WriteAllText(Path.Combine(_folder, "prefabs/corner.wprf"), $"""
             <?xml version="1.0" encoding="utf-8"?>
             <Prefab version="1" uid="uid://m3m5n7p9q1r3s" nextId="3">
               <Entity id="1" name="Corner"><Entity id="2" name="Lamp" prefab="{LampPath}"/></Entity>
             </Prefab>
             """);
-        _world.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Corner\" prefab=\"res://prefabs/corner.aprefab\"><Override entity=\"2/7\"><Hp Value=\"3\"/></Override><Override entity=\"9\"><Hp Value=\"4\"/></Override></Entity></Scene>");
+        _world.LoadScene("<Scene version=\"2\"><Entity id=\"1\" name=\"Corner\" prefab=\"res://prefabs/corner.wprf\"><Override entity=\"2/7\"><Hp Value=\"3\"/></Override><Override entity=\"9\"><Hp Value=\"4\"/></Override></Entity></Scene>");
         Entity corner = _world.Lookup("Corner");
         Entity lamp = Child(corner, "Lamp");
         UnpackPrefabCommand command = PrefabCommands.BreakLink(_world, corner);
@@ -202,17 +202,17 @@ public sealed class PrefabCommandTests : IDisposable
         Entity lid = _world.CreateEntity("Lid", crate);
         _world.Set(lid, new Hp { Value = 4 });
 
-        _history.Execute(PrefabCommands.CreatePrefab(_world, crate, "res://prefabs/crate.aprefab"));
+        _history.Execute(PrefabCommands.CreatePrefab(_world, crate, "res://prefabs/crate.wprf"));
 
         Assert.True(_world.IsPrefabInstance(crate));
         Assert.True(_world.IsPrefabMember(lid));
-        Assert.True(File.Exists(Path.Combine(_folder, "prefabs/crate.aprefab")));
+        Assert.True(File.Exists(Path.Combine(_folder, "prefabs/crate.wprf")));
 
         _history.Undo();
 
         Assert.False(_world.IsPrefabInstance(crate));
         Assert.False(_world.Has<PrefabMember>(lid));
-        Assert.True(File.Exists(Path.Combine(_folder, "prefabs/crate.aprefab")));      // an asset of the game: an undo does not delete it
+        Assert.True(File.Exists(Path.Combine(_folder, "prefabs/crate.wprf")));      // an asset of the game: an undo does not delete it
         Assert.Equal(4, _world.Get<Hp>(lid).Value);
 
         _history.Redo();
@@ -228,13 +228,13 @@ public sealed class PrefabCommandTests : IDisposable
         Entity crate = _world.CreateEntity("Crate");
         Entity lid = _world.CreateEntity("Lid", crate);
         _world.Set(lid, new Hp { Value = 4 });
-        _history.Execute(PrefabCommands.CreatePrefab(_world, crate, "res://prefabs/crate.aprefab"));
+        _history.Execute(PrefabCommands.CreatePrefab(_world, crate, "res://prefabs/crate.wprf"));
         _history.Undo();
 
         // The file is edited while the entities are plain: nothing follows it.
-        string path = Path.Combine(_folder, "prefabs/crate.aprefab");
+        string path = Path.Combine(_folder, "prefabs/crate.wprf");
         File.WriteAllText(path, File.ReadAllText(path).Replace("Value=\"4\"", "Value=\"40\"", StringComparison.Ordinal));
-        Assert.Equal(PrefabReloadStatus.Reloaded, _world.Prefabs.Reload("res://prefabs/crate.aprefab").Status);
+        Assert.Equal(PrefabReloadStatus.Reloaded, _world.Prefabs.Reload("res://prefabs/crate.wprf").Status);
         _world.ApplyPrefabUpdates();
         Assert.False(_world.HasPendingPrefabUpdates);
 
@@ -252,7 +252,7 @@ public sealed class PrefabCommandTests : IDisposable
         Entity bulb = Child(lamp, "Bulb");
         _history.Execute(PrefabCommands.BreakLink(_world, lamp));
 
-        string path = Path.Combine(_folder, "prefabs/lamp.aprefab");
+        string path = Path.Combine(_folder, "prefabs/lamp.wprf");
         File.WriteAllText(path, File.ReadAllText(path).Replace("Value=\"1\"", "Value=\"11\"", StringComparison.Ordinal));
         Assert.Equal(PrefabReloadStatus.Reloaded, _world.Prefabs.Reload(LampPath).Status);
         _world.ApplyPrefabUpdates();

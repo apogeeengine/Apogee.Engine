@@ -159,9 +159,9 @@ safe to use from two threads at once.
 
 ### Compiled ahead of time: `ShaderBundle`
 
-`Weft.Runtime --import <folder>` compiles every `.slang` module that has a `[shader(…)]` entry point into `imported/<path>.ashader` (the importer is `ShaderImporter`
+`Weft.Runtime --import <folder>` compiles every `.slang` module that has a `[shader(…)]` entry point into `imported/<path>.wshd` (the importer is `ShaderImporter`
 in Weft.Rendering, see [Asset import](../content/import.md)). A **bundle** holds one or more *variants* of the module, each the module compiled with one set of preprocessor
-defines (the variant without defines is always there; more are listed in the shader's `.import.xml`), and for each variant its reflection and the code of every entry
+defines (the variant without defines is always there; more are listed in the shader's `.wimp`), and for each variant its reflection and the code of every entry
 point **per backend**. The importer writes SPIR-V and Metal shading language into the same file; a reader takes the code of the backend of its device (`ShaderBundle.Read(…, backend)`, `ShaderLibrary.Load(path, backend: device.ShaderBackend)`) and skips the others, and the format reserves DXIL (Direct3D 12). A shader that does not compile for every backend fails the import, so it is found on the author's machine and not on a Mac. Specialization constants need no variant: they stay in the SPIR-V and are in the reflection (pipelines do not set them yet).
 
 A bundle records `ShaderAbi.Version` (2: it added the Metal code and the bindless parameter block), which is bumped when the shared pipeline layout below changes, on any backend, and an engine refuses a bundle of another version with "import it again"

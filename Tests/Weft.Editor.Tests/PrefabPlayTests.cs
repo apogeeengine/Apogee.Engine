@@ -27,7 +27,7 @@ public sealed class PrefabPlayTests
         rig.Write("game/models/box.glb", "not a real model");               // only the paths matter here
         rig.Write("game/models/ball.glb", "not a real model");
         rig.Write("game/models/other.glb", "not a real model");
-        rig.Write("game/prefabs/lamp.aprefab", $"""
+        rig.Write("game/prefabs/lamp.wprf", $"""
             <?xml version="1.0" encoding="utf-8"?>
             <Prefab version="1" uid="{uid}" nextId="3">
               <Entity id="1" name="Lamp">
@@ -40,10 +40,10 @@ public sealed class PrefabPlayTests
               </Entity>
             </Prefab>
             """);
-        rig.Write("game/scenes/yard.ascene", $"""
+        rig.Write("game/scenes/yard.wscn", $"""
             <?xml version="1.0" encoding="utf-8"?>
             <Scene version="2">
-              <Entity id="1" name="Lamp" prefab="res://prefabs/lamp.aprefab|{uid}">
+              <Entity id="1" name="Lamp" prefab="res://prefabs/lamp.wprf|{uid}">
                 <Transform Position="3 0 0"/>
                 <ModelRenderer Model="{BallPath}"/>
                 <Override entity="2"><Light Intensity="40"/></Override>
@@ -53,12 +53,12 @@ public sealed class PrefabPlayTests
 
         // A model that the scene does not use takes the first number, so that the numbers of the models of the scene are not the ones a fresh session gives them.
         uint other = project.Session.Models.Load("res://models/other.glb");
-        project.OpenScene("res://scenes/yard.ascene");
+        project.OpenScene("res://scenes/yard.wscn");
         Entity first = rig.World.Lookup("Lamp");
         Entity firstBulb = rig.World.Children(first).Single();
 
         // A second instance, made in the editor as a step of its history, with a bulb that was edited and not saved.
-        project.History.Execute(PrefabCommands.Instantiate(project.WorldRef, "res://prefabs/lamp.aprefab"));
+        project.History.Execute(PrefabCommands.Instantiate(project.WorldRef, "res://prefabs/lamp.wprf"));
         Entity second = rig.World.Lookup("Lamp 2");
         Entity secondBulb = rig.World.Children(second).Single();
         Light dim = rig.World.Get<Light>(secondBulb);
@@ -95,8 +95,8 @@ public sealed class PrefabPlayTests
         Assert.Equal(first, rig.World.Lookup("Lamp"));
         Assert.Equal(BallPath, project.Session.Models.PathOf(rig.World.Get<ModelRenderer>(first).Model));
         Assert.Equal(BoxPath, project.Session.Models.PathOf(rig.World.Get<ModelRenderer>(second).Model));
-        Assert.Equal($"res://prefabs/lamp.aprefab|{uid}", rig.World.PrefabOf(first));
-        Assert.Equal($"res://prefabs/lamp.aprefab|{uid}", rig.World.PrefabOf(second));
+        Assert.Equal($"res://prefabs/lamp.wprf|{uid}", rig.World.PrefabOf(first));
+        Assert.Equal($"res://prefabs/lamp.wprf|{uid}", rig.World.PrefabOf(second));
         Assert.Equal(40f, rig.World.Get<Light>(firstBulb).Intensity);
         Assert.Equal(7f, rig.World.Get<Light>(secondBulb).Intensity);
         Assert.Equal(first, project.Selection);
@@ -110,6 +110,6 @@ public sealed class PrefabPlayTests
         Assert.True(rig.World.IsAlive(first));
         project.History.Redo();
         Assert.Equal(1, rig.World.Roots().Count(r => rig.World.GetName(r) == "Lamp 2"));
-        Assert.True(File.Exists(Path.Combine(rig.Root, "game", "prefabs", "lamp.aprefab")));   // Play does not touch the files
+        Assert.True(File.Exists(Path.Combine(rig.Root, "game", "prefabs", "lamp.wprf")));   // Play does not touch the files
     }
 }

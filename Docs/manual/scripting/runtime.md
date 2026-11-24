@@ -4,7 +4,7 @@
 `Bin/publish/runtime`). Its command line is parsed by hand so that it stays AOT-safe.
 
 ```text
-Weft.Runtime                                      run the game next to the program (its game.xml and data/*.pack); see below
+Weft.Runtime                                      run the game next to the program (its game.wgam and data/*.wpak); see below
 Weft.Runtime --smoke                              load the native libraries and run the smoke tests
 Weft.Runtime --luau-test <folder> [--luau-filter <text>]
 Weft.Runtime --run <file.luau> [--frames <n>]     a script with a `world` global, in a window (until it is closed, or n frames)
@@ -22,14 +22,14 @@ layer reported errors.
 
 ## Running a shipped game
 
-With no command, the runtime is a game: it looks for a `game.xml` in the folder of its own executable (and, for a macOS app, in `../Resources`, where `Name.app/Contents/MacOS/<exe>` keeps it
-beside `data/`) and runs that game. The game is its packs: only `data/*.pack` are mounted as `res://`, so loose files next to the executable are not part of it and scripts cannot read them
-(`--game <folder>`, the development run, still mounts the folder). The window, its title and its size come from `game.xml` (`--size` wins), and the packs' key from the executable, where an [export](../tools/export.md#the-pack-key) wrote it, else from the environment (`WEFT_PACK_KEY`).
+With no command, the runtime is a game: it looks for a `game.wgam` in the folder of its own executable (and, for a macOS app, in `../Resources`, where `Name.app/Contents/MacOS/<exe>` keeps it
+beside `data/`) and runs that game. The game is its packs: only `data/*.wpak` are mounted as `res://`, so loose files next to the executable are not part of it and scripts cannot read them
+(`--game <folder>`, the development run, still mounts the folder). The window, its title and its size come from `game.wgam` (`--size` wins), and the packs' key from the executable, where an [export](../tools/export.md#the-pack-key) wrote it, else from the environment (`WEFT_PACK_KEY`).
 `--user`, `--headless`, `--frames`, `--size`, `--gpu`, `--screenshot` and `--overlay` work as they do for `--game`; `--watch` does not (there are no loose files to watch).
 See [The game manifest](../content/game-manifest.md#how-the-runtime-finds-it).
 
 The tests that go with it are `--smoke`, which proves under NativeAOT that every native library loads through its bindings and that the generated registry and the scripting layer work (CI runs it
-on the published runtime). Without a `game.xml` next to the program and without a command, the runtime prints `No game.xml next to the program` and exits with 1.
+on the published runtime). Without a `game.wgam` next to the program and without a command, the runtime prints `No game.wgam next to the program` and exits with 1.
 
 ## `Weft.Host`: what runs a game
 

@@ -88,7 +88,7 @@ public class PackTests
         using var folder = new TempFolder();
         byte[] text = Text(10_000);
         byte[] noise = Noise(5_000);
-        string path = Write(folder, "game.pack", null, ("readme.txt", text), ("textures/noise.bin", noise), ("textures/sub/tiny.txt", "hi"u8.ToArray()), ("empty.dat", []));
+        string path = Write(folder, "game.wpak", null, ("readme.txt", text), ("textures/noise.bin", noise), ("textures/sub/tiny.txt", "hi"u8.ToArray()), ("empty.dat", []));
 
         using var pack = PackSource.Open(path);
 
@@ -110,7 +110,7 @@ public class PackTests
         using var folder = new TempFolder();
         byte[] text = Text(200_000);
         byte[] noise = Noise(50_000);
-        string path = Write(folder, "game.pack", null, ("text.txt", text), ("noise.bin", noise));
+        string path = Write(folder, "game.wpak", null, ("text.txt", text), ("noise.bin", noise));
 
         long size = new FileInfo(path).Length;
 
@@ -122,15 +122,15 @@ public class PackTests
     public void ThePackMountsInTheFileSystemLikeAFolder()
     {
         using var folder = new TempFolder();
-        string path = Write(folder, "game.pack", null, ("packages/core/mod.xml", "<Mod/>"u8.ToArray()), ("packages/core/data/a.xml", Text(500)));
+        string path = Write(folder, "game.wpak", null, ("packages/core/mod.wmod", "<Mod/>"u8.ToArray()), ("packages/core/data/a.xml", Text(500)));
         using var pack = PackSource.Open(path);
         var files = new VirtualFileSystem();
         files.Mount("res://", pack);
 
-        Assert.Equal("<Mod/>", files.ReadAllText("res://packages/core/mod.xml"));
+        Assert.Equal("<Mod/>", files.ReadAllText("res://packages/core/mod.wmod"));
         Assert.Equal(["res://packages/core"], files.EnumerateDirectories("res://packages"));
-        Assert.Equal(["res://packages/core/data/a.xml", "res://packages/core/mod.xml"], files.EnumerateFiles("res://", recursive: true));
-        Assert.Null(files.TryGetPhysicalPath("res://packages/core/mod.xml"));
+        Assert.Equal(["res://packages/core/data/a.xml", "res://packages/core/mod.wmod"], files.EnumerateFiles("res://", recursive: true));
+        Assert.Null(files.TryGetPhysicalPath("res://packages/core/mod.wmod"));
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class PackTests
     {
         using var folder = new TempFolder();
         byte[] noise = Noise(8_000, 3);
-        string path = Write(folder, "game.pack", null, ("noise.bin", noise), ("text.txt", Text(8_000)));
+        string path = Write(folder, "game.wpak", null, ("noise.bin", noise), ("text.txt", Text(8_000)));
         using var pack = PackSource.Open(path);
 
         using (Stream stream = pack.OpenRead("noise.bin"))
@@ -163,15 +163,15 @@ public class PackTests
         RequireAes();
         using var folder = new TempFolder();
         byte[] secret = Noise(4_000, 9);
-        string plain = Write(folder, "plain.pack", null, ("secret.bin", secret), ("readme.txt", Text(3_000)));
-        string sealedPack = Write(folder, "sealed.pack", new PackWriterOptions { Key = s_key }, ("secret.bin", secret), ("readme.txt", Text(3_000)));
+        string plain = Write(folder, "plain.wpak", null, ("secret.bin", secret), ("readme.txt", Text(3_000)));
+        string sealedPack = Write(folder, "sealed.wpak", new PackWriterOptions { Key = s_key }, ("secret.bin", secret), ("readme.txt", Text(3_000)));
 
         byte[] plainBytes = File.ReadAllBytes(plain);
         byte[] sealedBytes = File.ReadAllBytes(sealedPack);
 
-        Assert.Equal("APGK", Encoding.ASCII.GetString(plainBytes, 0, 4));
-        Assert.NotEqual("APGK", Encoding.ASCII.GetString(sealedBytes, 0, 4));
-        Assert.NotEqual(sealedBytes[..4], File.ReadAllBytes(Write(folder, "other.pack", new PackWriterOptions { Key = s_otherKey }, ("a", [1])))[..4]);
+        Assert.Equal("WPAK", Encoding.ASCII.GetString(plainBytes, 0, 4));
+        Assert.NotEqual("WPAK", Encoding.ASCII.GetString(sealedBytes, 0, 4));
+        Assert.NotEqual(sealedBytes[..4], File.ReadAllBytes(Write(folder, "other.wpak", new PackWriterOptions { Key = s_otherKey }, ("a", [1])))[..4]);
         Assert.True(plainBytes.AsSpan().IndexOf(secret) >= 0);
         Assert.True(sealedBytes.AsSpan().IndexOf(secret) < 0);
         Assert.True(sealedBytes.AsSpan().IndexOf(secret.AsSpan(0, 64)) < 0);
@@ -188,9 +188,9 @@ public class PackTests
         RequireAes();
         using var folder = new TempFolder();
         byte[] data = Noise(2_000, 4);
-        string plain = Write(folder, "plain.pack", null, ("a.bin", data));
-        string one = Write(folder, "one.pack", new PackWriterOptions { Key = s_key }, ("a.bin", data));
-        string two = Write(folder, "two.pack", new PackWriterOptions { Key = s_key }, ("a.bin", data));
+        string plain = Write(folder, "plain.wpak", null, ("a.bin", data));
+        string one = Write(folder, "one.wpak", new PackWriterOptions { Key = s_key }, ("a.bin", data));
+        string two = Write(folder, "two.wpak", new PackWriterOptions { Key = s_key }, ("a.bin", data));
 
         using (var pack = PackSource.Open(plain, s_key))
         {
@@ -208,7 +208,7 @@ public class PackTests
     {
         RequireAes();
         using var folder = new TempFolder();
-        string path = Write(folder, "sealed.pack", new PackWriterOptions { Key = s_key }, ("a.bin", Noise(100)));
+        string path = Write(folder, "sealed.wpak", new PackWriterOptions { Key = s_key }, ("a.bin", Noise(100)));
 
         Assert.Contains(PackKey.EnvironmentVariable, Assert.Throws<IOException>(() => PackSource.Open(path)).Message);
         Assert.Contains("the key is wrong", Assert.Throws<IOException>(() => PackSource.Open(path, s_otherKey)).Message);
@@ -220,7 +220,7 @@ public class PackTests
     {
         RequireAes();
         using var folder = new TempFolder();
-        string path = Write(folder, "sealed.pack", new PackWriterOptions { Key = s_key }, ("a.bin", Noise(1_000, 5)), ("b.bin", Noise(1_000, 6)));
+        string path = Write(folder, "sealed.wpak", new PackWriterOptions { Key = s_key }, ("a.bin", Noise(1_000, 5)), ("b.bin", Noise(1_000, 6)));
         byte[] bytes = File.ReadAllBytes(path);
         byte[] changed = [.. bytes];
         changed[200] ^= 0x01; // inside the first file's data
@@ -242,7 +242,7 @@ public class PackTests
     public void ChangedBytesInAPlainPackAreFoundByTheirChecksumsAndHashes()
     {
         using var folder = new TempFolder();
-        string path = Write(folder, "game.pack", null, ("noise.bin", Noise(1_000, 7)), ("text.txt", Text(5_000)));
+        string path = Write(folder, "game.wpak", null, ("noise.bin", Noise(1_000, 7)), ("text.txt", Text(5_000)));
         byte[] bytes = File.ReadAllBytes(path);
 
         byte[] changed = [.. bytes];
@@ -269,7 +269,7 @@ public class PackTests
     public void ACutOffOrForeignFileIsNotAPack()
     {
         using var folder = new TempFolder();
-        string path = Write(folder, "game.pack", null, ("a.bin", Noise(10_000)));
+        string path = Write(folder, "game.wpak", null, ("a.bin", Noise(10_000)));
         byte[] bytes = File.ReadAllBytes(path);
 
         File.WriteAllBytes(path, bytes[..(bytes.Length - 20)]);
@@ -278,7 +278,7 @@ public class PackTests
         Assert.Contains("is not a pack", Assert.Throws<IOException>(() => PackSource.Open(path)).Message);
         File.WriteAllBytes(path, Noise(500));
         Assert.Throws<IOException>(() => PackSource.Open(path));
-        Assert.Throws<IOException>(() => PackSource.Open(Path.Combine(folder.Root, "missing.pack")));
+        Assert.Throws<IOException>(() => PackSource.Open(Path.Combine(folder.Root, "missing.wpak")));
     }
 
     [Fact]
@@ -286,7 +286,7 @@ public class PackTests
     {
         using var folder = new TempFolder();
         var files = Enumerable.Range(0, 12).Select(i => ($"data/f{i:D2}.bin", Noise(8_000, 100 + i))).ToArray();
-        string path = Path.Combine(folder.Root, "game.pack");
+        string path = Path.Combine(folder.Root, "game.wpak");
         using (var writer = new PackWriter(path, new PackWriterOptions { SplitBytes = 30_000 }))
         {
             foreach ((string file, byte[] data) in files)
@@ -297,7 +297,7 @@ public class PackTests
             Assert.True(writer.Finish().Count >= 3);
         }
 
-        Assert.True(File.Exists(Path.Combine(folder.Root, "game_001.pack")));
+        Assert.True(File.Exists(Path.Combine(folder.Root, "game_001.wpak")));
         using (var pack = PackSource.Open(path))
         {
             Assert.True(pack.PartCount >= 3);
@@ -308,8 +308,8 @@ public class PackTests
             }
         }
 
-        int last = Directory.EnumerateFiles(folder.Root, "game_*.pack").Count();
-        File.Delete(Path.Combine(folder.Root, $"game_{last:D3}.pack"));
+        int last = Directory.EnumerateFiles(folder.Root, "game_*.wpak").Count();
+        File.Delete(Path.Combine(folder.Root, $"game_{last:D3}.wpak"));
         Assert.Contains($"part {last} of the pack is missing", Assert.Throws<IOException>(() => PackSource.Open(path)).Message);
     }
 
@@ -318,7 +318,7 @@ public class PackTests
     {
         using var folder = new TempFolder();
         byte[] big = Noise(50_000, 11);
-        string path = Path.Combine(folder.Root, "game.pack");
+        string path = Path.Combine(folder.Root, "game.wpak");
         using (var writer = new PackWriter(path, new PackWriterOptions { SplitBytes = 10_000 }))
         {
             writer.Add("small1", Noise(100, 1));
@@ -337,7 +337,7 @@ public class PackTests
     {
         RequireAes();
         using var folder = new TempFolder();
-        string path = Path.Combine(folder.Root, "game.pack");
+        string path = Path.Combine(folder.Root, "game.wpak");
         using (var writer = new PackWriter(path, new PackWriterOptions { SplitBytes = 12_000, Key = s_key }))
         {
             for (int i = 0; i < 6; i++)
@@ -357,8 +357,8 @@ public class PackTests
     public void APatchPackReplacesAddsAndRemovesFilesOfThePacksBelowIt()
     {
         using var folder = new TempFolder();
-        string basePath = Write(folder, "game.pack", null, ("a.txt", "base a"u8.ToArray()), ("b.txt", "base b"u8.ToArray()), ("dir/c.txt", "base c"u8.ToArray()), ("dir/d.txt", "base d"u8.ToArray()));
-        string patchPath = Path.Combine(folder.Root, "patch.pack");
+        string basePath = Write(folder, "game.wpak", null, ("a.txt", "base a"u8.ToArray()), ("b.txt", "base b"u8.ToArray()), ("dir/c.txt", "base c"u8.ToArray()), ("dir/d.txt", "base d"u8.ToArray()));
+        string patchPath = Path.Combine(folder.Root, "patch.wpak");
         using (var writer = new PackWriter(patchPath))
         {
             writer.Add("a.txt", "patched a"u8.ToArray());
@@ -389,7 +389,7 @@ public class PackTests
     public void AnEmptyPackIsAPack()
     {
         using var folder = new TempFolder();
-        string path = Path.Combine(folder.Root, "empty.pack");
+        string path = Path.Combine(folder.Root, "empty.wpak");
         using (var writer = new PackWriter(path))
         {
             Assert.Single(writer.Finish());
@@ -403,7 +403,7 @@ public class PackTests
     public void ThePathsOfAPackAreCheckedLikeAnyVirtualPath()
     {
         using var folder = new TempFolder();
-        using var writer = new PackWriter(Path.Combine(folder.Root, "x.pack"));
+        using var writer = new PackWriter(Path.Combine(folder.Root, "x.wpak"));
 
         writer.Add("ok.txt", [1]);
 
@@ -415,7 +415,7 @@ public class PackTests
         Assert.Throws<ArgumentException>(() => writer.Add("", [1]));
         writer.Finish();
         Assert.Throws<InvalidOperationException>(() => writer.Add("late.txt", [1]));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PackWriter("y.pack", new PackWriterOptions { CompressionLevel = 0 }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PackWriter("y.wpak", new PackWriterOptions { CompressionLevel = 0 }));
     }
 
     [Fact]
@@ -423,7 +423,7 @@ public class PackTests
     {
         using var folder = new TempFolder();
         var files = Enumerable.Range(0, 30).Select(i => ($"f{i}", i % 2 == 0 ? Text(5_000 + i) : Noise(3_000 + i, i))).ToArray();
-        string path = Write(folder, "game.pack", null, files);
+        string path = Write(folder, "game.wpak", null, files);
         using var pack = PackSource.Open(path);
 
         System.Threading.Tasks.Parallel.For(0, 200, i =>

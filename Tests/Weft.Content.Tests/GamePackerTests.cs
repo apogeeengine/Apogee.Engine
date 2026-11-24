@@ -60,12 +60,12 @@ public class GamePackerTests
         public void Populate()
         {
             Write("models/a.dat", "one");
-            Write("scenes/start.ascene", Scene);
+            Write("scenes/start.wscn", Scene);
             Write("packages/core/main.luau", "print('hi')");
             Write(".git/config", "left out");
         }
 
-        public PackRequest Request(string name = "game.pack", bool cooked = false) => new() { Folder = Root, Output = Out(name), Cooked = cooked };
+        public PackRequest Request(string name = "game.wpak", bool cooked = false) => new() { Folder = Root, Output = Out(name), Cooked = cooked };
 
         public void Dispose() => _folder.Dispose();
     }
@@ -88,17 +88,17 @@ public class GamePackerTests
 
         PackReport report = GamePacker.Pack(game.Request());
 
-        Assert.Equal(game.Out("game.pack"), Assert.Single(report.Parts));
+        Assert.Equal(game.Out("game.wpak"), Assert.Single(report.Parts));
         Assert.Equal(0, report.CookedDocuments);
         Assert.Equal((report.Added, 0, 0), (Listed(PackSource.Open(report.Parts[0])).Count, report.Unchanged, report.Removed));
         using var pack = PackSource.Open(report.Parts[0]);
         List<string> paths = Listed(pack);
         Assert.Contains("models/a.dat", paths);
-        Assert.Contains("models/a.dat.import.xml", paths);
+        Assert.Contains("models/a.dat.wimp", paths);
         Assert.Contains("imported/index.xml", paths);
         Assert.DoesNotContain(paths, p => p.StartsWith(".git", StringComparison.Ordinal)); // names that start with a dot are left out
         Assert.Equal(paths, GamePacker.PathsOf(game.Request()));
-        Assert.Equal(File.ReadAllText(Path.Combine(game.Root, "scenes", "start.ascene")), Encoding.UTF8.GetString(Mount(pack).ReadAllBytes("res://scenes/start.ascene"))); // plain: the text as it is
+        Assert.Equal(File.ReadAllText(Path.Combine(game.Root, "scenes", "start.wscn")), Encoding.UTF8.GetString(Mount(pack).ReadAllBytes("res://scenes/start.wscn"))); // plain: the text as it is
         Assert.True(report.PackedBytes > 0 && report.RawBytes > 0);
     }
 
@@ -115,7 +115,7 @@ public class GamePackerTests
         using var pack = PackSource.Open(report.Parts[0]);
         List<string> paths = Listed(pack);
         Assert.DoesNotContain("models/a.dat", paths);
-        Assert.DoesNotContain("models/a.dat.import.xml", paths);
+        Assert.DoesNotContain("models/a.dat.wimp", paths);
         Assert.Contains(entry.Artifact, paths);
         Assert.Contains("imported/index.xml", paths);
         Assert.Contains("packages/core/main.luau", paths);
@@ -128,7 +128,7 @@ public class GamePackerTests
     {
         using var game = new Game();
         game.Populate();
-        game.Write("dev_mods/tool/scenes/mine.ascene", Scene);
+        game.Write("dev_mods/tool/scenes/mine.wscn", Scene);
         game.Write("notes.xml", "<Notes/>");
         game.Import();
 
@@ -136,10 +136,10 @@ public class GamePackerTests
 
         using var pack = PackSource.Open(report.Parts[0]);
         VirtualFileSystem files = Mount(pack);
-        Assert.True(XmlBinary.IsBinary(files.ReadAllBytes("res://scenes/start.ascene")));
+        Assert.True(XmlBinary.IsBinary(files.ReadAllBytes("res://scenes/start.wscn")));
         Assert.True(XmlBinary.IsBinary(files.ReadAllBytes("res://imported/assets.xml")));
         Assert.Equal(2, report.CookedDocuments);
-        Assert.Equal(File.ReadAllText(Path.Combine(game.Root, "dev_mods", "tool", "scenes", "mine.ascene")), Encoding.UTF8.GetString(files.ReadAllBytes("res://dev_mods/tool/scenes/mine.ascene"))); // dev mods are never cooked
+        Assert.Equal(File.ReadAllText(Path.Combine(game.Root, "dev_mods", "tool", "scenes", "mine.wscn")), Encoding.UTF8.GetString(files.ReadAllBytes("res://dev_mods/tool/scenes/mine.wscn"))); // dev mods are never cooked
         Assert.Equal("<Notes/>", files.ReadAllText("res://notes.xml")); // other XML is left as it is
         Assert.StartsWith("<Imports", files.ReadAllText("res://imported/index.xml"), StringComparison.Ordinal); // the index stays text
     }
@@ -149,16 +149,16 @@ public class GamePackerTests
     {
         using var game = new Game();
         game.Populate();
-        game.Write("packages/core/mod.xml", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/><Content path=\"data\"/><Content path=\"more/\"/><Schema path=\"schemas\"/></Mod>");
+        game.Write("packages/core/mod.wmod", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/><Content path=\"data\"/><Content path=\"more/\"/><Schema path=\"schemas\"/></Mod>");
         game.Write("packages/core/data/crates.xml", "<Crates>\n  <Crate id=\"a\"/>\n</Crates>");
         game.Write("packages/core/data/deep/barrel.xml", "<Barrel id=\"b\"/>");
         game.Write("packages/core/more/chest.xml", "<Chest id=\"c\"/>");
         game.Write("packages/core/data/readme.txt", "not XML");
         game.Write("packages/core/schemas/crate.xsd", "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"/>");
         game.Write("packages/core/other/loose.xml", "<Loose/>"); // not in a content folder
-        game.Write("packages/broken/mod.xml", "<Mod>"); // a manifest that does not read: its package is packed as it is
+        game.Write("packages/broken/mod.wmod", "<Mod>"); // a manifest that does not read: its package is packed as it is
         game.Write("packages/broken/data/crate.xml", "<Crate id=\"x\"/>");
-        game.Write("dev_mods/mine/mod.xml", "<Mod id=\"mine\" version=\"1.0.0\"><Content path=\"data\"/></Mod>");
+        game.Write("dev_mods/mine/mod.wmod", "<Mod id=\"mine\" version=\"1.0.0\"><Content path=\"data\"/></Mod>");
         game.Write("dev_mods/mine/data/crate.xml", "<Crate id=\"m\"/>");
         game.Import();
 
@@ -171,7 +171,7 @@ public class GamePackerTests
             Assert.True(XmlBinary.IsBinary(files.ReadAllBytes("res://" + cooked)), cooked);
         }
 
-        foreach (string text in new[] { "packages/core/mod.xml", "packages/core/data/readme.txt", "packages/core/schemas/crate.xsd", "packages/core/other/loose.xml", "packages/broken/mod.xml", "packages/broken/data/crate.xml", "dev_mods/mine/mod.xml", "dev_mods/mine/data/crate.xml" })
+        foreach (string text in new[] { "packages/core/mod.wmod", "packages/core/data/readme.txt", "packages/core/schemas/crate.xsd", "packages/core/other/loose.xml", "packages/broken/mod.wmod", "packages/broken/data/crate.xml", "dev_mods/mine/mod.wmod", "dev_mods/mine/data/crate.xml" })
         {
             Assert.Equal(File.ReadAllText(Path.Combine(game.Root, text)), Encoding.UTF8.GetString(files.ReadAllBytes("res://" + text)));
         }
@@ -193,16 +193,16 @@ public class GamePackerTests
         using var game = new Game();
         game.Populate();
         game.Import(); // gives the scene a uid
-        string source = File.ReadAllText(Path.Combine(game.Root, "scenes", "start.ascene"));
+        string source = File.ReadAllText(Path.Combine(game.Root, "scenes", "start.wscn"));
 
         PackReport report = GamePacker.Pack(game.Request(cooked: true));
 
         using var pack = PackSource.Open(report.Parts[0]);
-        XmlNode cooked = XmlFile.Read(Mount(pack), "res://scenes/start.ascene");
+        XmlNode cooked = XmlFile.Read(Mount(pack), "res://scenes/start.wscn");
         XmlNode text = XmlNode.Parse(source);
         Assert.Equal(text.ToXml(), cooked.ToXml());
         AssertSame(text, cooked);
-        Assert.NotEqual(AssetUid.None, AuthoredAssets.ReadUid(Mount(pack).ReadAllBytes("res://scenes/start.ascene"))); // the uid is still in the root
+        Assert.NotEqual(AssetUid.None, AuthoredAssets.ReadUid(Mount(pack).ReadAllBytes("res://scenes/start.wscn"))); // the uid is still in the root
     }
 
     private static void AssertSame(XmlNode expected, XmlNode actual)
@@ -224,18 +224,18 @@ public class GamePackerTests
         using var game = new Game();
         game.Populate();
         game.Import();
-        AssetUid assetUid = ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(game.Root, "models", "a.dat.import.xml")));
-        AssetUid sceneUid = AuthoredAssets.ReadUid(File.ReadAllBytes(Path.Combine(game.Root, "scenes", "start.ascene")));
+        AssetUid assetUid = ImportSidecar.ReadUid(File.ReadAllText(Path.Combine(game.Root, "models", "a.dat.wimp")));
+        AssetUid sceneUid = AuthoredAssets.ReadUid(File.ReadAllBytes(Path.Combine(game.Root, "scenes", "start.wscn")));
         Assert.False(assetUid.IsNone || sceneUid.IsNone);
 
         PackReport report = GamePacker.Pack(game.Request(cooked: true));
 
         using var pack = PackSource.Open(report.Parts[0]);
         VirtualFileSystem files = Mount(pack);
-        Assert.False(files.FileExists("res://models/a.dat.import.xml"));
+        Assert.False(files.FileExists("res://models/a.dat.wimp"));
         var database = new AssetDatabase(files);
         Assert.Equal("res://models/a.dat", database.PathOf(assetUid)); // from the cooked list: the sidecar and the source are not there
-        Assert.Equal("res://scenes/start.ascene", database.PathOf(sceneUid));
+        Assert.Equal("res://scenes/start.wscn", database.PathOf(sceneUid));
         Assert.Equal("res://models/a.dat", database.ResolvePath(assetUid.ToString()));
     }
 
@@ -265,18 +265,18 @@ public class GamePackerTests
     {
         using var game = new Game();
         game.Populate();
-        game.Write("dev_mods/tool/mod.xml", "<Mod/>");
+        game.Write("dev_mods/tool/mod.wmod", "<Mod/>");
         game.Write("dev_modsx/keep.txt", "kept: the prefix needs its slash to stop at the folder");
-        game.Write("data/old.pack", "x");
-        game.Write("game.xml", "<Game/>");
+        game.Write("data/old.wpak", "x");
+        game.Write("game.wgam", "<Game/>");
         game.Import();
-        PackRequest request = game.Request() with { Exclude = ["dev_mods/", "data\\", "game.xml"] };
+        PackRequest request = game.Request() with { Exclude = ["dev_mods/", "data\\", "game.wgam"] };
 
         PackReport report = GamePacker.Pack(request);
 
         using var pack = PackSource.Open(report.Parts[0]);
         List<string> paths = Listed(pack);
-        Assert.DoesNotContain(paths, p => p.StartsWith("dev_mods/", StringComparison.Ordinal) || p.StartsWith("data/", StringComparison.Ordinal) || p == "game.xml");
+        Assert.DoesNotContain(paths, p => p.StartsWith("dev_mods/", StringComparison.Ordinal) || p.StartsWith("data/", StringComparison.Ordinal) || p == "game.wgam");
         Assert.Contains("dev_modsx/keep.txt", paths);
         Assert.Equal(paths, GamePacker.PathsOf(request));
         Assert.Throws<ArgumentException>(() => GamePacker.PathsOf(game.Request() with { Exclude = [""] }));
@@ -291,7 +291,7 @@ public class GamePackerTests
         ContentException error = Assert.Throws<ContentException>(() => GamePacker.Pack(game.Request(cooked: true)));
         Assert.Contains("nothing imported", error.Message, StringComparison.Ordinal);
         Assert.Throws<ContentException>(() => GamePacker.PathsOf(game.Request(cooked: true)));
-        Assert.False(File.Exists(game.Out("game.pack")));
+        Assert.False(File.Exists(game.Out("game.wpak")));
         Assert.Throws<ContentException>(() => GamePacker.Pack(game.Request() with { Folder = Path.Combine(game.Root, "nope") }));
     }
 
@@ -300,16 +300,16 @@ public class GamePackerTests
     {
         using var game = new Game();
         game.Write("packages/core/main.luau", "print('hi')");
-        game.Write("scenes/start.ascene", Scene);
+        game.Write("scenes/start.wscn", Scene);
         PackRequest request = game.Request(cooked: true) with { AllowNothingImported = true };
 
         PackReport report = GamePacker.Pack(request);
 
         using var pack = PackSource.Open(report.Parts[0]);
-        Assert.Equal(["packages/core/main.luau", "scenes/start.ascene"], Listed(pack));
-        Assert.True(XmlBinary.IsBinary(Mount(pack).ReadAllBytes("res://scenes/start.ascene"))); // the scene is cooked all the same
+        Assert.Equal(["packages/core/main.luau", "scenes/start.wscn"], Listed(pack));
+        Assert.True(XmlBinary.IsBinary(Mount(pack).ReadAllBytes("res://scenes/start.wscn"))); // the scene is cooked all the same
         Assert.Equal(1, report.CookedDocuments);
-        Assert.Equal(["packages/core/main.luau", "scenes/start.ascene"], GamePacker.PathsOf(request));
+        Assert.Equal(["packages/core/main.luau", "scenes/start.wscn"], GamePacker.PathsOf(request));
     }
 
     [Fact]
@@ -318,12 +318,12 @@ public class GamePackerTests
         using var game = new Game();
         game.Populate();
         game.Import();
-        game.Write("scenes/broken.ascene", "<Scene version=\"1\"><Entity id=\"1\">");
+        game.Write("scenes/broken.wscn", "<Scene version=\"1\"><Entity id=\"1\">");
 
         ContentException error = Assert.ThrowsAny<ContentException>(() => GamePacker.Pack(game.Request(cooked: true)));
-        Assert.Contains("broken.ascene", error.Message, StringComparison.Ordinal);
+        Assert.Contains("broken.wscn", error.Message, StringComparison.Ordinal);
         Assert.Equal(["imported/assets.xml", "imported/index.xml"], GamePacker.PathsOf(game.Request(cooked: true)).Where(p => p.StartsWith("imported/", StringComparison.Ordinal) && !p.EndsWith(".up", StringComparison.Ordinal)).ToArray()); // PathsOf does not read documents
-        Assert.Contains("scenes/broken.ascene", GamePacker.PathsOf(game.Request(cooked: true)));
+        Assert.Contains("scenes/broken.wscn", GamePacker.PathsOf(game.Request(cooked: true)));
     }
 
     [Fact]
@@ -346,22 +346,22 @@ public class GamePackerTests
         game.Populate();
         game.Write("old.txt", "to be removed");
         game.Import();
-        PackReport first = GamePacker.Pack(game.Request("game.pack", cooked: true));
+        PackReport first = GamePacker.Pack(game.Request("game.wpak", cooked: true));
 
         // Nothing changed: the cooked documents are the same bytes, so the patch is empty.
-        PackReport same = GamePacker.Pack(game.Request("same.pack", cooked: true) with { Bases = [first.Parts[0]] });
+        PackReport same = GamePacker.Pack(game.Request("same.wpak", cooked: true) with { Bases = [first.Parts[0]] });
         Assert.Equal((0, first.Added, 0, 0), (same.Added, same.Unchanged, same.Removed, same.CookedDocuments));
 
-        game.Write("scenes/start.ascene", Scene.Replace("ground", "floor", StringComparison.Ordinal));
+        game.Write("scenes/start.wscn", Scene.Replace("ground", "floor", StringComparison.Ordinal));
         File.Delete(Path.Combine(game.Root, "old.txt"));
         game.Import(); // the changed scene keeps no uid of its own, so it gets a new one
-        PackReport patch = GamePacker.Pack(game.Request("patch.pack", cooked: true) with { Bases = [first.Parts[0]] });
+        PackReport patch = GamePacker.Pack(game.Request("patch.wpak", cooked: true) with { Bases = [first.Parts[0]] });
 
         Assert.Equal((1, 1), (patch.Removed, patch.CookedDocuments)); // the scene (it keeps its uid: the list remembered it)
         using var pack = PackSource.Open(patch.Parts[0]);
-        Assert.Equal(["scenes/start.ascene"], Listed(pack).Where(p => p != "old.txt"));
+        Assert.Equal(["scenes/start.wscn"], Listed(pack).Where(p => p != "old.txt"));
         Assert.Equal(FileKind.Removed, ((IFileSource)pack).Kind("old.txt"));
-        Assert.True(XmlBinary.IsBinary(Mount(pack).ReadAllBytes("res://scenes/start.ascene")));
+        Assert.True(XmlBinary.IsBinary(Mount(pack).ReadAllBytes("res://scenes/start.wscn")));
     }
 
     [Fact]
@@ -371,8 +371,8 @@ public class GamePackerTests
         game.Populate();
         game.Import();
 
-        PackReport a = GamePacker.Pack(game.Request("a.pack", cooked: true));
-        PackReport b = GamePacker.Pack(game.Request("b.pack", cooked: true));
+        PackReport a = GamePacker.Pack(game.Request("a.wpak", cooked: true));
+        PackReport b = GamePacker.Pack(game.Request("b.wpak", cooked: true));
         using (PackSource packA = PackSource.Open(a.Parts[0]))
         using (PackSource packB = PackSource.Open(b.Parts[0])) // deterministic: cooking adds nothing random
         {
@@ -386,10 +386,10 @@ public class GamePackerTests
 
 
         PackKey key = PackKey.Parse("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-        PackReport sealedPack = GamePacker.Pack(game.Request("sealed.pack", cooked: true) with { Key = key, CompressionLevel = 3, SplitBytes = 1024 });
+        PackReport sealedPack = GamePacker.Pack(game.Request("sealed.wpak", cooked: true) with { Key = key, CompressionLevel = 3, SplitBytes = 1024 });
         using var pack = PackSource.Open(sealedPack.Parts[0], key);
         Assert.True(pack.IsEncrypted);
-        Assert.True(XmlBinary.IsBinary(Mount(pack).ReadAllBytes("res://scenes/start.ascene")));
+        Assert.True(XmlBinary.IsBinary(Mount(pack).ReadAllBytes("res://scenes/start.wscn")));
         Assert.True(sealedPack.Parts.Count > 1);
     }
 }

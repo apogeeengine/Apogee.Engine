@@ -7,7 +7,7 @@ namespace Weft.Runtime;
 
 internal enum RuntimeCommand
 {
-    /// <summary>No command: run the game next to the program (its <c>game.xml</c> and <c>data/*.pack</c>).</summary>
+    /// <summary>No command: run the game next to the program (its <c>game.wgam</c> and <c>data/*.wpak</c>).</summary>
     Launch,
 
     /// <summary><c>--smoke</c>: load every native library and run the smoke tests.</summary>
@@ -51,7 +51,7 @@ internal sealed class RuntimeOptions
     public const string Usage = """
         Usage: Weft.Runtime [command]
 
-          (no command)                         run the game next to the program: the game.xml and data/*.pack beside it (in ../Resources of a macOS app); other arguments it does not know are ignored
+          (no command)                         run the game next to the program: the game.wgam and data/*.wpak beside it (in ../Resources of a macOS app); other arguments it does not know are ignored
                                                it takes --user, --headless, --frames, --size, --gpu, --screenshot and --overlay as --game does
           --smoke                              load the native libraries and run the smoke tests
           --luau-test <folder> [--luau-filter <text>]
@@ -65,18 +65,18 @@ internal sealed class RuntimeOptions
           --size <w>x<h>                       the window or the image (default 1280x720)
           --overlay                            draw the dev overlay in --screenshot images (the window always has it; F1 toggles)
           --gpu <name>                         prefer the GPU whose name contains this (WEFT_GPU)
-          --pack <folder> <out.pack> [--split-mb <n>] [--level <1-22>] [--base <pack>]...
+          --pack <folder> <out.wpak> [--split-mb <n>] [--level <1-22>] [--base <pack>]...
                                                pack the files of a folder (encrypted when WEFT_PACK_KEY is set); with --base a patch pack: only what is new or changed, and removals
                                                --cooked: pack the imported artifacts instead of the sources they replace (run --import first)
           --export <game folder> <out folder> --target <rid> [--cooked] [--runtime <dir>] [--console]
-                                               export the game (it has a game.xml) as a folder that runs on its own: the runtime published for the target (linux-x64, win-x64, osx-arm64, osx-x64),
-                                               its native libraries, and the game's files in data/game.pack (encrypted when WEFT_PACK_KEY is set, which is then also written into the executable)
+                                               export the game (it has a game.wgam) as a folder that runs on its own: the runtime published for the target (linux-x64, win-x64, osx-arm64, osx-x64),
+                                               its native libraries, and the game's files in data/game.wpak (encrypted when WEFT_PACK_KEY is set, which is then also written into the executable)
                                                --cooked: pack the imported artifacts and cooked documents instead of the sources; --runtime: the folder the runtime was published to (default: Bin/publish/runtime); --console: Windows, keep the console window
           --import <folder> [--force]          import the models and images of a game folder into imported/ (only what changed, unless --force)
           --luau-defs <folder>                 write weft.d.luau (and the engine's Luau modules) for luau-lsp
           --luau-docs <folder>                 write the Luau API as Markdown pages (the Manual's API reference)
           --workshop-upload <mod folder> [--item <id>] [--title <text>] [--description <text>] [--preview <image>] [--visibility private|friends|unlisted|public] [--tags <a,b>] [--note <text>] [--confirm]
-                                               publish a mod folder (it has a mod.xml) as a Steam Workshop item of the game in ./steam_appid.txt, or update --item; without --confirm it only says what it would do
+                                               publish a mod folder (it has a mod.wmod) as a Steam Workshop item of the game in ./steam_appid.txt, or update --item; without --confirm it only says what it would do
           --gpu-info                           list the GPUs of Vulkan and Metal, one line each: `vulkan: <name> (<kind>, <api>) ok` or `... unusable: <reasons>`
           --help
 
@@ -88,16 +88,16 @@ internal sealed class RuntimeOptions
     /// <summary>With no command, when the game is next to the program: the arguments the runtime does not know (Steam passes <c>+connect_lobby 1</c>), which are left alone.</summary>
     public List<string> Ignored { get; } = [];
 
-    /// <summary>True when <c>--size</c> was given, which wins over the window of <c>game.xml</c>.</summary>
+    /// <summary>True when <c>--size</c> was given, which wins over the window of <c>game.wgam</c>.</summary>
     public bool SizeGiven { get; private set; }
 
-    /// <summary>The window starts fullscreen (from <c>game.xml</c>).</summary>
+    /// <summary>The window starts fullscreen (from <c>game.wgam</c>).</summary>
     public bool Fullscreen { get; private set; }
 
-    /// <summary>The window can be resized (from <c>game.xml</c>).</summary>
+    /// <summary>The window can be resized (from <c>game.wgam</c>).</summary>
     public bool Resizable { get; private set; } = true;
 
-    /// <summary>Takes the window of <c>game.xml</c> as the defaults: the size unless <c>--size</c> was given, and whether it is fullscreen and resizable.</summary>
+    /// <summary>Takes the window of <c>game.wgam</c> as the defaults: the size unless <c>--size</c> was given, and whether it is fullscreen and resizable.</summary>
     public void ApplyWindow(Weft.Content.Packages.GameWindow window)
     {
         if (!SizeGiven)
@@ -182,7 +182,7 @@ internal sealed class RuntimeOptions
     public bool Confirm { get; private set; }
 
     /// <summary>Reads the command line.</summary>
-    /// <param name="gameNextToProgram">A game (a <c>game.xml</c>) is next to the program. Then, with no command, arguments that are not the runtime's are collected in <see cref="Ignored"/> instead of being an error: Steam appends <c>+connect_lobby</c> to the command line of a game it starts for an invitation, and an old macOS adds <c>-psn_…</c>.</param>
+    /// <param name="gameNextToProgram">A game (a <c>game.wgam</c>) is next to the program. Then, with no command, arguments that are not the runtime's are collected in <see cref="Ignored"/> instead of being an error: Steam appends <c>+connect_lobby</c> to the command line of a game it starts for an invitation, and an old macOS adds <c>-psn_…</c>.</param>
     public static bool TryParse(string[] args, out RuntimeOptions options, out string? problem, bool gameNextToProgram = false)
     {
         options = new RuntimeOptions();

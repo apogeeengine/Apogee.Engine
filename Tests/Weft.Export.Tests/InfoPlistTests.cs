@@ -12,7 +12,7 @@ public class InfoPlistTests
     private static GameManifest Manifest(string attributes = "")
     {
         string xml = $"""<Game name="Fixture Game" organization="Test Studio" version="1.2.3" executable="FixtureGame" identifier="org.test.fixturegame" {attributes}/>""";
-        Assert.True(GameManifest.TryParse(xml, "game.xml", out GameManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
+        Assert.True(GameManifest.TryParse(xml, "game.wgam", out GameManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
         return manifest!;
     }
 
@@ -92,7 +92,7 @@ public class InfoPlistTests
     public void TextWithMarkupInItIsEscaped()
     {
         const string Xml = """<Game name="Cats &amp; Dogs &lt;3" organization="Test Studio" version="1.2.3" executable="FixtureGame" identifier="org.test.fixturegame" copyright="(c) Fish &amp; Chips &lt;Ltd&gt; &quot;2026&quot;"/>""";
-        Assert.True(GameManifest.TryParse(Xml, "game.xml", out GameManifest? manifest, out _));
+        Assert.True(GameManifest.TryParse(Xml, "game.wgam", out GameManifest? manifest, out _));
 
         string plist = InfoPlist.Build(manifest!, hasIcon: false, "11.0");
 
@@ -128,9 +128,9 @@ public class InfoPlistTests
     [Fact]
     public void TheBundleVersionIsThreeIntegersBecauseTheManifestAcceptsNothingElse()
     {
-        // CFBundleVersion is one to three integers separated by dots. game.xml's version only is major.minor.patch (a suffix such as -beta is a problem in the manifest), so the plist never has one.
+        // CFBundleVersion is one to three integers separated by dots. game.wgam's version only is major.minor.patch (a suffix such as -beta is a problem in the manifest), so the plist never has one.
         const string Suffix = """<Game name="Fixture Game" organization="Test Studio" version="1.2.3-beta" executable="FixtureGame" identifier="org.test.fixturegame"/>""";
-        Assert.False(GameManifest.TryParse(Suffix, "game.xml", out _, out _));
+        Assert.False(GameManifest.TryParse(Suffix, "game.wgam", out _, out _));
 
         Dictionary<string, object> values = Read(InfoPlist.Build(Manifest(), hasIcon: false, "11.0"));
 

@@ -122,7 +122,7 @@ public static class VirtualPaths
     private static StringComparison Comparison => OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     /// <summary>
-    /// The virtual path (<c>res://scenes/level.ascene</c>) of <paramref name="osPath"/> when it is inside <paramref name="gameFolder"/>, with <c>/</c> separators; null for a path outside the folder, the folder
+    /// The virtual path (<c>res://scenes/level.wscn</c>) of <paramref name="osPath"/> when it is inside <paramref name="gameFolder"/>, with <c>/</c> separators; null for a path outside the folder, the folder
     /// itself, or one that is not a usable path. The game folder may be at the root of a drive, and may be (or sit under) a symbolic link while the dialog returns the resolved path: when the paths do not
     /// match as written they are compared with their links resolved. Names are compared without regard to case on Windows and macOS, whose file systems ignore it.
     /// <para>

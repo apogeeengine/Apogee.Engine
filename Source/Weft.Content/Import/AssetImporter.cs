@@ -13,7 +13,7 @@ namespace Weft.Content.Import;
 
 /// <summary>One artifact of the import: the source it came from, what it was made from, and the file.</summary>
 /// <param name="Source">The path of the asset relative to <c>res://</c> (<c>models/car.glb</c>).</param>
-/// <param name="Artifact">The path of the result, relative to <c>res://</c> (<c>imported/models/car.glb.amodel</c>).</param>
+/// <param name="Artifact">The path of the result, relative to <c>res://</c> (<c>imported/models/car.glb.wmdl</c>).</param>
 /// <param name="Key">A hash of everything that affects the result (see <see cref="AssetImporter"/>): when it is the same, the artifact is still good.</param>
 /// <param name="Dependencies">The other files the import read (a glTF's buffers and textures), relative to <c>res://</c>.</param>
 public sealed record ImportEntry(string Source, string Artifact, string Key, IReadOnlyList<string> Dependencies);
@@ -30,7 +30,7 @@ public enum AssetStatus
     /// <summary>The artifact is made from the file as it is now.</summary>
     UpToDate,
 
-    /// <summary>The file (or what the import read, or its <c>.import.xml</c>) changed since the artifact was made.</summary>
+    /// <summary>The file (or what the import read, or its <c>.wimp</c>) changed since the artifact was made.</summary>
     Stale,
 }
 
@@ -39,7 +39,7 @@ public enum AssetStatus
 /// <param name="UpToDate">The assets whose artifact was already good.</param>
 /// <param name="Removed">The artifacts that were deleted because their source is gone.</param>
 /// <param name="Failed">The assets that could not be imported, with the reason.</param>
-/// <param name="Reassigned">The assets that shared their UID with another (a copy of an asset and its <c>.import.xml</c>) and were given a new one: the path relative to <c>res://</c>, the UID it had and the one it has now.</param>
+/// <param name="Reassigned">The assets that shared their UID with another (a copy of an asset and its <c>.wimp</c>) and were given a new one: the path relative to <c>res://</c>, the UID it had and the one it has now.</param>
 public sealed record ImportReport(IReadOnlyList<string> Imported, IReadOnlyList<string> UpToDate, IReadOnlyList<string> Removed, IReadOnlyList<(string Source, string Message)> Failed, IReadOnlyList<(string Path, AssetUid Old, AssetUid New)>? Reassigned = null)
 {
     public bool Success => Failed.Count == 0;
@@ -51,11 +51,11 @@ public sealed record ImportReport(IReadOnlyList<string> Imported, IReadOnlyList<
 /// <summary>
 /// Turns the assets of a game into the engine's own formats. It is a small registry: each <see cref="IAssetImporter"/> takes some extensions (models, images, shaders…) and writes an artifact for
 /// each asset, in <c>res://imported/</c> beside an <c>index.xml</c> that says which source each came from (<see cref="ContentLoader"/> reads it). Artifacts are kept: an asset is imported
-/// again only when its <em>key</em> changes, the SHA-256 of the importer's name and fingerprint, the asset's <c>.import.xml</c> settings, the asset, and every file the import read for it (a model's
+/// again only when its <em>key</em> changes, the SHA-256 of the importer's name and fingerprint, the asset's <c>.wimp</c> settings, the asset, and every file the import read for it (a model's
 /// buffers and textures, the modules a shader imports). Artifacts whose source is gone are deleted. Importers run in the order of the list, and a file that an earlier import read (a model's
 /// image) is not imported on its own. <c>res://</c> has to be writable.
 /// <para>
-/// Importing also gives assets their UID (<see cref="AssetUid"/>): an imported file gets one in its <c>.import.xml</c> (made if there is none), an authored one (<see cref="AuthoredAssets"/>) in its root,
+/// Importing also gives assets their UID (<see cref="AssetUid"/>): an imported file gets one in its <c>.wimp</c> (made if there is none), an authored one (<see cref="AuthoredAssets"/>) in its root,
 /// and <c>imported/assets.xml</c> lists them all for <see cref="AssetDatabase"/>. The UID is not part of the key (<see cref="ImportSettings.KeyText"/>), so minting one never imports anything again.
 /// A UID that is already there is never changed, except to tell a copy from its original.
 /// </para>
@@ -63,7 +63,7 @@ public sealed record ImportReport(IReadOnlyList<string> Imported, IReadOnlyList<
 public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetImporter>? importers = null)
 {
     /// <summary>Bumped when the key or the index changes, so that old artifacts are made again.</summary>
-    public const int ImporterVersion = 3;
+    public const int ImporterVersion = 4;
 
     public const string CacheFolder = "imported";
 
@@ -143,7 +143,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
             return AssetStatus.NotImported;
         }
 
-        string settingsPath = "res://" + source + ".import.xml";
+        string settingsPath = "res://" + source + ".wimp";
         string settingsText = files.FileExists(settingsPath) ? files.ReadAllText(settingsPath) : "";
         return KeyOf(importer, settingsText, files.ReadAllBytes("res://" + source), entry.Dependencies) == entry.Key ? AssetStatus.UpToDate : AssetStatus.Stale;
     }
@@ -186,7 +186,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
     {
         try
         {
-            string settingsPath = "res://" + source + ".import.xml";
+            string settingsPath = "res://" + source + ".wimp";
             string settingsText = files.FileExists(settingsPath) ? files.ReadAllText(settingsPath) : "";
             ImportSettings settings = settingsText.Length > 0 ? ImportSettings.Parse(settingsText, settingsPath) : new ImportSettings();
             byte[] sourceBytes = files.ReadAllBytes("res://" + source);
@@ -254,7 +254,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
     private AssetUid SidecarUid(string source) => files.FileExists("res://" + source + ImportSidecar.Suffix) ? ImportSidecar.ReadUid(ReadText("res://" + source + ImportSidecar.Suffix)) : AssetUid.None;
 
     /// <summary>
-    /// Gives an imported asset the UID in its <c>.import.xml</c> if it has none: the UID the project's list has for the path when the sidecar was deleted (so deleting a sidecar loses nothing),
+    /// Gives an imported asset the UID in its <c>.wimp</c> if it has none: the UID the project's list has for the path when the sidecar was deleted (so deleting a sidecar loses nothing),
     /// a new one otherwise. A sidecar that exists has its text kept (only the attribute is added), and one that does not is made. The key ignores the attribute, so nothing imports again.
     /// </summary>
     private void EnsureUid(string source, UidRun uids)
@@ -320,7 +320,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
     }
 
     /// <summary>
-    /// Gives a new UID to every asset that shares its UID with another one, which is what copying an asset together with its <c>.import.xml</c> (or a folder of them) does. Of each group one file
+    /// Gives a new UID to every asset that shares its UID with another one, which is what copying an asset together with its <c>.wimp</c> (or a folder of them) does. Of each group one file
     /// keeps the UID, and it is the original:
     /// <list type="number">
     /// <item>A path that was just given the UID the list had for it (its sidecar was deleted) never keeps it against a file that has it in a file of its own: that file moved, with its sidecar.</item>
@@ -366,7 +366,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
         return reassigned;
     }
 
-    /// <summary>Says so when UIDs disappeared in a run that made new ones: the likely cause is a file that was moved without its <c>.import.xml</c>, which is a new asset to the engine.</summary>
+    /// <summary>Says so when UIDs disappeared in a run that made new ones: the likely cause is a file that was moved without its <c>.wimp</c>, which is a new asset to the engine.</summary>
     private static void ReportLostUids(Dictionary<string, AssetUid> current, UidRun uids)
     {
         HashSet<AssetUid> present = [.. current.Values];
@@ -374,7 +374,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
         List<string> made = [.. uids.Given.Except(uids.Recovered).Order(StringComparer.Ordinal)];
         if (lost.Count > 0 && made.Count > 0)
         {
-            Log.Info(LogCategory, $"New UIDs were made for {string.Join(", ", made)} while {string.Join(", ", lost)} no longer exist: if one was moved without its .import.xml it is a new asset now, and references to its old path or UID do not follow it. Move the .import.xml together with the file.");
+            Log.Info(LogCategory, $"New UIDs were made for {string.Join(", ", made)} while {string.Join(", ", lost)} no longer exist: if one was moved without its .wimp it is a new asset now, and references to its old path or UID do not follow it. Move the .wimp together with the file.");
         }
     }
 

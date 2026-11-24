@@ -28,7 +28,7 @@ public static class AssetKinds
     {
         Register("model", ExtensionsOfImporter("model", [".glb", ".gltf"]), "Model");
         Register("texture", ExtensionsOfImporter("image", [".png", ".jpg", ".jpeg"]), "Texture");
-        Register("scene", [".ascene"], "Scene");
+        Register("scene", [".wscn"], "Scene");
     }
 
     /// <summary>Changes whenever a kind is registered: what lists files by kind looks again when it differs from what it saw.</summary>
@@ -38,7 +38,7 @@ public static class AssetKinds
     /// Adds the kind <paramref name="assetType"/>, or replaces what an earlier call registered for the same type. An extension belongs to one kind: registering one that another type has is refused.
     /// </summary>
     /// <param name="assetType">The type name that fields of this kind use as their asset type.</param>
-    /// <param name="extensions">The extensions of its files (with the dot, such as <c>.aprefab</c>).</param>
+    /// <param name="extensions">The extensions of its files (with the dot, such as <c>.wprf</c>).</param>
     /// <param name="label">A name for a person.</param>
     /// <exception cref="ArgumentException">An extension has no dot, or is empty.</exception>
     /// <exception cref="InvalidOperationException">An extension belongs to another kind already.</exception>

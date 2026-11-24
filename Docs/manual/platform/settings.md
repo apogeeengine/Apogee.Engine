@@ -74,8 +74,8 @@ A key is two or more words of `a-z`, `0-9` and `_` joined by dots: `audio.volume
 
 | Key | Type | Default | |
 | --- | --- | --- | --- |
-| `window.width`, `window.height` | int, at least 320 and 240 | the `<Window>` of [game.xml](../content/game-manifest.md), else 1280 x 720 | The size the window opens with. While the player resizes the window it is stored once the size has been left alone for 20 frames, and never while fullscreen. |
-| `window.fullscreen` | bool | the `<Window>` of `game.xml`, else `false` | Takes effect at once. |
+| `window.width`, `window.height` | int, at least 320 and 240 | the `<Window>` of [game.wgam](../content/game-manifest.md), else 1280 x 720 | The size the window opens with. While the player resizes the window it is stored once the size has been left alone for 20 frames, and never while fullscreen. |
+| `window.fullscreen` | bool | the `<Window>` of `game.wgam`, else `false` | Takes effect at once. |
 | `graphics.vsync` | bool, `restart` | `true` | Frames wait for the display. Read when the window is made: the change shows at the next start, and `settings.needs_restart` says so. |
 | `audio.volume` | number, 0 to 1 | `1` | The master volume (`audio.volume` of the audio system). |
 | `audio.bus.<name>` | number, defined by the game | | The volume of the bus `<name>`: define `audio.bus.music` as a number and `audio:get_bus("music").volume` follows it, from the start (with the saved value) and on every change. |
@@ -137,7 +137,7 @@ settings.SaveIfDirty(TimeSpan.FromSeconds(1));
 settings.Flush();
 ```
 
-`ScriptSession` does all of this: `session.Settings` is the store, saved at the end of every frame it is due and when the session is disposed. `EngineSettingDefaults` takes the window from `game.xml`. The
+`ScriptSession` does all of this: `session.Settings` is the store, saved at the end of every frame it is due and when the session is disposed. `EngineSettingDefaults` takes the window from `game.wgam`. The
 store belongs to the main thread. `new SettingsStore()` (and `Settings.new()` in a script) is the same store in memory, which is how the tests use it; a single script run with `--run` gets one too.
 
 ## Tests

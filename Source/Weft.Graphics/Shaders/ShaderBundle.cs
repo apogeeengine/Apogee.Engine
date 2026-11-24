@@ -29,14 +29,14 @@ public static class ShaderAbi
 }
 
 /// <summary>
-/// The artifact of a shader module (<c>.ashader</c>): one or more <em>variants</em>, each the module compiled with one set of preprocessor defines (the default one has none), and for each
+/// The artifact of a shader module (<c>.wshd</c>): one or more <em>variants</em>, each the module compiled with one set of preprocessor defines (the default one has none), and for each
 /// variant its reflection and the code of every entry point, per backend. A reader takes the code of the backend it runs on and skips the others, so one file serves Vulkan and Metal. The reflection is that of the first backend written (SPIR-V). Specialization constants need no variant: they stay in the SPIR-V and are listed in the reflection.
 /// </summary>
 public static class ShaderBundle
 {
-    public const string Extension = ".ashader";
+    public const string Extension = ".wshd";
 
-    private const uint Magic = 0x42485341; // "ASHB"
+    private const uint Magic = 0x44485357; // "WSHD"
     private const int FormatVersion = 1;
 
     /// <summary>The name of a variant: its defines sorted by name, as <c>A=1;B=2</c>. The default variant, with no defines, is the empty string.</summary>

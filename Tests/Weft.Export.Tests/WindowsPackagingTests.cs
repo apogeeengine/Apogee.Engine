@@ -25,7 +25,7 @@ public class WindowsPackagingTests
     private static GameManifest Fixture(string name = "Fixture Game", string description = "A game for the tests.", string copyright = "Copyright 2026 Test Studio", string version = "1.2.3")
     {
         string xml = $"""<Game name="{name}" organization="Test Studio" version="{version}" executable="FixtureGame" identifier="org.test.fixturegame" description="{description}" copyright="{copyright}"/>""";
-        Assert.True(GameManifest.TryParse(xml, "game.xml", out GameManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
+        Assert.True(GameManifest.TryParse(xml, "game.wgam", out GameManifest? manifest, out IReadOnlyList<string> problems), string.Join("\n", problems));
         return manifest!;
     }
 

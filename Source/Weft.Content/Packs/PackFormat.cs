@@ -15,7 +15,7 @@ internal enum PackFlags : uint
     /// <summary>The index is sealed with AES-GCM (the pack has a key).</summary>
     IndexEncrypted = 1,
 
-    /// <summary>Another part (<c>name_001.pack</c>…) follows this one.</summary>
+    /// <summary>Another part (<c>name_001.wpak</c>…) follows this one.</summary>
     PartsFollow = 2,
 }
 
@@ -40,14 +40,14 @@ internal enum EntryFlags : byte
 /// aligned to 16 bytes), and the index at <c>IndexOffset</c>. An entry's bytes are the file, zstd-compressed when that saves at least 10% (and the file has 64 bytes or more), then sealed
 /// when there is a key. The index lists, per path: flags, offset, stored length, raw length and the first 16 bytes of the SHA-256 of the raw file; it is zstd-compressed and sealed too.
 /// A key never encrypts directly: each part's key is HKDF-SHA256 of the pack key and the part's salt. A sealed blob is <c>nonce (12) | tag (16) | ciphertext</c> with the entry's path
-/// as associated data, so an entry cannot be moved to another path. The magic is <c>APGK</c> without a key, and with one four bytes of a hash of the key (an encrypted pack has no
+/// as associated data, so an entry cannot be moved to another path. The magic is <c>WPAK</c> without a key, and with one four bytes of a hash of the key (an encrypted pack has no
 /// recognizable signature).
 /// </remarks>
 internal static unsafe class PackFormat
 {
     public const int HeaderSize = 80;
     public const uint Version = 1;
-    public const uint PlainMagic = 0x4B475041; // "APGK"
+    public const uint PlainMagic = 0x4B415057; // "WPAK"
     public const int Alignment = 16;
     public const int SealOverhead = 12 + 16;
     public const int MinimumCompressedSize = 64;

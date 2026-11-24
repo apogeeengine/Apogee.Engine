@@ -23,8 +23,8 @@ writes the new path).
 
 | Asset | UID in | Example |
 | --- | --- | --- |
-| An imported file (`.glb`, `.png`, `.slang`…) | the `uid` attribute of its [`<asset>.import.xml`](import.md#settings) | `<Import uid="uid://4k2m9x7q1w3ze" srgb="false"/>` |
-| An authored file (`.ascene`, `.aprefab`) | the `uid` attribute of the document's root | `<Scene version="1" uid="uid://…">`, `<Prefab version="1" uid="uid://…" nextId="4">` |
+| An imported file (`.glb`, `.png`, `.slang`…) | the `uid` attribute of its [`<asset>.wimp`](import.md#settings) | `<Import uid="uid://4k2m9x7q1w3ze" srgb="false"/>` |
+| An authored file (`.wscn`, `.wprf`) | the `uid` attribute of the document's root | `<Scene version="1" uid="uid://…">`, `<Prefab version="1" uid="uid://…" nextId="4">` |
 | The whole project | `imported/assets.xml`, a list written by the import | `<Asset uid="uid://…" path="res://models/car.glb"/>` |
 
 `AuthoredAssets.Extensions` lists the authored kinds: [scenes](scenes.md) and [prefabs](prefabs.md). The sidecar and the document are the truth; `assets.xml` is a copy that makes lookups fast. It is rewritten by every import (only when its text changes),
@@ -34,25 +34,25 @@ own and is mounted at `mod://id/` is read with its paths under `mod://id/`. In a
 
 ## When a UID is made
 
-- **`Weft.Runtime --import`** (`AssetImporter.Run`) gives a UID to every imported file that has none, by creating or editing its `.import.xml`, and to every authored file that has none, by adding the attribute to its root.
+- **`Weft.Runtime --import`** (`AssetImporter.Run`) gives a UID to every imported file that has none, by creating or editing its `.wimp`, and to every authored file that has none, by adding the attribute to its root.
   Only those two attributes are written: comments, indentation, quote style, line endings and a byte order mark in the file stay as they were, and an attribute that is already there is never changed.
   The editor's single-asset `Reimport` does the same for its asset.
 - **Never at run time, except when a scene is saved.** A game, a mod, a pack or a read-only folder is never written to by the engine. Their assets without a UID simply have none, and a reference to them is by path.
 - A file that is not XML (a damaged document) has nowhere to hold a UID and is left alone.
 
-Something that rewrites a `.import.xml` (a settings panel) must keep the UID: `ImportSidecar.SetUid(newText, ImportSidecar.ReadUid(oldText))`. Likewise `AuthoredAssets.SetUid` for a document that is saved
+Something that rewrites a `.wimp` (a settings panel) must keep the UID: `ImportSidecar.SetUid(newText, ImportSidecar.ReadUid(oldText))`. Likewise `AuthoredAssets.SetUid` for a document that is saved
 over an existing one. `World.SaveSceneFile` does this for scenes: it mints a UID for a new file and keeps the one an existing file has (see [scene files](scenes.md#scene-files-and-their-uid)), and a scene that is saved
 from the editor is therefore an authored asset with a UID from its first save, without waiting for an import.
 
 ### The UID does not change the import key
 
-An artifact is imported again when its [key](import.md#when-something-is-imported-again) changes, and the key hashes the text of the `.import.xml`. A UID is written into that text after the first import, so the key
+An artifact is imported again when its [key](import.md#when-something-is-imported-again) changes, and the key hashes the text of the `.wimp`. A UID is written into that text after the first import, so the key
 is made from `ImportSettings.KeyText(text)`: the same text without the root's `uid` attribute (and a sidecar that holds only a UID counts as no sidecar). Minting or changing a UID therefore imports nothing again, and
 the keys made before UIDs existed are still valid. Changing a real setting still imports the asset again.
 
 ## Moves, deleted sidecars and copies
 
-- **Rename or move** an asset **together with its `.import.xml`**: the UID goes with it, and every reference that has it still finds the file (`AssetDatabase.Resolve`).
+- **Rename or move** an asset **together with its `.wimp`**: the UID goes with it, and every reference that has it still finds the file (`AssetDatabase.Resolve`).
 - **Move without the sidecar:** the file is a new asset with a new UID, and references to the old UID cannot follow. The import says so in the log when UIDs disappeared in a run that made new ones.
 - **Delete the sidecar** (and leave the file): the next import makes it again with the **same** UID, from `assets.xml`.
 - **Copy an asset with its sidecar:** two files now have one UID. The import keeps the UID on the original (the path `assets.xml` recorded for it, or the first path in order when there is no record) and gives
@@ -93,7 +93,7 @@ RewriteReport report = AssetReferences.Rewrite(assets, "res://models/car.glb", "
 
 ### What is searched
 
-- **Documents:** every authored file (`AuthoredAssets.Extensions`: scenes and prefabs) in the roots of the database, and every `.xml` file under the `defFolders` you name (definitions). Sidecars (`.import.xml`) hold settings,
+- **Documents:** every authored file (`AuthoredAssets.Extensions`: scenes and prefabs) in the roots of the database, and every `.xml` file under the `defFolders` you name (definitions). Sidecars (`.wimp`) hold settings,
   not references, and are not searched; they move with their asset.
 - **References:** an attribute whose whole text is an [`AssetRef`](#the-values). Text inside elements is not rewritten (it is reported, see below).
 - **What counts as the asset:** an attribute whose path is the asset's path, or whose UID is the asset's UID and whose path does not lead to some *other* existing file. The second condition is the rule
@@ -104,7 +104,7 @@ RewriteReport report = AssetReferences.Rewrite(assets, "res://models/car.glb", "
 - **Scripts:** with `includeScripts` (always, in `Rewrite` and `Move`) the `.luau` files that spell the old path (or, in `Find`, the UID) are listed with an empty `Attribute`. They are **reported and never rewritten**: a
   string in code may be built, compared or logged. A `uid://` in a script follows the file and is not reported by `Rewrite`. The search is linear in the size of the script, and at most 10,000 mentions are listed per script.
 - **Paths that are not attribute references:** `RewriteReport.Unrewritable` lists, and `Move` adds a warning for each, the places that name the old path and are **not rewritten**: `<EntryScene path>` and `<Icon path>`
-  in `game.xml`, `<Script path>` in a package's `mod.xml` (relative paths there; the site's value is the full path), and the text inside an element of a document (`<Model>res://models/car.glb</Model>`; `Attribute` is
+  in `game.wgam`, `<Script path>` in a package's `mod.wmod` (relative paths there; the site's value is the full path), and the text inside an element of a document (`<Model>res://models/car.glb</Model>`; `Attribute` is
   empty). Edit them by hand; they break if the file moves. A path in a `.rml` or `.rcss` file is not looked at.
 
 ### What is written
@@ -124,7 +124,7 @@ the old file whole and never an empty one. The file keeps its permissions.
 ### All or nothing
 
 1. Every new text is made and checked in memory first. Nothing is written if the request is wrong: the same path, a missing file, both paths existing, a folder as either path, and for `Move` a target inside the source or inside
-   a file, `game.xml` and `mod.xml`, and a package's own `imported/`. A rename that only changes the case of a name on a file system that ignores case is refused with that explanation (paths are compared with their case: do it in two steps).
+   a file, `game.wgam` and `mod.wmod`, and a package's own `imported/`. A rename that only changes the case of a name on a file system that ignores case is refused with that explanation (paths are compared with their case: do it in two steps).
 2. Files that cannot be used are **skipped with a reason** in `RewriteReport.Skipped`, never half-written: unreadable, larger than `AssetReferences.MaxDocumentBytes` (64 MB), naming the asset more than
    `AssetReferences.MaxReferencesPerDocument` (100,000) times, over the memory a rewrite may take (`MaxPlannedBytes`, 256 MB for the old and the new text of all the documents), not valid UTF-8 (the text is
    written back, so a replaced byte would be damage; a file that cannot be read as UTF-8 and does not name the asset is no concern), not well-formed XML or with a document type, a cooked document (rewritten from its edited
@@ -143,8 +143,8 @@ the old file whole and never an empty one. The file keeps its permissions.
 
 ### Move
 
-`AssetDatabase.Move(from, to)` is for a file in the game folder (`res://`; a pack or a mod is read-only). It refuses a folder (move the files in it, one call each), an `.import.xml` (it follows its asset), the
-`imported/` cache (also a package's own) and hidden folders, `game.xml` and `mod.xml`, and a target that exists. Then, in this order: the references are rewritten, the file and its `.import.xml` move (so the UID goes with it), the imported artifact moves
+`AssetDatabase.Move(from, to)` is for a file in the game folder (`res://`; a pack or a mod is read-only). It refuses a folder (move the files in it, one call each), a `.wimp` (it follows its asset), the
+`imported/` cache (also a package's own) and hidden folders, `game.wgam` and `mod.wmod`, and a target that exists. Then, in this order: the references are rewritten, the file and its `.wimp` move (so the UID goes with it), the imported artifact moves
 to the name the importer would give it, and `imported/index.xml` and `imported/assets.xml` say the new path. If a file cannot move, the files already moved (the last first) and then the documents are put back. If a
 moved file cannot be put back, the undoing stops there with the asset at its new path, where the documents (left as they are) name it: a document never names a file that did not move. The import data is
 a cache: if it cannot be updated that is a warning, and the next import repairs it. The artifact stays valid, because the import key does not depend on the path: nothing imports again (call
@@ -152,7 +152,7 @@ a cache: if it cannot be updated that is a warning, and the next import repairs 
 changed folder: those imports can fail until their files are updated; and one line for each place in `RewriteReport.Unrewritable`.
 
 **Running the same `Move` again finishes an interrupted one.** If the process died, or an error left things half done, after the documents were rewritten (the references then already say the new path and are listed
-as `Unchanged`) or after the asset moved but before its `.import.xml` and import data did, call `Move(from, to)` with the same arguments: it moves what is left and brings the import data up to date.
+as `Unchanged`) or after the asset moved but before its `.wimp` and import data did, call `Move(from, to)` with the same arguments: it moves what is left and brings the import data up to date.
 
 ## From Luau
 
@@ -189,7 +189,7 @@ still resolves.
 
 `Tests/Weft.Content.Tests/AssetReferencesTests.cs` covers finding and rewriting references (by path and by a stale path's UID, comments, quotes, CRLF and a byte order mark kept, similar paths left alone, packages, read-only
 roots, hostile and cooked files, a writable document that was skipped, a failed write put back for any exception, a file saved since or in between, a file that cannot be put back, symbolic links, reading that goes
-wrong, a script with 500,000 mentions, a UID on two files, a UID in capitals, `game.xml`, `mod.xml` and element text, previews) and `Move` (sidecar, artifact and lists, a model used by two scenes that still resolves through its UID,
+wrong, a script with 500,000 mentions, a UID on two files, a UID in capitals, `game.wgam`, `mod.wmod` and element text, previews) and `Move` (sidecar, artifact and lists, a model used by two scenes that still resolves through its UID,
 refusals, a failed move put back, a move that cannot be undone and the same call finishing it, an interrupted one finished). `Tests/Weft.Content.Tests/FileSystemTests.cs` covers the durable write and the limits of a listing.
 
 `Tests/Weft.Ecs.Tests/SceneAssetTests.cs` covers asset fields in scenes (saved as path and UID, loaded from either, a moved asset found through its UID, an unregistered type, the text of a reference that did not load read and forgotten), `Tests/Weft.Editor.Tests/AssetCatalogTests.cs` and `AssetPickerTests.cs` the editor's list and picker, `GamePackerTests` the path-only reference in a cooked pack,

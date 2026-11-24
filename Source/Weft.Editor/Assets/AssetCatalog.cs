@@ -66,7 +66,7 @@ public readonly record struct ReferenceStatus(ReferenceState State, string? Path
 
 /// <summary>
 /// The assets of the game by kind, for pickers: every file of the database's roots (<see cref="AssetDatabase.Roots"/>: <c>res://</c> first, then the packages' <c>mod://id/</c>) that has a kind
-/// (<see cref="AssetKinds"/>), leaving out the import cache (<c>imported/</c>), hidden names (starting with a dot) and <c>.import.xml</c> sidecars. A package under <c>res://packages/</c> that is a root of its
+/// (<see cref="AssetKinds"/>), leaving out the import cache (<c>imported/</c>), hidden names (starting with a dot) and <c>.wimp</c> sidecars. A package under <c>res://packages/</c> that is a root of its
 /// own is listed once, as <c>mod://</c>.
 /// <para>
 /// The listing is bounded (<see cref="MaxFiles"/>, <see cref="MaxDepth"/>, <see cref="MaxFolders"/>; <see cref="Truncated"/> says a limit was hit) and is made on a worker thread: <see cref="Entries"/> and

@@ -17,9 +17,9 @@ namespace Weft.Host.Tests;
 /// <summary>A prefab opened on its own in a second world of the session (<see cref="PrefabStage"/>): edited there, saved with its ids, and followed by the instances in the session's world.</summary>
 public sealed class PrefabStageTests : IDisposable
 {
-    private const string LampPath = "res://prefabs/lamp.aprefab";
-    private const string CornerPath = "res://prefabs/corner.aprefab";
-    private const string HolderPath = "res://prefabs/holder.aprefab";
+    private const string LampPath = "res://prefabs/lamp.wprf";
+    private const string CornerPath = "res://prefabs/corner.wprf";
+    private const string HolderPath = "res://prefabs/holder.wprf";
     private const string LampUid = "uid://3c5v7b9n1m2kx";
     private const string CornerUid = "uid://2b4n6m8k0j1hq";
 
@@ -93,16 +93,16 @@ public sealed class PrefabStageTests : IDisposable
         return path;
     }
 
-    private string Prefab(string name) => Path.Combine(Game, "prefabs", name + ".aprefab");
+    private string Prefab(string name) => Path.Combine(Game, "prefabs", name + ".wprf");
 
     private string ReadPrefab(string name) => File.ReadAllText(Prefab(name));
 
     // A game with the lamp, the corner and the holder, and a scene: two lamps (the second with a bulb of its own height) and a corner.
     private ScriptSession Start(bool watch = true)
     {
-        Write("prefabs/lamp.aprefab", LampText);
-        Write("prefabs/corner.aprefab", CornerText);
-        Write("prefabs/holder.aprefab", HolderText);
+        Write("prefabs/lamp.wprf", LampText);
+        Write("prefabs/corner.wprf", CornerText);
+        Write("prefabs/holder.wprf", HolderText);
         string scene = $"""
             <Scene version="2">
               <Entity id="1" name="One" prefab="{LampPath}"/>
@@ -400,13 +400,13 @@ public sealed class PrefabStageTests : IDisposable
     public void AStageOpenedOnAnUnusablePrefabMakesNothing()
     {
         using ScriptSession session = Start();
-        Write("prefabs/broken.aprefab", "<Prefab version=\"1\"><Entity id=\"1\"/><Entity id=\"2\"/></Prefab>");
-        Write("prefabs/wrapper.aprefab", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Wrapper\" prefab=\"{LampPath}\"/></Prefab>");
+        Write("prefabs/broken.wprf", "<Prefab version=\"1\"><Entity id=\"1\"/><Entity id=\"2\"/></Prefab>");
+        Write("prefabs/wrapper.wprf", $"<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Wrapper\" prefab=\"{LampPath}\"/></Prefab>");
 
-        Assert.Throws<FormatException>(() => PrefabStage.Open(session, "res://prefabs/broken.aprefab"));
-        FormatException wrapper = Assert.Throws<FormatException>(() => PrefabStage.Open(session, "res://prefabs/wrapper.aprefab"));
+        Assert.Throws<FormatException>(() => PrefabStage.Open(session, "res://prefabs/broken.wprf"));
+        FormatException wrapper = Assert.Throws<FormatException>(() => PrefabStage.Open(session, "res://prefabs/wrapper.wprf"));
         Assert.Contains("instance of another prefab", wrapper.Message, StringComparison.Ordinal);
-        Assert.Throws<FileNotFoundException>(() => PrefabStage.Open(session, "res://prefabs/nothing.aprefab"));
+        Assert.Throws<FileNotFoundException>(() => PrefabStage.Open(session, "res://prefabs/nothing.wprf"));
         Assert.Equal(3, session.World.UserEntities().Count(entity => session.World.GetParent(entity).IsNull));
     }
 
@@ -436,8 +436,8 @@ public sealed class PrefabStageTests : IDisposable
     public void AStageOfAPrefabWithoutAUidGivesItOne()
     {
         using ScriptSession session = Start();
-        Write("prefabs/plain.aprefab", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Plain\"/></Prefab>");
-        using PrefabStage stage = PrefabStage.Open(session, "res://prefabs/plain.aprefab");
+        Write("prefabs/plain.wprf", "<Prefab version=\"1\" nextId=\"2\"><Entity id=\"1\" name=\"Plain\"/></Prefab>");
+        using PrefabStage stage = PrefabStage.Open(session, "res://prefabs/plain.wprf");
         stage.World.SetName(stage.Root, "Other");
 
         stage.Save();

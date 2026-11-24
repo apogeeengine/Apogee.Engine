@@ -23,14 +23,14 @@ public readonly record struct GameWindow(int Width, int Height, bool Fullscreen,
 }
 
 /// <summary>
-/// The <c>game.xml</c> at the root of a game folder: the game's name, who made it, its version, the folder of the player's files, its Steam app id, and the window it opens with. Checked against
+/// The <c>game.wgam</c> at the root of a game folder: the game's name, who made it, its version, the folder of the player's files, its Steam app id, and the window it opens with. Checked against
 /// the engine's schema (<c>Packages/game.xsd</c>) and further: the version is major.minor.patch, and the paths it names (the entry scene and the icon) are relative and stay inside the game.
 /// A game without one still runs from a folder (it has no version and its user folder is named after the folder), but cannot be exported.
 /// </summary>
 public sealed class GameManifest
 {
     /// <summary>The name of the file, at the root of the game folder.</summary>
-    public const string FileName = "game.xml";
+    public const string FileName = "game.wgam";
 
     private static readonly Lazy<SchemaSet> s_schema = new(LoadSchema);
 
@@ -71,7 +71,7 @@ public sealed class GameManifest
     /// <summary>The game's Steam app id, 0 for a game that is not on Steam.</summary>
     public uint SteamAppId { get; private set; }
 
-    /// <summary>The scene that is loaded before the packages' scripts run, as a path inside the game (<c>scenes/main.ascene</c>), or null.</summary>
+    /// <summary>The scene that is loaded before the packages' scripts run, as a path inside the game (<c>scenes/main.wscn</c>), or null.</summary>
     public string? EntryScene { get; private set; }
 
     /// <summary>A square PNG as a path inside the game folder, or null.</summary>
@@ -82,7 +82,7 @@ public sealed class GameManifest
 
     private static SchemaSet LoadSchema()
     {
-        using Stream stream = typeof(GameManifest).Assembly.GetManifestResourceStream("Packages/game.xsd") ?? throw new InvalidOperationException("The embedded schema of game.xml is missing.");
+        using Stream stream = typeof(GameManifest).Assembly.GetManifestResourceStream("Packages/game.xsd") ?? throw new InvalidOperationException("The embedded schema of game.wgam is missing.");
         using var reader = new StreamReader(stream);
         var set = new SchemaSet();
         set.LoadText(reader.ReadToEnd(), "game.xsd");
@@ -192,7 +192,7 @@ public sealed class GameManifest
     }
 
     /// <summary>
-    /// Reads the <c>game.xml</c> in <paramref name="folder"/>. Returns null, with no problems, when the folder has none (a game does not need one to run from a folder). Returns null with
+    /// Reads the <c>game.wgam</c> in <paramref name="folder"/>. Returns null, with no problems, when the folder has none (a game does not need one to run from a folder). Returns null with
     /// <paramref name="problems"/> when the file is wrong.
     /// </summary>
     /// <exception cref="IOException">The file exists and cannot be read.</exception>

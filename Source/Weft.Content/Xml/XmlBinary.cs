@@ -7,14 +7,14 @@ using System.Text;
 namespace Weft.Content.Xml;
 
 /// <summary>
-/// A binary encoding of an XML document, for cooked packs (<c>APXB</c>): the tree <see cref="XmlNode"/> holds, with every name and value in one string table and the nodes in document order.
+/// A binary encoding of an XML document, for cooked packs (<c>WXMB</c>): the tree <see cref="XmlNode"/> holds, with every name and value in one string table and the nodes in document order.
 /// It is smaller than the text and read without parsing it, and it gives back exactly the tree that was written: names, attributes in their order, text, lines and children. Read a file that
 /// may be either form through <see cref="XmlFile"/>.
 /// </summary>
 /// <remarks>
 /// Little-endian; a varint is an unsigned LEB128 of at most 32 bits.
 /// <code>
-/// header   u32 magic "APXB" (0x42585041) · u16 version · u16 flags (0) · u32 string count · u32 node count
+/// header   u32 magic "WXMB" (0x424D5857) · u16 version · u16 flags (0) · u32 string count · u32 node count
 /// strings  count x { varint byte length, UTF-8 bytes }    first-appearance order, string 0 is ""
 /// nodes    pre-order, root first: varint name, varint line, varint attribute count,
 ///          attributes x { varint name, varint value }, varint text, varint child count
@@ -27,7 +27,7 @@ public static class XmlBinary
     /// <summary>The version of the encoding that <see cref="Write"/> produces and the newest <see cref="Read"/> accepts.</summary>
     public const int Version = 1;
 
-    private const uint Magic = 0x42585041; // "APXB" read as a little-endian u32
+    private const uint Magic = 0x424D5857; // "WXMB" read as a little-endian u32
     private const int HeaderSize = 16;
 
     /// <summary>The fewest bytes a node takes (name, line, attribute count, text, child count: one varint each), so a count of nodes can be checked against the file.</summary>

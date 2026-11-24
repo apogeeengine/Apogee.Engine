@@ -23,7 +23,7 @@ public sealed record PackWriterOptions
 /// <summary>
 /// Writes a pack: files added with <see cref="Add"/> (and paths taken away from the packs below it with <see cref="Remove"/>, for a patch pack), then <see cref="Finish"/>. Each file is
 /// compressed with zstd when that saves at least 10%, and sealed with AES-256-GCM when there is a key (see <see cref="PackFormat"/>). The pack is split into parts
-/// (<c>game.pack</c>, <c>game_001.pack</c>…) at <see cref="PackWriterOptions.SplitBytes"/>; mount the first with <see cref="PackSource.Open"/> and it finds the rest.
+/// (<c>game.wpak</c>, <c>game_001.wpak</c>…) at <see cref="PackWriterOptions.SplitBytes"/>; mount the first with <see cref="PackSource.Open"/> and it finds the rest.
 /// </summary>
 public sealed class PackWriter : IDisposable
 {

@@ -27,7 +27,7 @@ internal static class ReferenceSearch
     /// What looking at one file gave: its references, or why it could not be used. <see cref="Bytes"/>, <see cref="Text"/> and <see cref="Tree"/> are what the references were found in (the text and the
     /// tree are null for a cooked document, and the tree for a script), so that the same read is the one an edit is made from.
     /// </summary>
-    /// <param name="Unrewritable">References that name the asset and are not rewritten: the text inside an element, and the paths in <c>game.xml</c> and <c>mod.xml</c>. They are reported.</param>
+    /// <param name="Unrewritable">References that name the asset and are not rewritten: the text inside an element, and the paths in <c>game.wgam</c> and <c>mod.wmod</c>. They are reported.</param>
     internal sealed record DocumentResult(string Path, bool IsScript, string? Problem, byte[]? Bytes, string? Text, XmlNode? Tree, IReadOnlyList<Hit> Hits, IReadOnlyList<AssetReferenceSite>? Unrewritable = null);
 
     /// <summary>
@@ -146,7 +146,7 @@ internal static class ReferenceSearch
         VfsPath.TryParse(folder, out string canonical, out string? problem) ? canonical : throw new ContentException($"'{folder}' is not a valid folder: {problem}.");
 
     // The game's manifest and a package's: they name files by a path relative to the game folder or to the package.
-    private static bool IsManifest(string file) => file == "res://game.xml" || VfsPath.FileName(file) == "mod.xml";
+    private static bool IsManifest(string file) => file == "res://game.wgam" || VfsPath.FileName(file) == "mod.wmod";
 
     private static bool IsXmlDocument(string file, List<string> folders)
     {
@@ -156,7 +156,6 @@ internal static class ReferenceSearch
         }
 
         return file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
-            && !file.EndsWith(ImportSidecar.Suffix, StringComparison.OrdinalIgnoreCase)
             && folders.Exists(folder => VfsPath.IsUnder(file, folder));
     }
 
@@ -295,7 +294,7 @@ internal static class ReferenceSearch
     }
 
     /// <summary>
-    /// The paths in <c>game.xml</c> (<c>&lt;EntryScene path&gt;</c>, <c>&lt;Icon path&gt;</c>: relative to the game folder) and <c>mod.xml</c> (<c>&lt;Script path&gt;</c>: relative to the package) that are
+    /// The paths in <c>game.wgam</c> (<c>&lt;EntryScene path&gt;</c>, <c>&lt;Icon path&gt;</c>: relative to the game folder) and <c>mod.wmod</c> (<c>&lt;Script path&gt;</c>: relative to the package) that are
     /// the asset. They are not rewritten: a manifest is written by hand and read by the exporter, and a path there is not an <see cref="AssetRef"/>. Each site's value is the full path it names.
     /// </summary>
     private static DocumentResult? LoadManifest(VirtualFileSystem files, string file, Matcher matcher)
@@ -316,7 +315,7 @@ internal static class ReferenceSearch
             return null; // a manifest that cannot be read is reported by whatever loads it
         }
 
-        bool game = file == "res://game.xml";
+        bool game = file == "res://game.wgam";
         string folder = VfsPath.DirectoryOf(file);
         var sites = new List<AssetReferenceSite>();
         foreach (XmlNode element in tree.Children)

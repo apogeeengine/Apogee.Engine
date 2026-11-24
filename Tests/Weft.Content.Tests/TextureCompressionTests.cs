@@ -162,11 +162,11 @@ public class TextureCompressionTests
         using var project = new Project();
         project.Write("color.png", Png.Encode(40, 24, Gradient(40, 24)));
         project.Write("rough.png", Png.Encode(40, 24, Gradient(40, 24)));
-        project.Write("rough.png.import.xml", "<Import srgb=\"false\"/>");
+        project.Write("rough.png.wimp", "<Import srgb=\"false\"/>");
         project.Write("normal.png", Png.Encode(40, 24, Gradient(40, 24)));
-        project.Write("normal.png.import.xml", "<Import normalMap=\"true\"/>");
+        project.Write("normal.png.wimp", "<Import normalMap=\"true\"/>");
         project.Write("plain.png", Png.Encode(40, 24, Gradient(40, 24)));
-        project.Write("plain.png.import.xml", "<Import compression=\"none\"/>");
+        project.Write("plain.png.wimp", "<Import compression=\"none\"/>");
         project.Write("tiny.png", Png.Encode(2, 2, Gradient(2, 2)));
 
         Assert.True(project.Import().Success);
@@ -191,7 +191,7 @@ public class TextureCompressionTests
         project.Import();
         Assert.Equal(["a.png"], project.Import().UpToDate);
 
-        project.Write("a.png.import.xml", "<Import compression=\"none\"/>");
+        project.Write("a.png.wimp", "<Import compression=\"none\"/>");
 
         Assert.Equal(["a.png"], project.Import().Imported);
         Assert.Equal(43u, VkFormatOf(project.Files.ReadAllBytes("res://imported/a.png.ktx2")));

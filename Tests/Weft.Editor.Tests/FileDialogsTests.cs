@@ -35,15 +35,15 @@ public sealed class FileDialogsTests
     public void OsPathsBecomeVirtualOnlyInsideTheGame()
     {
         string game = Path.Combine(Path.GetTempPath(), "weft-game");
-        Assert.Equal("res://scenes/level.ascene", VirtualPaths.ToVirtual(game, Path.Combine(game, "scenes", "level.ascene")));
-        Assert.Equal("res://a.ascene", VirtualPaths.ToVirtual(game + Path.DirectorySeparatorChar, Path.Combine(game, "a.ascene")));
-        Assert.Equal("res://scenes/level.ascene", VirtualPaths.ToVirtual(game, Path.Combine(game, "scenes", "other", "..", "level.ascene")));
+        Assert.Equal("res://scenes/level.wscn", VirtualPaths.ToVirtual(game, Path.Combine(game, "scenes", "level.wscn")));
+        Assert.Equal("res://a.wscn", VirtualPaths.ToVirtual(game + Path.DirectorySeparatorChar, Path.Combine(game, "a.wscn")));
+        Assert.Equal("res://scenes/level.wscn", VirtualPaths.ToVirtual(game, Path.Combine(game, "scenes", "other", "..", "level.wscn")));
 
         Assert.Null(VirtualPaths.ToVirtual(game, game)); // the folder itself
         Assert.Null(VirtualPaths.ToVirtual(game, game + Path.DirectorySeparatorChar));
-        Assert.Null(VirtualPaths.ToVirtual(game, Path.Combine(Path.GetTempPath(), "elsewhere", "level.ascene")));
-        Assert.Null(VirtualPaths.ToVirtual(game, game + "-two" + Path.DirectorySeparatorChar + "level.ascene")); // a sibling that starts with the same letters
-        Assert.Null(VirtualPaths.ToVirtual(game, Path.Combine(game, "..", "level.ascene")));
+        Assert.Null(VirtualPaths.ToVirtual(game, Path.Combine(Path.GetTempPath(), "elsewhere", "level.wscn")));
+        Assert.Null(VirtualPaths.ToVirtual(game, game + "-two" + Path.DirectorySeparatorChar + "level.wscn")); // a sibling that starts with the same letters
+        Assert.Null(VirtualPaths.ToVirtual(game, Path.Combine(game, "..", "level.wscn")));
         Assert.Null(VirtualPaths.ToVirtual(game, ""));
         Assert.Null(VirtualPaths.ToVirtual(game, "  "));
         Assert.Null(VirtualPaths.ToVirtual(game, "bad\0path"));
@@ -54,15 +54,15 @@ public sealed class FileDialogsTests
     {
         var dialogs = new ScriptedFileDialogs();
         FileDialogResult? first = null;
-        Assert.True(dialogs.OpenFile([("Scenes", "ascene")], "/x", r => first = r));
+        Assert.True(dialogs.OpenFile([("Scenes", "wscn")], "/x", r => first = r));
         Assert.True(dialogs.Busy);
         Assert.False(dialogs.SaveFile([], null, _ => { }));
         Assert.False(dialogs.OpenFolder(null, _ => { }));
         Assert.Single(dialogs.History);
 
-        dialogs.Choose("/x/a.ascene");
+        dialogs.Choose("/x/a.wscn");
         Assert.False(dialogs.Busy);
-        Assert.Equal(["/x/a.ascene"], first!.Paths);
+        Assert.Equal(["/x/a.wscn"], first!.Paths);
         Assert.Throws<InvalidOperationException>(() => dialogs.Cancel());
     }
 
@@ -76,13 +76,13 @@ public sealed class FileDialogsTests
         flow.SaveSceneAs();
         Assert.True(flow.Busy);
         Assert.Equal(DialogRequestKind.SaveFile, dialogs.Pending!.Kind);
-        Assert.Contains(dialogs.Pending.Filters, f => f.Pattern == "ascene");
+        Assert.Contains(dialogs.Pending.Filters, f => f.Pattern == "wscn");
         string chosen = Path.Combine(Game(rig), "scenes", "level"); // no extension typed: the editor adds it
         dialogs.Choose(chosen);
 
         Assert.Empty(messages);
-        Assert.Equal("res://scenes/level.ascene", rig.Project.ScenePath);
-        Assert.True(File.Exists(Path.Combine(Game(rig), "scenes", "level.ascene")));
+        Assert.Equal("res://scenes/level.wscn", rig.Project.ScenePath);
+        Assert.True(File.Exists(Path.Combine(Game(rig), "scenes", "level.wscn")));
         Assert.False(rig.Project.Dirty);
     }
 
@@ -91,7 +91,7 @@ public sealed class FileDialogsTests
     {
         using var rig = new ProjectRig();
         (DialogFlow flow, ScriptedFileDialogs dialogs, List<string> messages, _, _) = Start(() => rig.Project);
-        string outside = Path.Combine(rig.Root, "elsewhere", "level.ascene");
+        string outside = Path.Combine(rig.Root, "elsewhere", "level.wscn");
 
         flow.SaveSceneAs();
         dialogs.Choose(outside);
@@ -119,13 +119,13 @@ public sealed class FileDialogsTests
         flow.OpenScene();
         Assert.Equal(DialogRequestKind.OpenFile, dialogs.Pending!.Kind);
         Assert.EndsWith("scenes" + Path.DirectorySeparatorChar, dialogs.Pending.DefaultLocation); // the game's scenes folder exists
-        dialogs.Choose(Path.Combine(Game(rig), "scenes", "level.ascene"));
+        dialogs.Choose(Path.Combine(Game(rig), "scenes", "level.wscn"));
         Assert.Empty(messages);
-        Assert.Equal("res://scenes/level.ascene", rig.Project.ScenePath);
+        Assert.Equal("res://scenes/level.wscn", rig.Project.ScenePath);
         Assert.Single(rig.World.Roots());
 
         flow.OpenScene();
-        dialogs.Choose(Path.Combine(rig.Root, "elsewhere", "level.ascene"));
+        dialogs.Choose(Path.Combine(rig.Root, "elsewhere", "level.wscn"));
         Assert.Contains("outside the game folder", Assert.Single(messages));
 
         messages.Clear();
@@ -135,9 +135,9 @@ public sealed class FileDialogsTests
 
         messages.Clear();
         flow.OpenScene();
-        dialogs.Choose(Path.Combine(Game(rig), "scenes", "missing.ascene"));
+        dialogs.Choose(Path.Combine(Game(rig), "scenes", "missing.wscn"));
         Assert.Contains("could not be opened", Assert.Single(messages));
-        Assert.Equal("res://scenes/level.ascene", rig.Project.ScenePath);
+        Assert.Equal("res://scenes/level.wscn", rig.Project.ScenePath);
     }
 
     [Fact]
@@ -177,10 +177,10 @@ public sealed class FileDialogsTests
 
         flow.SaveSceneAs();
         current = null; // the project was closed (or another opened) while the dialog was up
-        dialogs.Choose(Path.Combine(Game(rig), "scenes", "late.ascene"));
+        dialogs.Choose(Path.Combine(Game(rig), "scenes", "late.wscn"));
 
         Assert.Empty(messages);
-        Assert.False(File.Exists(Path.Combine(Game(rig), "scenes", "late.ascene")));
+        Assert.False(File.Exists(Path.Combine(Game(rig), "scenes", "late.wscn")));
         Assert.Null(rig.Project.ScenePath);
 
         current = rig.Project;
@@ -227,10 +227,10 @@ public sealed class FileDialogsTests
             Directory.CreateDirectory(Path.Combine(folder, "packages", "scene"));
             if (manifest is not null)
             {
-                File.WriteAllText(Path.Combine(folder, "game.xml"), manifest);
+                File.WriteAllText(Path.Combine(folder, "game.wgam"), manifest);
             }
 
-            File.WriteAllText(Path.Combine(folder, "packages", "scene", "mod.xml"), "<Mod id=\"scene\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+            File.WriteAllText(Path.Combine(folder, "packages", "scene", "mod.wmod"), "<Mod id=\"scene\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
             File.WriteAllText(Path.Combine(folder, "packages", "scene", "main.luau"), "print('scene ran')");
             return folder;
         }
@@ -321,7 +321,7 @@ public sealed class FileDialogsTests
         Assert.Null(host.Current); // nothing to go back to
     }
 
-    private static string SceneFile(ProjectRig rig, string name) => Path.Combine(Game(rig), "scenes", name + ".ascene");
+    private static string SceneFile(ProjectRig rig, string name) => Path.Combine(Game(rig), "scenes", name + ".wscn");
 
     [Fact]
     public void ASceneThatFailsToLoadLeavesTheEditorExactlyAsItWas()
@@ -350,16 +350,16 @@ public sealed class FileDialogsTests
         {
             File.WriteAllText(SceneFile(rig, "broken"), text);
 
-            Assert.False(project.TryOpenScene("res://scenes/broken.ascene", out string? error));
+            Assert.False(project.TryOpenScene("res://scenes/broken.wscn", out string? error));
             Assert.Contains("could not be opened", error);
-            Assert.Throws<FormatException>(() => project.OpenScene("res://scenes/broken.ascene"));
+            Assert.Throws<FormatException>(() => project.OpenScene("res://scenes/broken.wscn"));
 
             Assert.True(roots.AsSpan().SequenceEqual(rig.World.Roots().ToArray()));
             Assert.Equal("Empty", rig.World.GetName(a));
             Assert.Equal("Empty", rig.World.GetName(b));
             Assert.Equal("Empty 2", rig.World.GetName(c));
             Assert.Equal(a, rig.World.GetParent(b));
-            Assert.Equal("res://scenes/level.ascene", project.ScenePath);
+            Assert.Equal("res://scenes/level.wscn", project.ScenePath);
             Assert.Equal(dirty, project.Dirty);
             Assert.Equal(b, project.Selection);
             Assert.Equal(undoName, project.History.UndoName);
@@ -409,7 +409,7 @@ public sealed class FileDialogsTests
             Assert.NotNull(error); // a failure, not "no file yet"
             Assert.Contains("could not be saved", error);
             Assert.True(project.Dirty);
-            Assert.Equal("res://scenes/level.ascene", project.ScenePath);
+            Assert.Equal("res://scenes/level.wscn", project.ScenePath);
 
             // Through the dialog flow: a message, nothing else.
             (DialogFlow flow, ScriptedFileDialogs dialogs, List<string> messages, _, _) = Start(() => project);
@@ -478,14 +478,14 @@ public sealed class FileDialogsTests
         dialogs.Choose(SceneFile(rig, "copy"));
         Assert.False(project.IsPlaying);
         Assert.Empty(messages);
-        Assert.Equal("res://scenes/copy.ascene", project.ScenePath);
+        Assert.Equal("res://scenes/copy.wscn", project.ScenePath);
         Assert.Equal(2, System.Text.RegularExpressions.Regex.Count(File.ReadAllText(SceneFile(rig, "copy")), "<Entity ")); // the edited world, not the run's
 
         Assert.True(project.Play(), project.PlayError);
         flow.OpenScene();
         dialogs.Choose(SceneFile(rig, "level"));
         Assert.False(project.IsPlaying);
-        Assert.Equal("res://scenes/level.ascene", project.ScenePath);
+        Assert.Equal("res://scenes/level.wscn", project.ScenePath);
         Assert.Single(rig.World.Roots());
     }
 
@@ -512,7 +512,7 @@ public sealed class FileDialogsTests
         string elsewhere = Path.Combine(games.Root, "documents");
         Directory.CreateDirectory(elsewhere);
         Directory.CreateDirectory(Path.Combine(games.Root, "withmanifest"));
-        File.WriteAllText(Path.Combine(games.Root, "withmanifest", "game.xml"), "<Game/>");
+        File.WriteAllText(Path.Combine(games.Root, "withmanifest", "game.wgam"), "<Game/>");
 
         Assert.Null(ProjectHost.CheckGameFolder(game));
         Assert.Null(ProjectHost.CheckGameFolder(Path.Combine(games.Root, "withmanifest")));
@@ -585,7 +585,7 @@ public sealed class FileDialogsTests
         using var games = new Games();
         string real = games.Make("real");
         Directory.CreateDirectory(Path.Combine(real, "scenes"));
-        string file = Path.Combine(real, "scenes", "a.ascene");
+        string file = Path.Combine(real, "scenes", "a.wscn");
         File.WriteAllText(file, "x");
 
         // A game folder at the root of a drive.
@@ -604,10 +604,10 @@ public sealed class FileDialogsTests
             Assert.Skip("This system cannot make symbolic links here: " + e.Message);
         }
 
-        Assert.Equal("res://scenes/a.ascene", VirtualPaths.ToVirtual(link, file));
-        Assert.Equal("res://scenes/a.ascene", VirtualPaths.ToVirtual(real, Path.Combine(link, "scenes", "a.ascene")));
-        Assert.Equal("res://scenes/new.ascene", VirtualPaths.ToVirtual(link, Path.Combine(real, "scenes", "new.ascene"))); // a file that does not exist yet
-        Assert.Null(VirtualPaths.ToVirtual(link, Path.Combine(games.Root, "one", "a.ascene")));
+        Assert.Equal("res://scenes/a.wscn", VirtualPaths.ToVirtual(link, file));
+        Assert.Equal("res://scenes/a.wscn", VirtualPaths.ToVirtual(real, Path.Combine(link, "scenes", "a.wscn")));
+        Assert.Equal("res://scenes/new.wscn", VirtualPaths.ToVirtual(link, Path.Combine(real, "scenes", "new.wscn"))); // a file that does not exist yet
+        Assert.Null(VirtualPaths.ToVirtual(link, Path.Combine(games.Root, "one", "a.wscn")));
     }
 
     [Fact]
@@ -619,7 +619,7 @@ public sealed class FileDialogsTests
         }
 
         string game = Path.Combine(Path.GetTempPath(), "weft-game");
-        Assert.Null(VirtualPaths.ToVirtual(game, Path.Combine(game, "scenes\\level.ascene")));
+        Assert.Null(VirtualPaths.ToVirtual(game, Path.Combine(game, "scenes\\level.wscn")));
     }
 
     [Fact]
@@ -631,9 +631,9 @@ public sealed class FileDialogsTests
         var files = rig.Project.Session.Files!;
         string file = SceneFile(rig, "level");
 
-        Assert.True(VirtualPaths.ResolvesTo(files, "res://scenes/level.ascene", file));
-        Assert.True(VirtualPaths.ResolvesTo(files, "res://scenes/none.ascene", SceneFile(rig, "none"))); // nothing there yet: a new file
-        Assert.False(VirtualPaths.ResolvesTo(files, "res://scenes/level.ascene", SceneFile(rig, "other"))); // that path answers with a different file
+        Assert.True(VirtualPaths.ResolvesTo(files, "res://scenes/level.wscn", file));
+        Assert.True(VirtualPaths.ResolvesTo(files, "res://scenes/none.wscn", SceneFile(rig, "none"))); // nothing there yet: a new file
+        Assert.False(VirtualPaths.ResolvesTo(files, "res://scenes/level.wscn", SceneFile(rig, "other"))); // that path answers with a different file
     }
 
     // ---- The gate: one dialog at a time, and a way out of a dialog that never answers ----

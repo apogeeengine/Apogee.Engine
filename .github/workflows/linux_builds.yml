@@ -98,7 +98,7 @@ jobs:
           rm -rf Bin/game-imported
           cp -r Tests/Fixtures/ShippedGame Bin/game-imported
           Bin/publish/runtime/Weft.Runtime --import Bin/game-imported
-          Bin/publish/runtime/Weft.Runtime --pack Bin/game-imported Bin/game-shipped/data/game.pack --cooked
+          Bin/publish/runtime/Weft.Runtime --pack Bin/game-imported Bin/game-shipped/data/game.wpak --cooked
           Bin/publish/runtime/Weft.Runtime --game Bin/game-shipped --user "$RUNNER_TEMP/game-user-packed" --headless --gpu llvmpipe --size 640x360 --frames 10 --screenshot Bin/game.png
           test -s Bin/game.png
           test -s "$RUNNER_TEMP/game-user-packed/ran.txt"
@@ -124,18 +124,18 @@ jobs:
             echo "FAILED: executable exists and is executable"
             failed=$((failed + 1))
           fi
-          if test -s "$root/data/game.pack"; then
+          if test -s "$root/data/game.wpak"; then
             echo "OK: pack file exists and is not empty"
           else
             echo "FAILED: pack file exists and is not empty"
             failed=$((failed + 1))
           fi
-          pack_magic=$(head -c 4 "$root/data/game.pack" | od -An -tx1 | tr -d ' \n')
-          if test "$pack_magic" != "4150474b"; then
-            echo "OK: pack magic bytes are encrypted (not APGK)"
+          pack_magic=$(head -c 4 "$root/data/game.wpak" | od -An -tx1 | tr -d ' \n')
+          if test "$pack_magic" != "5750414b"; then
+            echo "OK: pack magic bytes are encrypted (not WPAK)"
           else
-            echo "FAILED: pack magic bytes are encrypted (not APGK)"
-            echo "First 16 bytes: $(head -c 16 "$root/data/game.pack" | od -An -tx1 | tr -d ' \n')"
+            echo "FAILED: pack magic bytes are encrypted (not WPAK)"
+            echo "First 16 bytes: $(head -c 16 "$root/data/game.wpak" | od -An -tx1 | tr -d ' \n')"
             failed=$((failed + 1))
           fi
           leftover=$(find Bin/export \( -iname '*slang*' -o -name '*.pdb' -o -name '*.dbg' -o -name '*.lib' -o -name '*.exp' -o -name '*.dSYM' -o -name 'steam_appid.txt' \) ! -path '*/Shaders/imported/*')

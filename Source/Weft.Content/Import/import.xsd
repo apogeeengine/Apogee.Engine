@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- <asset>.import.xml, beside an asset: how to import it. Every attribute is optional. -->
+<!-- <asset>.wimp, beside an asset: how to import it. Every attribute is optional. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Import">
     <xs:complexType>

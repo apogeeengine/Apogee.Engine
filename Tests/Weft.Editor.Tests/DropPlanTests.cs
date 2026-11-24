@@ -20,16 +20,16 @@ public sealed class DropPlanTests
     {
         using var source = new DropSource();
         source.Write("a.png", TestAssets.Png());
-        source.Write("a.png.import.xml", "<Import uid=\"uid://abc\"/>");
+        source.Write("a.png.wimp", "<Import uid=\"uid://abc\"/>");
         source.Write("b.glb", TestAssets.Glb());
-        var targets = new FakeTargets(files: ["res://images/a.png", "res://images/a.png.import.xml", "res://images/a 2.png"], folders: ["res://images"]);
+        var targets = new FakeTargets(files: ["res://images/a.png", "res://images/a.png.wimp", "res://images/a 2.png"], folders: ["res://images"]);
 
         DropPlan plan = Plan(source, targets, "res://images", ClashPolicy.KeepBoth, "a.png", "b.glb");
 
         Assert.True(plan.HasClashes);
         Assert.Equal(["res://images/a.png"], plan.Clashes);
         Assert.Equal(
-            ["res://images/a 3.png", "res://images/a 3.png.import.xml", "res://images/b.glb"],
+            ["res://images/a 3.png", "res://images/a 3.png.wimp", "res://images/b.glb"],
             plan.Files.Select(f => f.Target).Order(StringComparer.Ordinal));                      // "a 2.png" is taken: the next free number, and its settings follow the name
         Assert.All(plan.Files, f => Assert.False(f.Replaces));
         Assert.Equal(["res://images/a 3.png", "res://images/b.glb"], plan.Importable.Select(f => f.Target).Order(StringComparer.Ordinal));
@@ -41,8 +41,8 @@ public sealed class DropPlanTests
     {
         using var source = new DropSource();
         source.Write("a.png", TestAssets.Png(10));
-        source.Write("a.png.import.xml", "<Import uid=\"uid://incoming\"/>");
-        var targets = new FakeTargets(files: ["res://images/a.png", "res://images/a.png.import.xml"], folders: ["res://images"]);
+        source.Write("a.png.wimp", "<Import uid=\"uid://incoming\"/>");
+        var targets = new FakeTargets(files: ["res://images/a.png", "res://images/a.png.wimp"], folders: ["res://images"]);
 
         DropPlan keep = Plan(source, targets, "res://images", ClashPolicy.KeepBoth, "a.png");
         DropPlan replace = Plan(source, targets, "res://images", ClashPolicy.Replace, "a.png");
@@ -92,14 +92,14 @@ public sealed class DropPlanTests
             """);
         source.Write("car/car data.bin", TestAssets.TriangleBuffer());
         source.Write("car/tex/body.png", TestAssets.Png());
-        source.Write("car/tex/body.png.import.xml", "<Import/>");
-        source.Write("car/car.gltf.import.xml", "<Import uid=\"uid://car\"/>");
+        source.Write("car/tex/body.png.wimp", "<Import/>");
+        source.Write("car/car.gltf.wimp", "<Import uid=\"uid://car\"/>");
 
         DropPlan plan = Plan(source, new FakeTargets(folders: ["res://models"]), "res://models", ClashPolicy.KeepBoth, "car/car.gltf");
 
         Assert.Empty(plan.Refused);
         Assert.Equal(
-            ["res://models/car data.bin", "res://models/car.gltf", "res://models/car.gltf.import.xml", "res://models/tex/body.png"],
+            ["res://models/car data.bin", "res://models/car.gltf", "res://models/car.gltf.wimp", "res://models/tex/body.png"],
             plan.Files.Select(f => f.Target).Order(StringComparer.Ordinal));                     // the texture's own settings are not used by the model: not copied
         Assert.Equal(["res://models/car.gltf"], plan.Importable.Select(f => f.Target));          // the buffer and the image come with the model; they are not imported on their own
         Assert.All(plan.Files.Where(f => !f.Target.EndsWith("car.gltf", StringComparison.Ordinal)), f => Assert.True(f.IsCompanion));
@@ -235,7 +235,7 @@ public sealed class DropPlanTests
         using var source = new DropSource();
         string exe = source.Write("tool.exe", "MZ");
         string empty = source.Write("empty.png", []);
-        string orphan = source.Write("x.png.import.xml", "<Import/>");
+        string orphan = source.Write("x.png.wimp", "<Import/>");
         string fine = source.Write("fine.png", TestAssets.Png());
         string missing = source.FullPath("gone.png");
 
@@ -334,7 +334,7 @@ public sealed class DropPlanTests
     {
         using var source = new DropSource();
         string game = source.FullPath("game");
-        source.Write("game/game.xml", "<Game/>");
+        source.Write("game/game.wgam", "<Game/>");
         string inside = source.Write("game/a.png", TestAssets.Png());
         source.Write("other/b.png", TestAssets.Png());
 

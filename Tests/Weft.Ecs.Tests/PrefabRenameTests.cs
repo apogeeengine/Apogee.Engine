@@ -16,8 +16,8 @@ namespace Weft.Ecs.Tests;
 /// </summary>
 public sealed class PrefabRenameTests : PrefabTestBase
 {
-    private const string ScenePath = "scenes/yard.ascene";
-    private const string NewLampPath = "res://prefabs/lights/street_lamp.aprefab";
+    private const string ScenePath = "scenes/yard.wscn";
+    private const string NewLampPath = "res://prefabs/lights/street_lamp.wprf";
 
     // A scene with a corner (which holds two lamps and overrides some of them), a lamp of its own with an override, and a switch that points into the corner's lamp.
     private string Scene() => $"""
@@ -80,17 +80,17 @@ public sealed class PrefabRenameTests : PrefabTestBase
         // The lamp is held by the scene and, twice, by the corner prefab. A preview changes nothing, then the move does everything.
         MoveReport preview = Assets.Move(LampPath, NewLampPath, dryRun: true);
         Assert.False(preview.Applied);
-        Assert.Equal(Lamp, ReadFirstPrefabAttribute(Read("prefabs/corner.aprefab")));
+        Assert.Equal(Lamp, ReadFirstPrefabAttribute(Read("prefabs/corner.wprf")));
 
         MoveReport report = Assets.Move(LampPath, NewLampPath);
         Assert.True(report.Applied);
         Assert.Empty(report.Warnings);
-        Assert.False(File.Exists(Path.Combine(Folder, "prefabs", "lamp.aprefab")));
-        string moved = Path.Combine(Folder, "prefabs", "lights", "street_lamp.aprefab");
+        Assert.False(File.Exists(Path.Combine(Folder, "prefabs", "lamp.wprf")));
+        string moved = Path.Combine(Folder, "prefabs", "lights", "street_lamp.wprf");
         Assert.True(File.Exists(moved));
 
         // The nested prefab and the scene say the new path and still carry the UID.
-        string corner = Read("prefabs/corner.aprefab");
+        string corner = Read("prefabs/corner.wprf");
         string scene = Read(ScenePath);
         string renamed = $"{NewLampPath}|{LampUid}";
         Assert.Equal(2, Count(corner, $"prefab=\"{renamed}\""));
@@ -116,16 +116,16 @@ public sealed class PrefabRenameTests : PrefabTestBase
         Write(ScenePath, Scene());
         string before = DescribeTheScene();
         string sceneText = Read(ScenePath);
-        string cornerText = Read("prefabs/corner.aprefab");
+        string cornerText = Read("prefabs/corner.wprf");
 
         // Nothing rewrites anything: the file is moved, and every reference still names the old path next to the UID that finds it.
         Directory.CreateDirectory(Path.Combine(Folder, "props"));
-        File.Move(Path.Combine(Folder, "prefabs", "lamp.aprefab"), Path.Combine(Folder, "props", "light.aprefab"));
+        File.Move(Path.Combine(Folder, "prefabs", "lamp.wprf"), Path.Combine(Folder, "props", "light.wprf"));
         Assets.Refresh();
 
         Assert.Equal(before, DescribeTheScene());
         Assert.Equal(sceneText, Read(ScenePath));
-        Assert.Equal(cornerText, Read("prefabs/corner.aprefab"));
+        Assert.Equal(cornerText, Read("prefabs/corner.wprf"));
 
         // A reference by UID alone, and one with the old path and the UID, find it too.
         using World world = OtherWorld();
@@ -133,7 +133,7 @@ public sealed class PrefabRenameTests : PrefabTestBase
         Entity byBoth = world.Instantiate(Lamp);
         Assert.Equal(["Bulb", "Base"], NamesBelow(world, byUid));
         Assert.Equal(["Bulb", "Base"], NamesBelow(world, byBoth));
-        Assert.Equal("res://props/light.aprefab|" + LampUid, world.PrefabOf(byBoth));
+        Assert.Equal("res://props/light.wprf|" + LampUid, world.PrefabOf(byBoth));
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public sealed class PrefabRenameTests : PrefabTestBase
         AssetReferenceSite own = Assert.Single(found, s => s.Attribute == "uid");
         Assert.Equal((LampPath, "Prefab"), (own.Document, own.Element));
         List<AssetReferenceSite> sites = [.. found.Where(s => s.Attribute != "uid")];
-        Assert.Equal(["res://prefabs/corner.aprefab", "res://prefabs/corner.aprefab", "res://" + ScenePath], sites.Select(s => s.Document).Order(StringComparer.Ordinal));
+        Assert.Equal(["res://prefabs/corner.wprf", "res://prefabs/corner.wprf", "res://" + ScenePath], sites.Select(s => s.Document).Order(StringComparer.Ordinal));
         Assert.All(sites, s => Assert.Equal("Entity", s.Element));
         Assert.All(sites, s => Assert.Equal("prefab", s.Attribute));
         Assert.All(sites, s => Assert.Equal(LampUid, s.Value.Uid));
@@ -160,10 +160,10 @@ public sealed class PrefabRenameTests : PrefabTestBase
 
         // After the file was moved by hand the references still name the old path: the UID finds them, whether it is asked for alone or with the new path.
         Directory.CreateDirectory(Path.Combine(Folder, "props"));
-        File.Move(Path.Combine(Folder, "prefabs", "lamp.aprefab"), Path.Combine(Folder, "props", "light.aprefab"));
+        File.Move(Path.Combine(Folder, "prefabs", "lamp.wprf"), Path.Combine(Folder, "props", "light.wprf"));
         Assets.Refresh();
         Assert.Equal(sites.Count, AssetReferences.Find(Assets, AssetRef.FromUid(LampUid)).Count(s => s.Attribute == "prefab"));
-        Assert.Equal(sites.Count, AssetReferences.Find(Assets, new AssetRef("res://props/light.aprefab", LampUid)).Count(s => s.Attribute == "prefab"));
+        Assert.Equal(sites.Count, AssetReferences.Find(Assets, new AssetRef("res://props/light.wprf", LampUid)).Count(s => s.Attribute == "prefab"));
     }
 
     private static string ReadFirstPrefabAttribute(string document)

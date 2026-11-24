@@ -207,7 +207,7 @@ public sealed class AssetBrowserPanel
             _ => "  (not imported)",
         };
 
-        bool isScene = path.EndsWith(".ascene", StringComparison.OrdinalIgnoreCase);
+        bool isScene = path.EndsWith(".wscn", StringComparison.OrdinalIgnoreCase);
         Gui.PushId(path);
         bool revealed = path == _revealed;
         if (revealed && _scrollToRevealed)

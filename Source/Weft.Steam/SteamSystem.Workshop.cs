@@ -9,7 +9,7 @@ using SteamApi = Weft.Native.Steam.Steam;
 
 namespace Weft.Steam;
 
-// Workshop items are the game's mods: each is a mod folder (a mod.xml at its root) that Steam downloads and keeps up to date. The game mounts the installed ones (WorkshopSource)
+// Workshop items are the game's mods: each is a mod folder (a mod.wmod at its root) that Steam downloads and keeps up to date. The game mounts the installed ones (WorkshopSource)
 // beside the player's own mods. Uploading is for the mod's author and is a command of the runtime, never something a script does.
 public sealed unsafe partial class SteamSystem
 {
@@ -142,9 +142,9 @@ public sealed unsafe partial class SteamSystem
             return;
         }
 
-        if (!Directory.Exists(upload.Folder) || !File.Exists(Path.Combine(upload.Folder, "mod.xml")))
+        if (!Directory.Exists(upload.Folder) || !File.Exists(Path.Combine(upload.Folder, "mod.wmod")))
         {
-            done(new WorkshopUploadResult(false, upload.ItemId ?? "", $"{upload.Folder} is not a mod folder (it has no mod.xml).", false));
+            done(new WorkshopUploadResult(false, upload.ItemId ?? "", $"{upload.Folder} is not a mod folder (it has no mod.wmod).", false));
             return;
         }
 
@@ -300,7 +300,7 @@ public enum WorkshopVisibility
 /// <summary>What <see cref="SteamSystem.UploadWorkshopItem"/> sends.</summary>
 public sealed record WorkshopUpload
 {
-    /// <summary>The mod folder: it has a <c>mod.xml</c>, and everything in it is uploaded.</summary>
+    /// <summary>The mod folder: it has a <c>mod.wmod</c>, and everything in it is uploaded.</summary>
     public required string Folder { get; init; }
 
     /// <summary>The item to update, or null to create a new item.</summary>

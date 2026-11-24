@@ -11,7 +11,7 @@ using Weft.Core.Logging;
 namespace Weft.Content.Assets;
 
 /// <summary>
-/// Which file an asset's UID names, and which UID a file has. The UID of an imported file is in its <c>.import.xml</c>, the UID of an authored one (a scene) is in its root element
+/// Which file an asset's UID names, and which UID a file has. The UID of an imported file is in its <c>.wimp</c>, the UID of an authored one (a scene) is in its root element
 /// (<see cref="AuthoredAssets"/>); the database reads them from the files, so it is always about what is on disk. To find a UID it first asks the project's list, <c>imported/assets.xml</c>
 /// (written by <see cref="Import.AssetImporter"/>: one read per root), and when that has nothing (or is out of date: the file moved after the import) it scans the files of its
 /// <see cref="Roots"/> once. It never writes: giving files UIDs is the importer's job, so a read-only root (a pack, a mod, a shipped game) is fine, and its assets with no UID just have none.
@@ -56,7 +56,7 @@ public sealed partial class AssetDatabase(VirtualFileSystem files)
     public IList<string> Roots { get; } = ["res://"];
 
     /// <summary>
-    /// The groups of files that have the same UID (a copied asset and its <c>.import.xml</c>, or two mods that ship the same file), each with its paths and the first one the UID names.
+    /// The groups of files that have the same UID (a copied asset and its <c>.wimp</c>, or two mods that ship the same file), each with its paths and the first one the UID names.
     /// Importing a project makes a UID of its own for the copies; this is what is left when a root cannot be written to. It looks at every file of the roots once.
     /// </summary>
     public IReadOnlyList<(AssetUid Uid, IReadOnlyList<string> Paths)> Duplicates
@@ -87,7 +87,7 @@ public sealed partial class AssetDatabase(VirtualFileSystem files)
         }
     }
 
-    /// <summary>The UID of the file at <paramref name="path"/>, read from its <c>.import.xml</c> or, for an authored file, its root; <see cref="AssetUid.None"/> when the file does not exist or has none.</summary>
+    /// <summary>The UID of the file at <paramref name="path"/>, read from its <c>.wimp</c> or, for an authored file, its root; <see cref="AssetUid.None"/> when the file does not exist or has none.</summary>
     public AssetUid UidOf(string path)
     {
         if (!TryCanonical(path, out string canonical))
@@ -170,7 +170,7 @@ public sealed partial class AssetDatabase(VirtualFileSystem files)
             throw new ContentException($"'{pathOrUid}' is not a valid asset uid: expected {AssetUid.Scheme} and {AssetUid.DigitCount} characters.");
         }
 
-        return PathOf(uid) ?? throw new ContentException($"Unknown uid {uid}: no asset has it (the file may have been deleted, or imported without its .import.xml).");
+        return PathOf(uid) ?? throw new ContentException($"Unknown uid {uid}: no asset has it (the file may have been deleted, or imported without its .wimp).");
     }
 
     // ---- The list: imported/assets.xml ----------------------------------------------------------------------------------------------

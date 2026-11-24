@@ -59,7 +59,7 @@ public class AssetUidTests
 
         public ImportReport Import(bool force = false) => new AssetImporter(Files, [new DatImporter()]).Run(force);
 
-        public AssetUid UidInSidecar(string asset) => ImportSidecar.ReadUid(Read(asset + ".import.xml"));
+        public AssetUid UidInSidecar(string asset) => ImportSidecar.ReadUid(Read(asset + ".wimp"));
 
         public string KeyOf(string source) => AssetImporter.LoadIndex(Files).Single(e => e.Source == source).Key;
 
@@ -79,7 +79,7 @@ public class AssetUidTests
         Assert.Equal(["a.dat"], report.Imported);
         AssetUid uid = project.UidInSidecar("a.dat");
         Assert.False(uid.IsNone);
-        Assert.Equal($"<Import uid=\"{uid}\"/>\n", project.Read("a.dat.import.xml"));
+        Assert.Equal($"<Import uid=\"{uid}\"/>\n", project.Read("a.dat.wimp"));
         Assert.Contains($"uid=\"{uid}\" path=\"res://a.dat\"", project.Read("imported/assets.xml"), StringComparison.Ordinal);
     }
 
@@ -90,12 +90,12 @@ public class AssetUidTests
         AssetUid uid = AssetUid.New();
         string sidecar = $"<!-- mine -->\n<Import   srgb='false'\n  uid=\"{uid}\" />\n";
         project.Write("a.dat", "one");
-        project.Write("a.dat.import.xml", sidecar);
+        project.Write("a.dat.wimp", sidecar);
 
         project.Import();
         project.Import(force: true);
 
-        Assert.Equal(sidecar, project.Read("a.dat.import.xml")); // not one character changed
+        Assert.Equal(sidecar, project.Read("a.dat.wimp")); // not one character changed
     }
 
     [Fact]
@@ -103,13 +103,13 @@ public class AssetUidTests
     {
         using var project = new Project();
         project.Write("a.dat", "one");
-        project.Write("a.dat.import.xml", "\uFEFF<?xml version=\"1.0\"?>\r\n<!-- keep -->\r\n<Import srgb='false' mips=\"false\"\r\n        optimize=\"true\" >\r\n</Import>\r\n");
+        project.Write("a.dat.wimp", "\uFEFF<?xml version=\"1.0\"?>\r\n<!-- keep -->\r\n<Import srgb='false' mips=\"false\"\r\n        optimize=\"true\" >\r\n</Import>\r\n");
 
         project.Import();
 
         AssetUid uid = project.UidInSidecar("a.dat");
         Assert.False(uid.IsNone);
-        Assert.Equal("\uFEFF<?xml version=\"1.0\"?>\r\n<!-- keep -->\r\n<Import srgb='false' mips=\"false\"\r\n        optimize=\"true\" uid=\"" + uid + "\" >\r\n</Import>\r\n", project.Read("a.dat.import.xml"));
+        Assert.Equal("\uFEFF<?xml version=\"1.0\"?>\r\n<!-- keep -->\r\n<Import srgb='false' mips=\"false\"\r\n        optimize=\"true\" uid=\"" + uid + "\" >\r\n</Import>\r\n", project.Read("a.dat.wimp"));
     }
 
     [Theory]
@@ -144,7 +144,7 @@ public class AssetUidTests
         project.Write("a.dat", "one");
         if (withSettings)
         {
-            project.Write("a.dat.import.xml", "<Import srgb=\"false\"/>");
+            project.Write("a.dat.wimp", "<Import srgb=\"false\"/>");
         }
 
         ImportReport first = project.Import();
@@ -164,9 +164,9 @@ public class AssetUidTests
     {
         using var project = new Project();
         project.Write("a.dat", "one");
-        project.Write("a.dat.import.xml", "<Import srgb=\"false\"/>");
+        project.Write("a.dat.wimp", "<Import srgb=\"false\"/>");
         project.Import();
-        project.Write("a.dat.import.xml", "<Import srgb=\"false\"/>"); // as a project from before UIDs had it, with its key
+        project.Write("a.dat.wimp", "<Import srgb=\"false\"/>"); // as a project from before UIDs had it, with its key
         File.Delete(Path.Combine(project.Root, "imported", "assets.xml"));
 
         ImportReport report = project.Import();
@@ -184,14 +184,14 @@ public class AssetUidTests
         project.Import();
         AssetUid uid = project.UidInSidecar("a.dat");
 
-        project.Write("a.dat.import.xml", $"<Import uid=\"{uid}\" srgb=\"false\"/>"); // the uid is ignored, the rest is not
+        project.Write("a.dat.wimp", $"<Import uid=\"{uid}\" srgb=\"false\"/>"); // the uid is ignored, the rest is not
         ImportReport report = project.Import();
 
         Assert.Equal(["a.dat"], report.Imported);
         Assert.Equal(uid, project.UidInSidecar("a.dat"));
         Assert.Empty(project.Import().Imported);
 
-        project.Write("a.dat.import.xml", $"<Import uid=\"{AssetUid.New()}\" srgb=\"false\"/>"); // only the uid changed: nothing to import
+        project.Write("a.dat.wimp", $"<Import uid=\"{AssetUid.New()}\" srgb=\"false\"/>"); // only the uid changed: nothing to import
         Assert.Empty(project.Import().Imported);
     }
 
@@ -203,7 +203,7 @@ public class AssetUidTests
         project.Import();
         AssetUid uid = project.UidInSidecar("a.dat");
 
-        File.Delete(Path.Combine(project.Root, "a.dat.import.xml"));
+        File.Delete(Path.Combine(project.Root, "a.dat.wimp"));
         ImportReport report = project.Import();
 
         Assert.Equal(["a.dat"], report.UpToDate); // no sidecar and a sidecar that says only its uid are the same to the key
@@ -221,7 +221,7 @@ public class AssetUidTests
 
         // The copy sorts before the original, so "first in order" would be the wrong rule: the list says who had the UID.
         project.Write("a_copy/car.dat", project.Read("models/car.dat"));
-        project.Write("a_copy/car.dat.import.xml", project.Read("models/car.dat.import.xml"));
+        project.Write("a_copy/car.dat.wimp", project.Read("models/car.dat.wimp"));
         ImportReport report = project.Import();
 
         Assert.Equal(original, project.UidInSidecar("models/car.dat"));
@@ -245,9 +245,9 @@ public class AssetUidTests
         using var project = new Project();
         AssetUid uid = AssetUid.New();
         project.Write("b.dat", "x");
-        project.Write("b.dat.import.xml", $"<Import uid=\"{uid}\"/>");
+        project.Write("b.dat.wimp", $"<Import uid=\"{uid}\"/>");
         project.Write("a.dat", "x");
-        project.Write("a.dat.import.xml", $"<Import uid=\"{uid}\"/>");
+        project.Write("a.dat.wimp", $"<Import uid=\"{uid}\"/>");
 
         ImportReport report = project.Import();
 
@@ -265,7 +265,7 @@ public class AssetUidTests
 
         // a.dat moved to b.dat with its sidecar, and a new file took its place without one: the list still says a.dat had the uid.
         project.Move("a.dat", "b.dat");
-        project.Move("a.dat.import.xml", "b.dat.import.xml");
+        project.Move("a.dat.wimp", "b.dat.wimp");
         project.Write("a.dat", "something else");
         ImportReport report = project.Import();
 
@@ -287,7 +287,7 @@ public class AssetUidTests
         Assert.False(reference.Uid.IsNone);
 
         project.Move("models/car.dat", "vehicles/truck.dat");
-        project.Move("models/car.dat.import.xml", "vehicles/truck.dat.import.xml");
+        project.Move("models/car.dat.wimp", "vehicles/truck.dat.wimp");
 
         // The list still names the old file (nothing was imported since); the database notices that it is gone and looks at the files.
         var database = new AssetDatabase(project.Files);
@@ -322,24 +322,24 @@ public class AssetUidTests
     public void AnAuthoredFileGetsAUidInItsRootAndKeepsItsComments()
     {
         using var project = new Project();
-        project.Write("scenes/start.ascene", Scene);
-        project.Write("scenes/old.ascene", "not a scene {"); // not XML: nowhere to put a UID, left alone
+        project.Write("scenes/start.wscn", Scene);
+        project.Write("scenes/old.wscn", "not a scene {"); // not XML: nowhere to put a UID, left alone
 
         ImportReport report = project.Import();
 
         Assert.True(report.Success);
-        string text = project.Read("scenes/start.ascene");
+        string text = project.Read("scenes/start.wscn");
         AssetUid uid = AuthoredAssets.ReadUid(Encoding.UTF8.GetBytes(text));
         Assert.False(uid.IsNone);
         Assert.Equal(Scene.Replace("<Scene version=\"1\">", $"<Scene version=\"1\" uid=\"{uid}\">", StringComparison.Ordinal), text);
-        Assert.Equal("not a scene {", project.Read("scenes/old.ascene"));
+        Assert.Equal("not a scene {", project.Read("scenes/old.wscn"));
 
         project.Import(); // and nothing changes after
-        Assert.Equal(text, project.Read("scenes/start.ascene"));
+        Assert.Equal(text, project.Read("scenes/start.wscn"));
         var database = new AssetDatabase(project.Files);
-        Assert.Equal(uid, database.UidOf("res://scenes/start.ascene"));
-        Assert.Equal(AssetUid.None, database.UidOf("res://scenes/old.ascene"));
-        Assert.Equal("res://scenes/start.ascene", database.PathOf(uid));
+        Assert.Equal(uid, database.UidOf("res://scenes/start.wscn"));
+        Assert.Equal(AssetUid.None, database.UidOf("res://scenes/old.wscn"));
+        Assert.Equal("res://scenes/start.wscn", database.PathOf(uid));
     }
 
     [Fact]
@@ -347,18 +347,18 @@ public class AssetUidTests
     {
         const string Prefab = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Prefab version=\"1\" nextId=\"2\">\n  <Entity id=\"1\" name=\"Lamp\"/>\n</Prefab>\n";
         using var project = new Project();
-        project.Write("prefabs/lamp.aprefab", Prefab);
+        project.Write("prefabs/lamp.wprf", Prefab);
 
         ImportReport report = project.Import();
 
         Assert.True(report.Success);
-        string text = project.Read("prefabs/lamp.aprefab");
+        string text = project.Read("prefabs/lamp.wprf");
         AssetUid uid = AuthoredAssets.ReadUid(Encoding.UTF8.GetBytes(text));
         Assert.False(uid.IsNone);
         Assert.Equal(Prefab.Replace("<Prefab version=\"1\" nextId=\"2\">", $"<Prefab version=\"1\" nextId=\"2\" uid=\"{uid}\">", StringComparison.Ordinal), text);
         var database = new AssetDatabase(project.Files);
-        Assert.Equal(uid, database.UidOf("res://prefabs/lamp.aprefab"));
-        Assert.Equal("res://prefabs/lamp.aprefab", database.PathOf(uid));
+        Assert.Equal(uid, database.UidOf("res://prefabs/lamp.wprf"));
+        Assert.Equal("res://prefabs/lamp.wprf", database.PathOf(uid));
     }
 
     [Fact]
@@ -411,9 +411,9 @@ public class AssetUidTests
         project.Import();
         AssetUid uid = project.UidInSidecar("a.dat");
         project.Write("copy.dat", "one");
-        project.Write("copy.dat.import.xml", project.Read("a.dat.import.xml")); // a duplicate that the database can only report
+        project.Write("copy.dat.wimp", project.Read("a.dat.wimp")); // a duplicate that the database can only report
         project.Write("plain.dat", "no sidecar");
-        project.Write("scenes/s.ascene", Scene);
+        project.Write("scenes/s.wscn", Scene);
         Dictionary<string, string> before = Snapshot(project.Root);
 
         var readOnly = new VirtualFileSystem();
@@ -422,7 +422,7 @@ public class AssetUidTests
 
         Assert.Equal(uid, database.UidOf("res://a.dat"));
         Assert.Equal(AssetUid.None, database.UidOf("res://plain.dat")); // no UID, and none is made
-        Assert.Equal(AssetUid.None, database.UidOf("res://scenes/s.ascene"));
+        Assert.Equal(AssetUid.None, database.UidOf("res://scenes/s.wscn"));
         Assert.Equal("res://a.dat", database.PathOf(uid)); // the list's keeper
         (AssetUid duplicate, IReadOnlyList<string> paths) = Assert.Single(database.Duplicates);
         Assert.Equal(uid, duplicate);
@@ -484,9 +484,9 @@ public class AssetUidTests
         using var second = new Project();
         AssetUid uid = AssetUid.New();
         first.Write("x.dat", "1");
-        first.Write("x.dat.import.xml", $"<Import uid=\"{uid}\"/>");
+        first.Write("x.dat.wimp", $"<Import uid=\"{uid}\"/>");
         second.Write("y.dat", "2");
-        second.Write("y.dat.import.xml", $"<Import uid=\"{uid}\"/>");
+        second.Write("y.dat.wimp", $"<Import uid=\"{uid}\"/>");
         var game = new VirtualFileSystem();
         game.Mount("mod://one", new DirectorySource(first.Root));
         game.Mount("mod://two", new DirectorySource(second.Root));
@@ -504,9 +504,9 @@ public class AssetUidTests
     {
         using var project = new Project();
         AssetUid uid = AssetUid.New();
-        project.Write("imported/x.dat.import.xml", $"<Import uid=\"{uid}\"/>");
+        project.Write("imported/x.dat.wimp", $"<Import uid=\"{uid}\"/>");
         project.Write("imported/x.dat", "1");
-        project.Write(".git/y.dat.import.xml", $"<Import uid=\"{uid}\"/>");
+        project.Write(".git/y.dat.wimp", $"<Import uid=\"{uid}\"/>");
         project.Write(".git/y.dat", "1");
 
         Assert.Null(new AssetDatabase(project.Files).PathOf(uid));
@@ -555,7 +555,7 @@ public class AssetUidTests
 
         Assert.Equal(["b.dat"], report.Imported);
         Assert.Equal(list, project.Read("imported/assets.xml"));
-        File.Delete(Path.Combine(project.Root, "b.dat.import.xml"));
+        File.Delete(Path.Combine(project.Root, "b.dat.wimp"));
         new AssetImporter(project.Files, [new DatImporter()]).Reimport("b.dat"); // the sidecar is made again, with the uid the list had
         Assert.Equal(list, project.Read("imported/assets.xml"));
         Assert.Equal(a, new AssetDatabase(project.Files).UidOf("res://a.dat"));

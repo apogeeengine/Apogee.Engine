@@ -6,26 +6,26 @@ folder. A shipped game's `res://` is its packs; during development it is a folde
 ## Making one
 
 ```sh
-./build.sh pack Samples/Mods/res Bin/data/game.pack                      # every file under the folder (Weft.Runtime --pack, with .env loaded)
-./build.sh pack Content Bin/data/game.pack --split-mb 1024 --level 15      # parts of about 1 GiB, a smaller (slower) compression
-./build.sh pack Content Bin/data/patch.pack --base Bin/data/game.pack      # a patch pack
+./build.sh pack Samples/Mods/res Bin/data/game.wpak                      # every file under the folder (Weft.Runtime --pack, with .env loaded)
+./build.sh pack Content Bin/data/game.wpak --split-mb 1024 --level 15      # parts of about 1 GiB, a smaller (slower) compression
+./build.sh pack Content Bin/data/patch.wpak --base Bin/data/game.wpak      # a patch pack
 ```
 
 `./build.sh pack` runs `Weft.Runtime --pack` (the engine's host program has the content library and the native libraries, and the editor and the export step use the same `PackWriter`);
-the wrapper loads `.env`, so `WEFT_PACK_KEY` applies. Run `Weft.Runtime --pack <folder> <out.pack>` yourself to pack without the wrapper. Paths in the pack are relative to the folder (`packages/core/mod.xml`); files and folders whose name starts with a dot are left out; every name must be valid in a virtual path (no `..`,
+the wrapper loads `.env`, so `WEFT_PACK_KEY` applies. Run `Weft.Runtime --pack <folder> <out.wpak>` yourself to pack without the wrapper. Paths in the pack are relative to the folder (`packages/core/mod.wmod`); files and folders whose name starts with a dot are left out; every name must be valid in a virtual path (no `..`,
 no `nul`…), and the tool says which are not. From code: `GamePacker` (below), or `PackWriter` (`Add`, `AddFile`, `Remove`, `Finish`) to write the files yourself.
 
 - **Compression.** Each file is compressed with zstd when it has 64 bytes or more and that saves at least 10%; the rest (PNG, KTX2, OGG…) is stored as it is. `--level` is zstd's 1 to 22
   (default 12). Large files are compressed on several threads.
-- **Splitting.** A pack grows to `--split-mb` (default 1536) and then continues in the next part: `game.pack`, `game_001.pack`, `game_002.pack`… A file is never split, so one that is
+- **Splitting.** A pack grows to `--split-mb` (default 1536) and then continues in the next part: `game.wpak`, `game_001.wpak`, `game_002.wpak`… A file is never split, so one that is
   bigger than the limit gets a part to itself. Opening the first part finds the others; a part that is missing is an error that says which.
 - **Patch packs.** With `--base` the packs you name (in order, with the same key) are what the game has already: the new pack holds only the files that are new or different, and a *removal*
   for each file that is gone. Mounted over the base, it replaces, adds and removes.
 
-With `--cooked` the pack is what a shipped game needs: the imported artifacts instead of the sources they replace and their `.import.xml` files ([Asset import](import.md#packing)), the authored
-documents (scenes and prefabs), the definitions of the base packages (the `.xml` files in the `Content` folders of `packages/<id>/mod.xml`) and the UID list `imported/assets.xml` as [cooked XML](import.md#cooked-xml) at the
-same paths, everything else as it is: `mod.xml`, schemas, `.rml` documents, scripts and mods stay text. It needs the folder to be imported first. The summary line
-says how many documents were cooked (`game.pack: 14 files (5.5 MiB) in 1 part(s), 4.9 MiB, 2 cooked`). Files under `dev_mods/` are never cooked, and a scene or a definition file that is not well-formed XML is an error
+With `--cooked` the pack is what a shipped game needs: the imported artifacts instead of the sources they replace and their `.wimp` files ([Asset import](import.md#packing)), the authored
+documents (scenes and prefabs), the definitions of the base packages (the `.xml` files in the `Content` folders of `packages/<id>/mod.wmod`) and the UID list `imported/assets.xml` as [cooked XML](import.md#cooked-xml) at the
+same paths, everything else as it is: `mod.wmod`, schemas, `.rml` documents, scripts and mods stay text. It needs the folder to be imported first. The summary line
+says how many documents were cooked (`game.wpak: 14 files (5.5 MiB) in 1 part(s), 4.9 MiB, 2 cooked`). Files under `dev_mods/` are never cooked, and a scene or a definition file that is not well-formed XML is an error
 (exit code 1) that names its path. A script that read such a file as text with `fs.read_text` gets bytes from a cooked pack: it reads definitions with `defs`, scenes with `world:load_scene_file` and
 other XML with `xml.load`, which work on both forms (`Tests/Fixtures/ShippedGame` is packed `--cooked` and run from the pack by a test).
 
@@ -37,7 +37,7 @@ other XML with `xml.load`, which work on both forms (`Tests/Fixtures/ShippedGame
 PackReport report = GamePacker.Pack(new PackRequest
 {
     Folder = "Content",                   // the game folder: it is res://
-    Output = "build/data/game.pack",      // the first part; more are game_001.pack…
+    Output = "build/data/game.wpak",      // the first part; more are game_001.wpak…
     Cooked = true,                        // artifacts instead of sources, cooked documents (needs an import first)
     AllowNothingImported = true,          // a game with nothing to import is packed as it is, not an error
     Key = PackKey.FromEnvironment(),      // the caller asks; the packer never reads the environment
@@ -57,11 +57,11 @@ were cooked documents, the bytes before and after compression, and the part file
 
 ```csharp
 PackKey? key = PackKey.FromEnvironment();                    // null when WEFT_PACK_KEY is not set
-using var pack = PackSource.Open("data/game.pack", key);     // the key is ignored for a pack that is not encrypted
+using var pack = PackSource.Open("data/game.wpak", key);     // the key is ignored for a pack that is not encrypted
 files.Mount("res://", pack);                                  // later mounts override earlier ones: a patch pack goes after
 ```
 
-`Weft.Runtime --game <folder>` mounts the folder as `res://` and then every `*.pack` in `<folder>/data`, by name (so `patch.pack` goes over `game.pack`), with the key from the environment,
+`Weft.Runtime --game <folder>` mounts the folder as `res://` and then every `*.wpak` in `<folder>/data`, by name (so `patch.wpak` goes over `game.wpak`), with the key from the environment,
 before it looks for packages. Reads are safe from several threads; a file is read, decrypted, decompressed and checked when it is asked for, a file that is neither compressed nor encrypted
 is streamed without being read whole (and without its hash checked).
 
@@ -87,7 +87,7 @@ What it does, in detail (`PackFormat` has the layout):
 - Each part has a random 32-byte **salt**; the key that seals a part is `HKDF-SHA256(key, salt)`, so the pack key never encrypts anything directly and two packs of the same files differ.
 - Every file and the index is its own **AES-256-GCM** blob (`nonce | tag | ciphertext`, a random nonce each time). A wrong key, or a single changed byte, fails the check instead of producing
   garbage. The file's **path is authenticated** with it, so a file cannot be moved to another path in the pack.
-- The first four bytes of the pack are `APGK` without a key, and with one a few bytes of a hash of the key: an encrypted pack has no signature to search for, and opening one with the
+- The first four bytes of the pack are `WPAK` without a key, and with one a few bytes of a hash of the key: an encrypted pack has no signature to search for, and opening one with the
   wrong key, or with none, is an error that says so (without the key in it).
 - Compression comes first and encryption after it (encrypted data does not compress). Without a key, damage is found by the zstd checksum of a compressed file and by a hash (the first 16
   bytes of the SHA-256 of the file) that is checked for every file read whole.

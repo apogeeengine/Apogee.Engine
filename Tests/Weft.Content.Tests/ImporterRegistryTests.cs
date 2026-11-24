@@ -139,7 +139,7 @@ public class ImporterRegistryTests
         importer.Run();
         Assert.Equal(AssetStatus.UpToDate, importer.StatusOf("a.txt"));
 
-        folder.Write("a.txt.import.xml", "<Import/>");                   // so did its settings
+        folder.Write("a.txt.wimp", "<Import/>");                   // so did its settings
         Assert.Equal(AssetStatus.Stale, importer.StatusOf("a.txt"));
 
         folder.Files.Delete("res://imported/a.txt.up");                  // the artifact is gone
@@ -191,11 +191,11 @@ public class ImporterRegistryTests
     [Fact]
     public void ShaderVariantsInTheSidecarAreCheckedAgainstTheSchema()
     {
-        ImportSettings settings = ImportSettings.Parse("<Import><Variant><Define name=\"FAST\"/><Define name=\"QUALITY\" value=\"3\"/></Variant><Variant/></Import>", "x.import.xml");
+        ImportSettings settings = ImportSettings.Parse("<Import><Variant><Define name=\"FAST\"/><Define name=\"QUALITY\" value=\"3\"/></Variant><Variant/></Import>", "x.wimp");
 
         Assert.Equal(2, settings.Variants.Count);
         Assert.Equal(new Dictionary<string, string> { ["FAST"] = "1", ["QUALITY"] = "3" }, settings.Variants[0].Defines);
         Assert.Empty(settings.Variants[1].Defines);
-        Assert.Throws<ContentException>(() => ImportSettings.Parse("<Import><Variant><Define value=\"1\"/></Variant></Import>", "x.import.xml")); // a define needs a name
+        Assert.Throws<ContentException>(() => ImportSettings.Parse("<Import><Variant><Define value=\"1\"/></Variant></Import>", "x.wimp")); // a define needs a name
     }
 }

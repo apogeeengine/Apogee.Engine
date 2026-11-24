@@ -9,13 +9,13 @@ using MeshoptApi = Weft.Native.Meshopt.Meshopt;
 namespace Weft.Content.Import;
 
 /// <summary>
-/// The engine's own model file (<c>.amodel</c>): a <see cref="ModelData"/> as it is after import, ready to load without a glTF parser, its files, or any decoding of images. Vertex and index
+/// The engine's own model file (<c>.wmdl</c>): a <see cref="ModelData"/> as it is after import, ready to load without a glTF parser, its files, or any decoding of images. Vertex and index
 /// buffers are compressed with meshoptimizer's codecs (lossless: the model comes back bit for bit), textures are embedded KTX 2 files (<see cref="Ktx2Writer"/>), the rest is plain
 /// little-endian fields. Loading is far faster than reading the glTF, and the file is smaller than the sources it replaces.
 /// </summary>
 public static unsafe class ModelFile
 {
-    public const uint Magic = 0x4C444D41; // "AMDL"
+    public const uint Magic = 0x4C444D57; // "WMDL"
     public const uint Version = 1;
 
     public static bool IsModelFile(ReadOnlySpan<byte> file) => file.Length >= 8 && BitConverter.ToUInt32(file) == Magic;

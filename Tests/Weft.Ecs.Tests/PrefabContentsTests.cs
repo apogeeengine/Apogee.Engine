@@ -70,10 +70,10 @@ public sealed class PrefabContentsTests : PrefabTestBase
     [Fact]
     public void ARootThatIsAnInstanceOfAnotherPrefabHasNoEntitiesOfItsOwn()
     {
-        Write("prefabs/wrapper.aprefab", $"""<Prefab version="1" nextId="2"><Entity id="1" name="Wrapper" prefab="{Lamp}"/></Prefab>""");
+        Write("prefabs/wrapper.wprf", $"""<Prefab version="1" nextId="2"><Entity id="1" name="Wrapper" prefab="{Lamp}"/></Prefab>""");
         using World editing = Editing();
 
-        FormatException error = Assert.Throws<FormatException>(() => editing.LoadPrefabContents(editing.Prefabs.Load("res://prefabs/wrapper.aprefab")));
+        FormatException error = Assert.Throws<FormatException>(() => editing.LoadPrefabContents(editing.Prefabs.Load("res://prefabs/wrapper.wprf")));
 
         Assert.Contains("instance of another prefab", error.Message, StringComparison.Ordinal);
         Assert.Empty(editing.UserEntities());
@@ -95,7 +95,7 @@ public sealed class PrefabContentsTests : PrefabTestBase
 
         editing.SavePrefabContents(lamp, root);
 
-        string saved = Read("prefabs/lamp.aprefab");
+        string saved = Read("prefabs/lamp.wprf");
         Assert.Contains($"uid=\"{LampUid}\"", saved, StringComparison.Ordinal);
         Assert.Contains("nextId=\"5\"", saved, StringComparison.Ordinal);
         Assert.Contains("<Entity id=\"2\" name=\"Bulb\">", saved, StringComparison.Ordinal);
@@ -113,15 +113,15 @@ public sealed class PrefabContentsTests : PrefabTestBase
         uint lamp = editing.Prefabs.Load(LampPath);
         Entity root = editing.LoadPrefabContents(lamp);
         editing.SavePrefabContents(lamp, root);
-        string hand = Read("prefabs/lamp.aprefab").Replace("<Entity id=\"1\"", "<!-- written by hand -->\n  <Entity id=\"1\"", StringComparison.Ordinal);
-        Write("prefabs/lamp.aprefab", hand);
+        string hand = Read("prefabs/lamp.wprf").Replace("<Entity id=\"1\"", "<!-- written by hand -->\n  <Entity id=\"1\"", StringComparison.Ordinal);
+        Write("prefabs/lamp.wprf", hand);
         Assert.Equal(PrefabReloadStatus.Unchanged, World.Prefabs.Reload(LampPath).Status); // the same prefab: the comment is no content
         Faults.FailOn(1);                                                            // a write at all would fail
 
         editing.SavePrefabContents(lamp, root);
 
         Assert.Equal(0, Faults.Writes);
-        Assert.Equal(hand, Read("prefabs/lamp.aprefab"));
+        Assert.Equal(hand, Read("prefabs/lamp.wprf"));
     }
 
     [Fact]
@@ -133,11 +133,11 @@ public sealed class PrefabContentsTests : PrefabTestBase
         uint lamp = editing.Prefabs.Load(LampPath);
         Entity root = editing.LoadPrefabContents(lamp);
         SetHeight(editing, Child(editing, root, "Bulb"), 4);
-        string before = Read("prefabs/lamp.aprefab");
+        string before = Read("prefabs/lamp.wprf");
 
         Faults.FailOn(1);                                                            // the write fails
         Assert.Throws<IOException>(() => editing.SavePrefabContents(lamp, root));
-        Assert.Equal(before, Read("prefabs/lamp.aprefab"));
+        Assert.Equal(before, Read("prefabs/lamp.wprf"));
         Assert.False(World.HasPendingPrefabUpdates);                                 // nobody was told: the instance has nothing to catch up with
         Assert.False(editing.HasPendingPrefabUpdates);
 
@@ -160,13 +160,13 @@ public sealed class PrefabContentsTests : PrefabTestBase
         uint lamp = editing.Prefabs.Load(LampPath);
         Entity root = editing.LoadPrefabContents(lamp);
         SetHeight(editing, Child(editing, root, "Bulb"), 4);
-        string edited = Read("prefabs/lamp.aprefab").Replace("0 1.8 0", "0 2.5 0", StringComparison.Ordinal);
-        Write("prefabs/lamp.aprefab", edited);
+        string edited = Read("prefabs/lamp.wprf").Replace("0 1.8 0", "0 2.5 0", StringComparison.Ordinal);
+        Write("prefabs/lamp.wprf", edited);
 
         InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => editing.SavePrefabContents(lamp, root));
 
         Assert.Contains("changed on the disk", error.Message, StringComparison.Ordinal);
-        Assert.Equal(edited, Read("prefabs/lamp.aprefab"));
+        Assert.Equal(edited, Read("prefabs/lamp.wprf"));
         Assert.Equal(0, Faults.Writes);
     }
 
@@ -177,12 +177,12 @@ public sealed class PrefabContentsTests : PrefabTestBase
         uint lamp = editing.Prefabs.Load(LampPath);
         Entity root = editing.LoadPrefabContents(lamp);
         _ = editing.Instantiate(CornerPath, root);                                   // the corner holds lamps
-        string before = Read("prefabs/lamp.aprefab");
+        string before = Read("prefabs/lamp.wprf");
 
         InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => editing.SavePrefabContents(lamp, root));
 
         Assert.Contains("itself", error.Message, StringComparison.Ordinal);
-        Assert.Equal(before, Read("prefabs/lamp.aprefab"));
+        Assert.Equal(before, Read("prefabs/lamp.wprf"));
         Assert.Equal(0, Faults.Writes);
     }
 
@@ -200,7 +200,7 @@ public sealed class PrefabContentsTests : PrefabTestBase
         Assert.Throws<UnauthorizedAccessException>(() => reader.SavePrefabContents(lamp, root));            // not even for what is already there
         SetHeight(reader, Child(reader, root, "Bulb"), 4);
         Assert.Throws<UnauthorizedAccessException>(() => reader.SavePrefabContents(lamp, root));
-        Assert.Contains("0 1.8 0", Read("prefabs/lamp.aprefab"), StringComparison.Ordinal);
+        Assert.Contains("0 1.8 0", Read("prefabs/lamp.wprf"), StringComparison.Ordinal);
     }
 
     [Fact]

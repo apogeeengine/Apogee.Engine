@@ -607,7 +607,7 @@ public static unsafe class EditorApp
             if (Ui.Begin("Weft Editor##start", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
             {
                 Ui.Text("Open a game folder to edit it.");
-                Ui.Text("A game folder holds game.xml, its packages and its assets.");
+                Ui.Text("A game folder holds game.wgam, its packages and its assets.");
                 Gui.Disabled(_dialogFlow.Busy, () =>
                 {
                     if (Gui.Button("Open project..."))
@@ -1003,7 +1003,7 @@ public static unsafe class EditorApp
                 var scenes = project.SceneFiles();
                 if (scenes.Count == 0)
                 {
-                    Ui.Text("There are no .ascene files in the game folder.");
+                    Ui.Text("There are no .wscn files in the game folder.");
                 }
 
                 foreach (string scene in scenes)
