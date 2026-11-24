@@ -98,6 +98,7 @@ nav:
           - Game manifest: manual/content/game-manifest.md
           - Packs: manual/content/packs.md
           - Asset import: manual/content/import.md
+          - File formats: manual/content/formats.md
           - Asset identity: manual/content/assets.md
           - Scenes: manual/content/scenes.md
           - Prefabs: manual/content/prefabs.md

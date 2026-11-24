@@ -11,6 +11,8 @@ Weft.Runtime --import Samples/Mods/res --force      # import everything again
 
 ## What it makes
 
+The layout of each artifact, its magic and its version are in [File formats](formats.md); [Sidecars and artifacts](formats.md#sidecars-and-artifacts) says where the source, the `.wimp` and the artifact live.
+
 | Source | Artifact | |
 | --- | --- | --- |
 | `.glb`, `.gltf` | `imported/<path>.wmdl` | the model as the engine uses it (`ModelFile`): vertex and index buffers compressed with meshoptimizer's lossless codecs (the geometry comes back bit for bit), the textures embedded as GPU-compressed KTX 2 files (below), the rest plain fields. Loads without a glTF parser or any image decoding |
@@ -20,7 +22,7 @@ Weft.Runtime --import Samples/Mods/res --force      # import everything again
 `imported/index.xml` says which source each artifact came from and which other files it was made from (a glTF's `.bin` and its textures):
 
 ```xml
-<Imports version="1">
+<Imports version="4">
   <Import source="models/car.gltf" artifact="imported/models/car.gltf.wmdl" key="9c1e…">
     <Dependency path="models/car.bin"/>
     <Dependency path="models/wood.png"/>

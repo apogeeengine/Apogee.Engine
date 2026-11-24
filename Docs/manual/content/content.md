@@ -56,7 +56,7 @@ refuses to replace anything; between two sources it is a copy and a delete). Too
 ## File names
 
 The engine's own formats have an extension that starts with `w`; the formats everyone knows (`.luau`, `.slang`, `.glb`, `.gltf`, `.png`, `.xsd`, `.rml`…) keep theirs. Binary formats start with a
-four-letter magic: the extension in capitals, and `WXMB` for cooked XML.
+four-letter magic: the extension in capitals, and `WXMB` for cooked XML. [File formats](formats.md) is the reference for each of them: layout, versions, and which are planned and not read yet.
 
 | File | Holds | Form | Magic |
 | --- | --- | --- | --- |
