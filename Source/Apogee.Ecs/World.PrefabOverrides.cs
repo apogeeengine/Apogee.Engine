@@ -537,6 +537,26 @@ public sealed unsafe partial class World
                     written.Add(file);
                 }
 
+                // Read back before the library (and so every world that shares it) is told anything: a file that is not what was written is put back with nobody having seen it.
+                foreach (PrefabEditFile file in prepared.Changed)
+                {
+                    XmlNode back;
+                    try
+                    {
+                        back = XmlFile.Read(files, file.Path);
+                        PrefabDocument.Check(back, file.Path, warnNextId: false);
+                    }
+                    catch (Exception e) when (e is ContentException or FormatException)
+                    {
+                        throw new InvalidOperationException($"{file.Path} was written but cannot be read back as a prefab ({e.Message}): it was put back");
+                    }
+
+                    if (back.ToXml() != file.Document.ToXml())
+                    {
+                        throw new InvalidOperationException($"{file.Path} was written but reads back as something else than what was written: it was put back");
+                    }
+                }
+
                 foreach (PrefabEditFile file in prepared.Changed)
                 {
                     PrefabReload result = library.Reload(file.Path, MaxLoadEntities);

@@ -237,13 +237,36 @@ public sealed unsafe partial class World
             throw new ArgumentException($"a prefab file's name ends in .aprefab: '{resolved}'", nameof(path));
         }
 
+        PrefabLibrary library = Prefabs;
+        PrefabFileBuild build = BuildPrefabFile(files, library, resolved, library.Load(resolved), root);
+        files.WriteAllText(resolved, SceneText(build.Document));
+        if (build.MintedUid)
+        {
+            Assets?.Refresh(); // the database remembers what it found: this file has a UID now
+        }
+
+        // The file is there now (a new one named no file until this point): its handle is the one the entities hold.
+        uint handle = library.Load(resolved);
+        TagSaved(build, root, handle);
+        library.Written(handle);
+
+        // The instance this was saved from has what the file has now (what was added to it is the file's), and an update from the file it had would make that again beside it.
+        if (TryGet(root, out PrefabInstance saved) && saved.Prefab == handle)
+        {
+            MarkUpToDate(root);
+        }
+    }
+
+    // A prefab file worked out from entities and not yet written: the document, and what is needed to tag the entities once it is.
+    private sealed record PrefabFileBuild(string Path, XmlNode Document, SavePlan Plan, bool MintedUid);
+
+    // Everything SavePrefabFile does before the write: the checks, the ids, the document, and that it is a prefab that loads. Nothing is written and nothing in the world changes.
+    private PrefabFileBuild BuildPrefabFile(VirtualFileSystem files, PrefabLibrary library, string resolved, uint handle, Entity root)
+    {
         if (!IsUserEntity(root))
         {
             throw new ArgumentException("the root of a prefab must be an entity of the world", nameof(root));
         }
-
-        PrefabLibrary library = Prefabs;
-        uint handle = library.Load(resolved);
 
         // What the file already has: the highest number ever given, which a deleted entity still counts for.
         long next = 1;
@@ -328,29 +351,132 @@ public sealed unsafe partial class World
             throw new InvalidOperationException($"{resolved} would not load as a prefab, so it was not written: {e.Message}", e);
         }
 
-        files.WriteAllText(resolved, SceneText(document));
-        if (minted)
+        return new PrefabFileBuild(resolved, document, plan, minted);
+    }
+
+    // After the file was written: what it numbers is a member of it now (an instance written inside it too: it is an entity of this file, whatever file it was the root of); what is in an instance
+    // is the instance's prefab's, and stays as it was.
+    private void TagSaved(PrefabFileBuild build, Entity root, uint handle)
+    {
+        foreach (Entity entity in build.Plan.Numbered)
         {
-            Assets?.Refresh(); // the database remembers what it found: this file has a UID now
+            if (!IsAlive(entity))
+            {
+                continue; // an update that ran while the file was written took it away
+            }
+
+            if (!TryGet(entity, out PrefabMember member) || member.Prefab == 0 || member.Prefab == handle || entity == root || build.Plan.Instances.ContainsKey(entity.Id))
+            {
+                Set(entity, new PrefabMember { Id = uint.Parse(build.Plan.AddressOf[entity.Id], CultureInfo.InvariantCulture), Prefab = handle });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Makes the entities of a prefab file as the file itself: its own entities, under no parent, with the root returned. Unlike <see cref="Instantiate(uint, Entity)"/> the root is not an
+    /// instance (nothing is made <em>of</em> the prefab: these are its entities), every entity of the file is a <see cref="PrefabMember"/> of it with its id there (so <see cref="SavePrefabContents"/>
+    /// keeps the ids), and a prefab inside it is an instance, with the changes the file holds for it, as it is in a scene. This is what a tool that edits one prefab on its own (a prefab mode: see
+    /// <c>Apogee.Host.Editing.PrefabStage</c>) loads into a world of its own. The entities of the file are ordinary entities there (<see cref="IsPrefabMember"/> is false for them), so they can be moved
+    /// under another parent, while what is inside an instance it holds is a member of that instance's prefab, as anywhere.
+    /// </summary>
+    /// <param name="prefab">The prefab, a handle of <see cref="Prefabs"/>.</param>
+    /// <returns>The root entity of the file.</returns>
+    /// <exception cref="ArgumentException">The handle is not one of the library's.</exception>
+    /// <exception cref="ContentException">The prefab was named by a <c>uid://</c> that no file has.</exception>
+    /// <exception cref="FileNotFoundException">There is no such file.</exception>
+    /// <exception cref="FormatException">The file is not a prefab, its root is itself an instance of another prefab (it holds no entities of its own to edit), or it would make more than <see cref="MaxLoadEntities"/> entities. Nothing is made.</exception>
+    public Entity LoadPrefabContents(uint prefab)
+    {
+        PrefabLibrary library = Prefabs;
+        XmlNode document = library.Require(prefab);
+        string origin = library.PathOf(prefab) ?? library.RefOf(prefab)?.ToString() ?? $"prefab {prefab}";
+
+        // The file read as a scene whose entities have the file's ids: planned before anything is made, so that a file that is too big, or whose root is an instance of another prefab, makes nothing.
+        ScenePlan plan = ScenePlan.Build(document, NewExpander(new ExpansionBudget(MaxLoadEntities)));
+        if (plan.Items[0].InstancePrefab is not null)
+        {
+            throw new FormatException($"the root of {origin} is an instance of another prefab: it holds no entities of its own to edit");
         }
 
-        // The file is there now (a new one named no file until this point): its handle is the one the entities hold. What the file numbers is a member of it now (an instance written inside it too:
-        // it is an entity of this file, whatever file it was the root of); what is in an instance is the instance's prefab's, and stays as it was.
-        handle = library.Load(resolved);
-        foreach (Entity entity in plan.Numbered)
+        List<Entity> created = Create(plan, default);
+        for (int i = 0; i < created.Count; i++)
         {
-            if (!TryGet(entity, out PrefabMember member) || member.Prefab == 0 || member.Prefab == handle || entity == root || plan.Instances.ContainsKey(entity.Id))
+            // What the file numbers (its own entities, the roots of the instances it holds, and what an instance's changes add) has the file's ids. What is inside an instance is its prefab's.
+            PlannedEntity item = plan.Items[i];
+            if (item.MemberId is null && PrefabDocument.TryParseId(item.Address, out int id))
             {
-                Set(entity, new PrefabMember { Id = uint.Parse(plan.AddressOf[entity.Id], CultureInfo.InvariantCulture), Prefab = handle });
+                Set(created[i], new PrefabMember { Id = (uint)id, Prefab = prefab });
             }
         }
 
-        library.Written(handle);
+        return created[0];
+    }
 
-        // The instance this was saved from has what the file has now (what was added to it is the file's), and an update from the file it had would make that again beside it.
-        if (TryGet(root, out PrefabInstance saved) && saved.Prefab == handle)
+    /// <summary>Whether the prefab's file can be written: it is in a source that can be written and is not read-only on the disk (for a link, the file it leads to). False when the prefab has no file.</summary>
+    /// <param name="prefab">The prefab, a handle of <see cref="Prefabs"/>.</param>
+    public bool CanWritePrefab(uint prefab)
+    {
+        PrefabLibrary library = Prefabs;
+        return Files is { } files && library.PathOf(prefab) is { } path && files.CanWrite(path) && !IsReadOnlyOnDisk(files, path);
+    }
+
+    /// <summary>
+    /// Writes the entities made by <see cref="LoadPrefabContents"/> (and what was done to them) back to the prefab's file, with the ids the file's entities have kept (new entities take <c>nextId</c> and
+    /// are members of the file from then on), by the write <see cref="ApplyOverrides"/> uses: the file is checked first and read back after, and the instances of the prefab (and of the prefabs that
+    /// nest it) follow it in every world that shares the library once their <see cref="ApplyPrefabUpdates"/> runs. A file that the entities say nothing new about is not written at all (a hand-written
+    /// layout, with its comments, stays). When this throws nothing was announced to any world, and the file is as it was (see the <see cref="IOException"/> for the one case where it cannot be).
+    /// </summary>
+    /// <param name="prefab">The prefab the entities were loaded from.</param>
+    /// <param name="root">The root entity <see cref="LoadPrefabContents"/> returned, with what is below it now.</param>
+    /// <exception cref="InvalidOperationException">An update of this world is running; the file is not what the library read (it changed on the disk: <see cref="PrefabLibrary.Reload(string, int)"/> it); what would be written holds the prefab itself, directly or through another, or is not a prefab that loads; the file could not be read back (it was put back); the world has no files or the prefab no file.</exception>
+    /// <exception cref="UnauthorizedAccessException">The file is not in a source that can be written, or is read-only (<see cref="CanWritePrefab"/>).</exception>
+    /// <exception cref="IOException">A file that was written could not be put back after a failure: the message says so.</exception>
+    public void SavePrefabContents(uint prefab, Entity root)
+    {
+        if (_applying)
         {
-            MarkUpToDate(root);
+            throw new InvalidOperationException("a prefab update is running: wait until it is done");
         }
+
+        VirtualFileSystem files = Files ?? throw new InvalidOperationException("this world has no files to write a prefab to");
+        PrefabLibrary library = Prefabs;
+        string path = library.PathOf(prefab) ?? throw new InvalidOperationException($"the prefab {library.RefOf(prefab)?.ToString() ?? prefab.ToString(CultureInfo.InvariantCulture)} is not a file this world can find: there is nothing to write");
+
+        // A file that cannot be written is refused whatever the entities say: saving it is a mistake even when it would change nothing.
+        if (!files.CanWrite(path))
+        {
+            throw new UnauthorizedAccessException($"{path} is not in a source that can be written");
+        }
+
+        if (IsReadOnlyOnDisk(files, path))
+        {
+            throw new UnauthorizedAccessException($"{path} is read-only");
+        }
+
+        PrefabFileBuild build = BuildPrefabFile(files, library, path, prefab, root);
+
+        // The file as the disk has it now, which must be the one the library holds: what an apply is held to.
+        PrefabEditFile opened = OpenForEdit(files, library, [], path);
+        if (build.Document.ToXml() == opened.Document.ToXml())
+        {
+            TagSaved(build, root, prefab);
+            return; // the file says all of this already: it keeps the way it is laid out
+        }
+
+        // The checks of an apply, for the file as it will be, and then its write.
+        if (library.Problem(prefab, build.Document, path, MaxLoadEntities, new Dictionary<uint, XmlNode> { [prefab] = build.Document }) is { } problem)
+        {
+            throw new InvalidOperationException($"{path} would not be a prefab that loads, so nothing was written: {problem}");
+        }
+
+        var file = new PrefabEditFile(prefab, opened.Key, path, build.Document, opened.Original, opened.Reformats) { Changed = true };
+        var prepared = new PreparedApply(files, library, [file], [], [], [new PrefabFileWrite(path, file.Original, file.Reformats)]);
+        CommitApply(root, prepared);
+        if (build.MintedUid)
+        {
+            Assets?.Refresh();
+        }
+
+        TagSaved(build, root, prefab);
     }
 }

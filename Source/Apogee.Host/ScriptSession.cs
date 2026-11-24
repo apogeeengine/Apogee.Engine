@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Text;
 using Apogee.Content;
+using Apogee.Content.Assets;
 using Apogee.Content.FileSystem;
 using Apogee.Core.Graphics;
 using Apogee.Content.Import;
@@ -47,12 +48,42 @@ public sealed class ScriptSession : IDisposable
     }
 
     /// <summary>A scene holds a model's path and UID, not its number in this run's library; and a physics body only exists in the run that made it (scripts make them again).</summary>
-    private static void RegisterSceneSupport(World world, VirtualFileSystem files, ModelLibrary models, ContentLoader content)
+    private static void RegisterSceneSupport(World world, VirtualFileSystem files, ModelLibrary models, AssetDatabase assets)
     {
         world.Files = files;
-        world.Assets = content.Assets;
-        world.RegisterAssetType("model", id => models.PathOf(id) is { } path ? content.Assets.RefOf(path) : null, reference => content.Assets.Resolve(reference) is { } path ? models.Load(path) : 0);
+        world.Assets = assets;
+        world.RegisterAssetType("model", id => models.PathOf(id) is { } path ? assets.RefOf(path) : null, reference => assets.Resolve(reference) is { } path ? models.Load(path) : 0);
         world.IgnoreInScenes("Body");
+    }
+
+    private readonly List<World> _editingWorlds = [];
+    private bool _disposed;
+
+    /// <summary>
+    /// Makes another world for a tool to edit in, next to <see cref="World"/>: the same files, asset database, models and prefab library (so that a model or a prefab has one number in both, and a prefab
+    /// saved in one is read by the other), and nothing else of the session. Scripts do not see it (it is not the <c>world</c> global, and no scripts, physics or audio run on it), <see cref="Progress"/>
+    /// does not step it (a tool steps it, with <c>Progress(0)</c> to compose transforms), and it is disposed with the session. A tool that is done with it disposes it sooner.
+    /// </summary>
+    /// <returns>An empty world: <see cref="Editing.PrefabStage.Open"/> fills one with a prefab.</returns>
+    /// <exception cref="ObjectDisposedException">The session is disposed.</exception>
+    public World CreateEditingWorld()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _editingWorlds.RemoveAll(static world => world.IsDestroyed); // the ones a tool has finished with
+        var editing = new World();
+        try
+        {
+            RegisterSceneSupport(editing, World.Files!, Models, World.Assets!);
+            editing.Prefabs = World.Prefabs;
+        }
+        catch
+        {
+            editing.Dispose();
+            throw;
+        }
+
+        _editingWorlds.Add(editing);
+        return editing;
     }
 
     /// <summary>Makes the <c>assets</c> global (the engine owns it). The packages that load (in load order, after <c>res://</c>) are where a UID is looked for.</summary>
@@ -304,7 +335,7 @@ public sealed class ScriptSession : IDisposable
             var nothingContent = new ContentLoader(nothing);
             models = InstallModels(vm, nothing, nothingContent);
             ui = InstallUi(vm, nothing, nothingContent);
-            RegisterSceneSupport(world, nothing, models, nothingContent);
+            RegisterSceneSupport(world, nothing, models, nothingContent.Assets);
             AssetLibrary assets = InstallAssets(vm, nothingContent);
             settings = InstallSettings(vm, new SettingsStore(), input, audio, new EngineSettingDefaults()); // a single script keeps no settings between runs
             vm.Execute(vm.BaseOwner, "@" + path, File.ReadAllText(path, Encoding.UTF8));
@@ -487,7 +518,7 @@ public sealed class ScriptSession : IDisposable
             var content = new ContentLoader(files);
             models = InstallModels(vm, files, content);
             uiSystem = InstallUi(vm, files, content);
-            RegisterSceneSupport(world, files, models, content);
+            RegisterSceneSupport(world, files, models, content.Assets);
             assets = InstallAssets(vm, content, packages);
 
             // The player's settings before any script runs: scripts define their keys at load and find the saved values waiting. The window of game.xml is what the engine's window keys default to.
@@ -669,6 +700,13 @@ public sealed class ScriptSession : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
+        foreach (World editing in _editingWorlds)
+        {
+            editing.Dispose(); // the worlds tools made: they follow the prefab library and hold models, so they go first
+        }
+
+        _editingWorlds.Clear();
         if (ReferenceEquals(DebugDrawLibrary.Target, DebugDraw))
         {
             DebugDrawLibrary.Target = null;

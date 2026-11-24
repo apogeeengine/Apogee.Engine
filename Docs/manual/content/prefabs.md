@@ -379,6 +379,58 @@ of a prefab that names the new file (it would contain itself, even though the fi
 does it again; entity fields outside the branch that named an entity the change destroyed are put back with it. The file `CreatePrefab` wrote stays after an undo (it is an asset of the game): the entities are plain
 again, and redoing makes them its instance. A change that is refused throws before it is a step.
 
+## Prefab mode (for tools)
+
+An editor that edits a prefab *as the prefab* (not as an instance in a scene: its own entities, with the scene out of the way) needs a second set of entities next to the scene's. A session can hold only
+one script VM, one physics world, one audio and one UI, so the second set is a second `World`, not a second session: `Apogee.Host` gives the pieces, and a tool brings the windows.
+
+```csharp
+using PrefabStage stage = PrefabStage.Open(session, "res://prefabs/lamp.aprefab");   // a path, a uid://…, or both
+World world = stage.World;                                  // the prefab's entities: a hierarchy, an inspector and a viewport can show it
+Entity root = stage.Root;                                   // the prefab's own root: not an instance
+var history = new EditHistory();                            // an undo history of its own: the commands take a WorldRef, which a World converts to
+history.Execute(PrefabCommands.Instantiate(world, "res://prefabs/crate.aprefab", root));   // …edited like any world
+if (stage.CanSave)
+{
+    PrefabUpdate? update = stage.Save();                    // the file, and then every instance of the prefab in the session's world
+}
+```
+
+- **`ScriptSession.CreateEditingWorld()`** is the second world: an empty `World` with the session's files, asset database, models and prefab library (so a model or a prefab has one number in
+  both worlds, and a prefab saved in one is announced to the other), and nothing else. It is not the `world` global, no script, physics or audio runs on it, `Progress` of the session does not step
+  it (a tool steps it with `world.Progress(0)` to compose the transforms, and never more), and it is disposed with the session. A tool that is finished with one disposes it sooner.
+- **`PrefabStage.Open(session, path)`** makes one and fills it with `World.LoadPrefabContents(handle)`: the entities of the file *as the file*. `Root` is the file's root and is **not** an instance
+  (nothing is made of the prefab: these entities are the prefab), and every entity is an ordinary one, not a member in the sense of `IsPrefabMember`: it can be renamed, moved under another parent,
+  deleted, given components. Each has `PrefabMember { Id, Prefab }` with its id in the file, which is what lets `Save` [keep the ids](#ids-stay-the-same). A prefab the file holds
+  stays an *instance* (`IsPrefabInstance`), with the changes the file says for it applied, and what is inside it is that prefab's own (members, which cannot be moved), exactly as in a scene; a
+  change made inside it is saved as an override in the instance's element, not as copies of its entities. Entity fields have the file's ids as their targets, so they point within the stage.
+  `Open` fails like `Instantiate` does and makes nothing: a file that is missing (`FileNotFoundException`), a `uid://` no file has (`ContentException`), not a prefab, too big, or one whose
+  root is itself an instance of another prefab (`FormatException`: such a file has no entities of its own to edit; change it by applying overrides to it).
+- **`stage.Path`, `stage.Prefab`, `stage.World`, `stage.Root`**: the file's path, its handle in the session's library (the same in the stage's world and in the session's), the world and the root.
+  **`CanSave`** is false for a prefab in a source that cannot be written (a mod's, a pack's) or that is read-only on the disk: it opens and can be edited, `Save` refuses.
+- **`Save()`** writes the stage's entities back as the file. It is **the write that [Apply](#from-an-editor-or-a-tool) uses**, not another one (`World.SavePrefabContents`): the file is built in memory
+  and checked first (it must load as a prefab, must not hold itself, directly or through another prefab: `InvalidOperationException`; the file must be in a source that can be written and not be read-only:
+  `UnauthorizedAccessException`; it must be what the library read: a file changed on the disk since is refused, `Reload` it); the bytes are compared once more just before the write; the write leaves the old
+  file whole when it is interrupted; and the file is read back and checked before the library, and so any world, is told anything. When something fails the file is put back byte for byte and **no world is
+  told that the prefab changed**, so the session's world is never left waiting for a change that did not happen. A file that already says what the entities say is not written at all (a hand-written
+  layout with comments stays as it is).
+- **What follows a save.** The ids of the entities that were in the file stay (the stage's entities are the same ones; `Save` twice changes nothing), a new entity takes the file's `nextId` and is a member of
+  the file from then on, an id that was deleted is never used again. The session's world then follows the file: `Save` calls `ApplyPrefabUpdates` on it, which brings every instance of the prefab, and of the
+  prefabs that hold it, up to date in place (what an instance changed is kept, the entities that stay keep their ids), and returns what that did, a `PrefabUpdate` (an editor with an undo history
+  clears it, or does not undo past it, as for any change that came from a file). When the session's world holds updates (`HoldPrefabUpdates`) it is left pending for the tool to apply, and `Save`
+  returns null. A prefab nested in another changes in the stage's world only when `ApplyPrefabUpdates` is called on it, like any world; `Save` does it for what it wrote.
+- **A stage whose file changed meanwhile** (an Apply from the scene wrote it, a hot reload read a new version, someone edited it) is refused by `Save`: it was made from the old file, and saving it
+  would take back the change. `Save(overwrite: true)` writes it anyway; a tool offers that, or opens the prefab again.
+- **Rules for a tool.** Close every stage before the session is replaced (the editor's Play disposes the session: a stage's world goes with it, and `Save` then throws `ObjectDisposedException`), or do
+  not allow Play with a stage open. The stage's history is its own: it is not the scene's, and a prefab update of the stage's world (`PrefabsChanged` on `stage.World`) is a change from outside for it, as for the
+  scene's. A stage is *edited*, not played: nothing in it runs.
+
+A file reached by two spellings (`res://packages/core/prefabs/lamp.aprefab` and the `mod://core/prefabs/lamp.aprefab` the asset database gives the same file) is two library handles when it has a UID, so
+open a prefab by the path an instance names it by (`world.PrefabOf(instance)`) or by its `uid://…`.
+
+The `PrefabStageTests` (`Tests/Apogee.Host.Tests`) and `PrefabContentsTests` (`Tests/Apogee.Ecs.Tests`) cover all of this: ids, instances kept as instances, the session's instances following a save (also
+those of an outer prefab), a failing or damaged write, a cycle, a read-only prefab, and the end of the session.
+
 ## Cooked builds
 
 A shipped game holds its prefabs in its [packs](packs.md). `--pack --cooked` (after `--import`, which gives a prefab without a `uid` one) stores each `.aprefab` as [cooked XML](import.md#cooked-xml) in place
