@@ -52,6 +52,7 @@ jobs:
           Bin/publish/runtime/Apogee.Runtime --game Tests/Fixtures/ShippedGame --user "$RUNNER_TEMP/game-user" --headless --frames 60
           test -s "$RUNNER_TEMP/game-user/ran.txt"
           test -s "$RUNNER_TEMP/game-user/scene.txt"
+          test -s "$RUNNER_TEMP/game-user/prefab.txt"
           test -s "$RUNNER_TEMP/game-user/def.txt"
           test -s "$RUNNER_TEMP/game-user/moddata/patcher/ran.txt"
       # The export test (docs: Docs/manual/tools/export.md). The fixture game is exported for this platform, cooked and encrypted, by the published runtime. APOGEE_PACK_KEY is a fixed test key that is set on
@@ -133,6 +134,7 @@ jobs:
           env -u APOGEE_PACK_KEY "$exe" --headless --frames 60 --user "$user" +connect_lobby 1
           test -s "$user/ran.txt"
           test -s "$user/scene.txt"
+          test -s "$user/prefab.txt"
           test -s "$user/def.txt"
           test -s "$user/document.txt"
           test -s "$user/moddata/patcher/ran.txt"
