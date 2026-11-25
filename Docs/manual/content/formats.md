@@ -332,7 +332,7 @@ file before anything is allocated for them: a damaged file is a `ContentExceptio
 
 **Versioning.** The version is 1 and the reader takes exactly that; any other is refused with "import it again". Importing is cheap to repeat, so no older version is kept readable.
 
-**Planned: version 2.** A model on the [common container](#the-common-binary-container-planned): a small `META` block (name, bounds, meshes and submeshes, material slots with their parameters and an optional `.wmat`
+**Planned: version 2.** A model on the [common container](#the-common-binary-container): a small `META` block (name, bounds, meshes and submeshes, material slots with their parameters and an optional `.wmat`
 remap, texture references by sub-asset UID, nodes, sockets, a table of levels of detail) and a pair of buffer blocks per mesh (`VTX<n>`, `IDX<n>`, with the same meshoptimizer codecs), deterministic, readable by
 `--dump`. The textures leave the file and become sub-assets, `imported/<model path>/<n>.wtex`, each with a UID kept in the model's sidecar. Version 1 would not be read: the model is imported again.
 An authored XML model format, to describe a model without a glTF file, is only an idea: no engine code reads one.
@@ -398,37 +398,76 @@ space included) and the levels. Details of what the importer writes and its sett
 
 **Status.** Implemented. Owning page: [Asset import](import.md#gpu-texture-compression).
 
-## The common binary container (planned)
+## The common binary container
 
-*Planned: not read by the engine yet.* Every binary artifact the engine makes, apart from packs and cooked XML, is to share one container: `.wmdl`, `.wtex`, `.wsnd` and `.wshd`, and the planned `.wanm`, `.wcol`,
-`.wnav` and `.wbak`. One reader and writer, one place for the UID and the import hash, one `--dump`.
+Every binary artifact the engine makes, apart from packs and cooked XML, shares one container: `.wmdl`, `.wtex`, `.wsnd` and `.wshd`, and the planned `.wanm`, `.wcol`, `.wnav` and `.wbak`. One reader and writer
+(`BinaryAsset` and `BinaryAssetWriter` in `Weft.Content`), one place for the UID and the import hash, one `--dump`. **The container is implemented; no format has moved onto it yet** (`.wmdl` and `.wshd` are still
+version 1 in their own layouts, and a version-1 file is not mistaken for a container: see below). The container has no extension and no row in the table of formats: each format on it has its own, and
+its magic is the one in the table.
 
-**Header** (64 bytes, little-endian):
+**Header** (64 bytes, little-endian, offsets from the start of the file):
 
-| Field | Size | Meaning |
-| --- | --- | --- |
-| magic | `u32` | `WMDL`, `WTEX`, `WSND`, `WSHD`… |
-| container version | `u16` | 1 |
-| format version | `u16` | the version of the format inside (of `.wmdl`, of `.wtex`…) |
-| flags | `u32` | |
-| header size | `u32` | |
-| block count | `u32` | |
-| block table offset | `u64` | |
-| UID | `u64` | the asset's UID, copied from the sidecar; 0 = none (the artifact then belongs to a sub-asset that has none, or to a file without a sidecar) |
-| import hash | 16 bytes | the first 16 bytes of the import key: the settings, the source hash and the importer's fingerprint |
-| reserved | | zero |
+| Offset | Field | Size | Meaning |
+| --- | --- | --- | --- |
+| 0 | magic | `u32` | four printable ASCII characters: `WMDL`, `WTEX`, `WSND`, `WSHD`… |
+| 4 | container version | `u16` | 1 |
+| 6 | format version | `u16` | the version of the format inside (of `.wmdl`, of `.wtex`…), at least 1 |
+| 8 | flags | `u32` | the format's: the container gives them no meaning |
+| 12 | header size | `u32` | 64 |
+| 16 | block count | `u32` | 1 to 4096 |
+| 20 | block row size | `u32` | 40 |
+| 24 | block table offset | `u64` | 64: the table follows the header |
+| 32 | UID | `u64` | the asset's UID, copied from the sidecar; 0 = none (the artifact then belongs to a sub-asset that has none, or to a file without a sidecar) |
+| 40 | import hash | 16 bytes | the first 16 bytes of the import key: the settings, the source hash and the importer's fingerprint; zero when there is none |
+| 56 | header checksum | `u32` | the CRC-32C of bytes 0 to 55 of the header and the whole block table (so of the UID, the import hash, the flags and every row); a reader refuses a file where it does not hold |
+| 60 | reserved | 4 bytes | zero (a reader refuses anything else) |
 
-**Block table.** One row per block: kind (a four-character code), codec (`u8`: none, zstd, meshoptimizer vertex, meshoptimizer index), flags (`u8`), alignment as a power of two (`u8`), reserved, offset (`u64`), stored
-size (`u64`), raw size (`u64`) and the CRC-32C of the raw bytes (`u32`). Block 0 is always `META`: small, read in one go, a versioned little-endian structure per format whose strings are in a string block. Big blocks
-(`VTX0`…, `IDX0`, `MIP3`…) are aligned to 4096 bytes so that a streamer can read or map them directly.
+**Block table.** One row of 40 bytes per block, in the order of the file (each block starts at or after the end of the one before, and the first after the table):
 
-**Deterministic.** A writer adds blocks in a stable order, pads with zeros and stores no time stamp: the same input makes the same bytes.
+| Offset | Field | Size | Meaning |
+| --- | --- | --- | --- |
+| 0 | kind | `u32` | four printable ASCII characters (`META`, `VTX0`, `IDX0`, `MIP3`…); no two blocks have the same |
+| 4 | codec | `u8` | 0 none, 1 zstd, 2 meshoptimizer vertex, 3 meshoptimizer index |
+| 5 | flags | `u8` | the format's |
+| 6 | alignment | `u8` | the block starts at a multiple of two to this power from the start of the file; at most 16 |
+| 7 | reserved | `u8` | zero |
+| 8 | offset | `u64` | where the stored bytes start |
+| 16 | stored size | `u64` | the bytes in the file |
+| 24 | raw size | `u64` | the bytes after the codec is undone (the same as the stored size for codec 0) |
+| 32 | CRC-32C | `u32` | of the **raw** bytes (Castagnoli, the check value of `123456789` is `0xE3069283`) |
+| 36 | stride | `u32` | the mesh codecs: the size of one element in bytes (a multiple of 4 up to 256 for vertices, 2 or 4 for indices); 0 for the others |
 
-**Hostile input.** A reader checks every size and offset against the length of the file before it allocates, caps the block count (4096) and the `META` size (16 MiB), and refuses a block whose CRC does not match, a block
-that overlaps another or lies past the end. Anything else wrong is a `ContentException`.
+Block 0 is always `META`: uncompressed, at most 16 MiB, read in one go, a versioned little-endian structure per format whose strings are in a string block. The other blocks (`VTX0`…, `IDX0`, `MIP3`…) are
+aligned to 4096 bytes by default so that a streamer can read or map them directly; a small block that nobody maps asks for less. A zstd block is one frame that states its size. The index codec may start a
+triangle at another of its corners (it is the same triangle with the same winding), so the raw bytes of such a block, and its CRC, are what the decoder gives back: the writer decodes once to make them.
 
-**`--dump`.** `Weft.Runtime --dump <file>` is planned to write any artifact as text on the standard output: the header, the blocks, and `META` as `name = value` lines; a cooked XML file as XML text; a pack as its
-list of files. `--dump <file.wtex> --ktx2 <out>` would write a texture as a KTX 2 file.
+**Deterministic.** A writer lays the blocks out in the order they were added (`META` first), each at the next offset its alignment allows, pads with zeros and stores no time stamp: the same input makes the
+same bytes. That holds for one version of the zstd and meshoptimizer libraries (an importer's fingerprint should include both); the writer asks meshoptimizer for its vertex codec version 1 at level 2 and
+its index codec version 1 itself, so nothing else that the process set changes the bytes. Block order is the format's to choose, since it is the order of the file: a texture puts its small mips first.
+
+**Hostile input.** A file of a mod or a pack is not trusted. A reader checks the header and every row against the length of the file before it allocates anything, and refuses:
+
+- a file shorter than its header or its table, more than 4096 blocks, a table that is not right after the header, and a header or table whose checksum does not hold (so a flipped bit in the UID, the import hash,
+  the flags or a row is found, whatever it is in);
+- a block outside the file, an offset that is not aligned as the row says, a block that starts before the end of the one before it (so blocks never overlap the header, the table or each other, and the
+  table lists them in the order of the file), two blocks of one kind, a first block that is not `META`;
+- a raw size over 1 GiB for one block (16 MiB for `META`), and over 4 GiB for all the blocks together: what a program that reads every block can be made to decode;
+- a row that does not fit its codec: a stored size that is not the raw size without a codec; a stride that is wrong; a block stored in fewer bytes than the codec can ever make (zstd: 32768 to 1, so at most
+  1 GiB from 32 KiB; the vertex codec: a few hundred to one, a thousand for small strides, by its block structure; the index codec: a byte for each triangle and a 16-byte table);
+- a zstd block that is not exactly one frame, or whose frame does not say the size the row says (checked before anything is allocated), and a block whose CRC does not match.
+
+`META` and the header are checked when the file is read, a block when it is read, **every time** it is read. What a reader allocates for a block is its raw size, never more than 1 GiB, and only after the row
+passed these checks; a block that really is a gibibyte of zeros in 32 KiB does decode to a gibibyte, which is why the total is limited. The padding between blocks, and anything after the last block, are not
+checked (the writer writes zeros, and nothing reads them). A block of no bytes has the rules of any other: its offset is aligned, in the order of the file and inside it. Anything wrong is a
+`ContentException` that names the file. The reader keeps the memory it is given and does not copy it: `META` and the blocks without a codec are slices of it, so **a file that is memory-mapped must be
+mapped read-only and private** (or copied): a mapping that another process can write to can change after a block was checked.
+
+**Not on the container.** A version-1 `.wmdl` has the magic `WMDL` and then a 32-bit version, which reads as container version 1 with format version 0: a reader refuses format version 0, so an old file is told to be
+imported again and never read as a container. A file with a newer container version is refused with the version it has.
+
+**`--dump`.** `Weft.Runtime --dump <file>` writes an artifact as text on the standard output: for a container the header, the UID, the import hash and one line per block (offset, sizes, CRC and whether it
+holds), then `META` as `name = value` lines by the dumper registered for the magic (`AssetDumpers.Register`, one per format, added with the format); a cooked XML file as XML text; a pack as its list of files.
+See [the runtime](../scripting/runtime.md#dumping-an-artifact). `--dump <file.wtex> --ktx2 <out>`, which would write a texture as a KTX 2 file, comes with [wtex](#wtex-texture).
 
 Packs and cooked XML keep their own layouts (above); only their magics follow the naming.
 
@@ -447,7 +486,7 @@ own container adds is: the same header, UID, import hash, `--dump` and reader as
 one block at the front, so one read gives a usable texture) and typed engine fields instead of key/value strings; and a GPU form that is read without libktx, uploaded straight from the decompressed span into the
 staging buffer. The cost is that KTX tools cannot open a `.wtex`; the payload is the same bytes a KTX 2 level holds, so a `.wtex` and a `.ktx2` convert to each other by rewrapping (`--dump x.wtex --ktx2 out.ktx2`).
 
-**Layout.** On the [common container](#the-common-binary-container-planned), magic `WTEX`.
+**Layout.** On the [common container](#the-common-binary-container), magic `WTEX`.
 
 `META`:
 
@@ -478,7 +517,7 @@ hash (`imported/.cooked/<hash>.wtex`, an export cache, not kept in version contr
 **Purpose.** An imported sound: `imported/<path>.wsnd` for an `.ogg`, `.wav`, `.flac` or `.mp3`. The audio system reads those four formats from the source today; the artifact would add the sample rate,
 the channel count, the number of frames, loop points, a loudness gain and a stream flag.
 
-**Layout.** On the [common container](#the-common-binary-container-planned), magic `WSND`: `META` with those fields, and a payload block that is either the source's bytes unchanged or, for a sound that is preloaded,
+**Layout.** On the [common container](#the-common-binary-container), magic `WSND`: `META` with those fields, and a payload block that is either the source's bytes unchanged or, for a sound that is preloaded,
 16-bit PCM.
 
 **Status.** Planned. Related page today: [Audio](../audio/index.md).
@@ -555,7 +594,7 @@ generic; what node types a kind has, and how pins are typed, is up to the featur
 
 **Purpose.** The cooked collision shapes of a model: convex hulls, a mesh BVH, in the physics library's binary form. Today shapes are built when a body is made.
 
-**Layout.** On the [common container](#the-common-binary-container-planned), magic `WCOL`; kept apart from a physics material because an authored setting and a cooked result differ.
+**Layout.** On the [common container](#the-common-binary-container), magic `WCOL`; kept apart from a physics material because an authored setting and a cooked result differ.
 
 **Status.** Planned. Related page today: [Physics](../physics/physics.md).
 
@@ -563,7 +602,7 @@ generic; what node types a kind has, and how pins are typed, is up to the featur
 
 **Purpose.** A clip: tracks (compressed with meshoptimizer), events and root motion.
 
-**Layout.** On the [common container](#the-common-binary-container-planned), magic `WANM`.
+**Layout.** On the [common container](#the-common-binary-container), magic `WANM`.
 
 **Status.** Planned. No page yet.
 
@@ -587,7 +626,7 @@ generic; what node types a kind has, and how pins are typed, is up to the featur
 
 **Purpose.** Navigation mesh tiles, as Recast and Detour make them.
 
-**Layout.** On the [common container](#the-common-binary-container-planned), magic `WNAV`.
+**Layout.** On the [common container](#the-common-binary-container), magic `WNAV`.
 
 **Status.** Planned. No page yet.
 
@@ -635,7 +674,7 @@ generic; what node types a kind has, and how pins are typed, is up to the featur
 
 **Purpose.** Baked lighting: lightmap atlases (references to `.wtex`) and probe or spherical-harmonics volumes.
 
-**Layout.** On the [common container](#the-common-binary-container-planned), magic `WBAK`.
+**Layout.** On the [common container](#the-common-binary-container), magic `WBAK`.
 
 **Status.** Planned. No page yet.
 

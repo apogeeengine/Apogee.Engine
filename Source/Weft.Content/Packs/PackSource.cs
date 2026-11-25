@@ -102,7 +102,7 @@ public sealed class PackSource : IFileSource, IDisposable
         long indexOffset = (long)BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(16));
         long indexLength = (long)BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(24));
         long indexRaw = (long)BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(32));
-        if (indexOffset < PackFormat.HeaderSize || indexLength < 0 || indexOffset + indexLength > length || indexRaw < 0 || indexRaw > int.MaxValue)
+        if (indexOffset < PackFormat.HeaderSize || indexOffset > length || indexLength < 0 || indexLength > length - indexOffset || indexRaw < 0 || indexRaw > int.MaxValue)
         {
             throw new IOException($"{name} is damaged: its index is not inside the file.");
         }

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using Weft.Content.FileSystem;
+using Weft.Content.Formats;
 using Weft.Content.Xml;
 using Weft.Core.Assets;
 using Weft.Core.Logging;
@@ -87,7 +88,7 @@ public sealed partial class AssetDatabase(VirtualFileSystem files)
         }
     }
 
-    /// <summary>The UID of the file at <paramref name="path"/>, read from its <c>.wimp</c> or, for an authored file, its root; <see cref="AssetUid.None"/> when the file does not exist or has none.</summary>
+    /// <summary>The UID of the file at <paramref name="path"/>, read from its <c>.wimp</c> or, for an authored file, its root, or, for an imported artifact on the common container with no sidecar (a sub-asset), its header; <see cref="AssetUid.None"/> when the file does not exist or has none.</summary>
     public AssetUid UidOf(string path)
     {
         if (!TryCanonical(path, out string canonical))
@@ -316,6 +317,20 @@ public sealed partial class AssetDatabase(VirtualFileSystem files)
             else if (files.FileExists(path + ImportSidecar.Suffix))
             {
                 uid = ImportSidecar.ReadUid(files.ReadAllText(path + ImportSidecar.Suffix));
+            }
+            else if (AssetFormats.Find(path) is { Kind: AssetFormKind.Imported })
+            {
+                // An artifact on the common container carries its UID in its header: a sub-asset has no sidecar of its own. Only the header and the table are read (160 KiB at most); a file on disk
+                // is read as far as that, but a compressed or encrypted entry of a pack can only be read whole (PackSource.OpenRead), as big as the entry is. A damaged file has no UID.
+                try
+                {
+                    using System.IO.Stream stream = files.OpenRead(path);
+                    uid = BinaryAsset.ReadUid(stream);
+                }
+                catch (System.IO.IOException)
+                {
+                    uid = AssetUid.None;
+                }
             }
         }
 

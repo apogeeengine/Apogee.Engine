@@ -14,6 +14,7 @@ Weft.Runtime --run <file.luau> [--frames <n>]     a script with a `world` global
     --size <w>x<h>  --overlay  --gpu <name>       the window or image size (1280x720), the dev overlay in images, which GPU
 Weft.Runtime --game <folder> [--user <folder>]  a game: its packages and mods (see Packages and mods), then the same loops as --run
 Weft.Runtime --export <game folder> <out> --target <rid> [--cooked]  export the game as a folder that runs on its own (see Exporting a game)
+Weft.Runtime --dump <file>                        write an artifact as text: its header, UID, import hash, blocks and META (see Dumping an artifact)
 Weft.Runtime --workshop-upload <mod folder> ... publish a mod folder as a Steam Workshop item (only describes it without --confirm; see Steam)
 Weft.Runtime --luau-defs <folder>                 weft.d.luau and the engine's Luau modules, for luau-lsp
 ```
@@ -130,9 +131,24 @@ and before the input, and it is disposed before Steam.
 `--luau-defs <folder>` writes `weft.d.luau`, the API from the registry (see [Scripting](scripting.md#definitions-for-the-editor)), and `engine/<name>.luau`, copies of the engine's
 modules, so that luau-lsp can resolve `require("@engine/test")`. A project's `.luaurc` points the `engine` alias at that folder; at run time the alias is built in.
 
+## Dumping an artifact
+
+`--dump <file>` writes a binary file as text on the standard output, to see what an import made or why a file is refused. It needs no window, no GPU and no game folder.
+
+- A file on the [common container](../content/formats.md#the-common-binary-container) is written as its header (the magic and version, the flags, the asset's UID, the import hash), its block table (kind, codec,
+  alignment, offset, stored and raw size, CRC-32C, and whether the CRC holds: `ok`, or `BAD` with the reason, so that one damaged block does not hide the rest), and then its `META` as `name = value` lines
+  by the dumper that the format registered (`AssetDumpers.Register`). A format that has none shows the size of its `META`.
+- A block with a codec whose raw size is over 64 MiB is listed as `not checked`: a dump does not decode what a hostile file could make it decode.
+- A dumper that fails on a `META` that makes no sense to it is reported on a line and the dump ends there.
+- Cooked XML (`WXMB`) is written as the XML it holds, as at most 16 million characters (a cooked file shares its strings, so a small one can expand a great deal), with every control character as a
+  numeric entity so that a file cannot write escape sequences to the terminal.
+- A `.wpak` is written as its list of files. An encrypted pack needs `WEFT_PACK_KEY`; a plain one is listed whatever the variable holds, and the key is never written out.
+
+Exit codes: 0 fine, 1 the file does not exist or is not a valid file of these kinds (a damaged or foreign `.wpak` too; the message names the file and what is wrong), 2 it could not be read.
+
 ## Tests
 
-`Tests/Weft.Runtime.Tests` (the command line and each command, with their exit codes, and the fixture game run from a folder and from a pack) and, in `Tests/Weft.Scripting.Tests`, the runner itself: discovery order,
+`Tests/Weft.Runtime.Tests` (the command line and each command, with their exit codes, `--dump`, and the fixture game run from a folder and from a pack) and, in `Tests/Weft.Scripting.Tests`, the runner itself: discovery order,
 the report, a file that does not compile, errors outside a case, filters, files that share nothing, and a loop stopped by the time budget.
 
 ## What a game asks of the program

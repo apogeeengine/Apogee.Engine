@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml;
+using Weft.Content.Formats;
 using Weft.Content.Xml;
 using Weft.Core.Assets;
 
@@ -22,13 +23,19 @@ public static class AuthoredAssets
 
     /// <summary>
     /// The UID in the root of the document, or <see cref="AssetUid.None"/> when there is none, it is not valid, or the bytes are not an XML document (a damaged file). It reads as far
-    /// as the root's start tag and no further, so it is cheap on a big scene, and it never throws for bad content. A cooked document (<see cref="XmlBinary"/>) is read the same way.
+    /// as the root's start tag and no further, so it is cheap on a big scene, and it never throws for bad content. A cooked document (<see cref="XmlBinary"/>) is read the same way, and a binary
+    /// artifact on the common container (<see cref="BinaryAsset"/>) gives the UID of its header.
     /// </summary>
     public static AssetUid ReadUid(ReadOnlySpan<byte> document)
     {
         if (XmlBinary.IsBinary(document))
         {
             return ReadCookedUid(document);
+        }
+
+        if (BinaryAsset.IsContainer(document))
+        {
+            return BinaryAsset.ReadUid(document);
         }
 
         using var stream = new MemoryStream(document.ToArray());
@@ -48,7 +55,7 @@ public static class AuthoredAssets
         }
 
         long start = document.Position;
-        Span<byte> head = stackalloc byte[4];
+        Span<byte> head = stackalloc byte[BinaryAsset.HeaderSize];
         int read = document.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
         document.Position = start;
         if (XmlBinary.IsBinary(head[..read]))
@@ -56,6 +63,11 @@ public static class AuthoredAssets
             using var all = new MemoryStream();
             document.CopyTo(all);
             return ReadCookedUid(all.GetBuffer().AsSpan(0, (int)all.Length));
+        }
+
+        if (BinaryAsset.IsContainer(head[..read]))
+        {
+            return BinaryAsset.ReadUid(document);
         }
 
         var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, IgnoreComments = true, IgnoreProcessingInstructions = true };

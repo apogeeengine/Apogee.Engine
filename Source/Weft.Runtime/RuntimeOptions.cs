@@ -44,6 +44,9 @@ internal enum RuntimeCommand
     /// <summary>Publish a mod folder as a Steam Workshop item (or update one).</summary>
     WorkshopUpload,
 
+    /// <summary>Write a binary artifact, a cooked XML file or a pack as text.</summary>
+    Dump,
+
     /// <summary>Export a game folder: the runtime for a platform, the game's packs and its manifest, in a folder that runs on its own.</summary>
     Export,
 }
@@ -80,6 +83,7 @@ internal sealed class RuntimeOptions
           --luau-docs <folder>                 write the Luau API as Markdown pages (the Manual's API reference)
           --workshop-upload <mod folder> [--item <id>] [--title <text>] [--description <text>] [--preview <image>] [--visibility private|friends|unlisted|public] [--tags <a,b>] [--note <text>] [--confirm]
                                                publish a mod folder (it has a mod.wmod) as a Steam Workshop item of the game in ./steam_appid.txt, or update --item; without --confirm it only says what it would do
+          --dump <file>                        write an artifact as text: a .wmdl, .wshd or any other file on the common container (header, UID, import hash, blocks with their CRCs, META), cooked XML as XML, a .wpak as its list of files
           --gpu-info                           list the GPUs of Vulkan and Metal, one line each: `vulkan: <name> (<kind>, <api>) ok` or `... unusable: <reasons>`
           --version                            print the engine's version, the commit it was built from, the platform and whether the program is CoreCLR or NativeAOT
           --help
@@ -419,6 +423,15 @@ internal sealed class RuntimeOptions
                     }
 
                     options.UserFolder = user;
+                    break;
+                case "--dump":
+                    options.Command = RuntimeCommand.Dump;
+                    if (!TryValue(args, ref i, out string dumpFile, out problem))
+                    {
+                        return false;
+                    }
+
+                    options.Path = dumpFile;
                     break;
                 case "--gpu-info":
                     options.Command = RuntimeCommand.GpuInfo;

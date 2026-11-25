@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Weft.Content;
+using Weft.Content.Assets;
 using Weft.Content.FileSystem;
 using Weft.Content.Import;
 using Weft.Content.Packages;
@@ -359,6 +360,111 @@ internal static class Commands
             Console.Error.WriteLine(e.Message);
             return 2;
         }
+    }
+
+    /// <summary>
+    /// Writes an artifact as text on the standard output: a file on the common container as its header, UID, import hash, blocks and <c>META</c>; cooked XML as XML; a pack as its list of files
+    /// (an encrypted one needs <c>WEFT_PACK_KEY</c>). 0 fine, 1 the file is missing or not valid, 2 it could not be read.
+    /// </summary>
+    public static int Dump(RuntimeOptions options)
+    {
+        if (!File.Exists(options.Path))
+        {
+            Console.Error.WriteLine($"{options.Path} does not exist.");
+            return 1;
+        }
+
+        try
+        {
+            if (AssetFormats.Find(options.Path) == AssetFormats.Pack)
+            {
+                return DumpPack(options.Path);
+            }
+
+            string name = System.IO.Path.GetFileName(options.Path);
+            byte[] bytes = File.ReadAllBytes(options.Path);
+            Weft.Content.Formats.AssetDumpers.Dump(bytes, name, Console.Out);
+            return 0;
+        }
+        catch (ContentException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 1;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 2;
+        }
+    }
+
+    private static int DumpPack(string path)
+    {
+        // The key is only asked for when the pack is encrypted (a pack with no key starts with the plain magic), so that a bad WEFT_PACK_KEY does not stop a plain pack being listed.
+        // Nothing here ever prints the key.
+        byte[] magic = new byte[4];
+        using (FileStream file = File.OpenRead(path))
+        {
+            file.ReadAtLeast(magic, magic.Length, throwOnEndOfStream: false);
+        }
+
+        PackKey? key = null;
+        if (System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(magic) != AssetFormats.Pack.Magic)
+        {
+            try
+            {
+                key = PackKey.FromEnvironment();
+            }
+            catch (FormatException)
+            {
+                Console.Error.WriteLine($"{PackKey.EnvironmentVariable} is not a valid key.");
+                return 1;
+            }
+        }
+
+        PackSource pack;
+        try
+        {
+            pack = PackSource.Open(path, key);
+        }
+        catch (IOException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 1;
+        }
+
+        using var _ = pack;
+        Console.WriteLine($"pack: {pack.Description}, {pack.FileCount} files in {pack.PartCount} part(s){(pack.IsEncrypted ? ", encrypted" : "")}");
+        var pending = new Stack<string>();
+        pending.Push("");
+        var paths = new List<string>();
+        var children = new List<(string Name, FileKind Kind)>();
+        while (pending.Count > 0)
+        {
+            string directory = pending.Pop();
+            children.Clear();
+            pack.List(directory, children);
+            foreach ((string childName, FileKind kind) in children)
+            {
+                string child = directory.Length == 0 ? childName : directory + "/" + childName;
+                if (kind == FileKind.Directory)
+                {
+                    pending.Push(child);
+                }
+                else
+                {
+                    paths.Add(kind == FileKind.Removed ? child + " (removed)" : child);
+                }
+            }
+        }
+
+        paths.Sort(StringComparer.Ordinal);
+        foreach (string file in paths)
+        {
+            Console.WriteLine("  " + file);
+        }
+
+        return 0;
     }
 
     public static int LuauDefs(RuntimeOptions options)

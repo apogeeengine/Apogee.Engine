@@ -40,6 +40,8 @@ switch (options.Command)
         return ExportCommand.Run(options);
     case RuntimeCommand.Import:
         return Commands.Import(options);
+    case RuntimeCommand.Dump:
+        return Commands.Dump(options);
     case RuntimeCommand.LuauDefs:
         return Commands.LuauDefs(options);
     case RuntimeCommand.LuauDocs:
