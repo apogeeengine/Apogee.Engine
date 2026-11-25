@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using Weft.Content.Assets;
 using Weft.Content.FileSystem;
+using Weft.Core.Assets;
 
 namespace Weft.Content.Import;
 
@@ -40,7 +43,13 @@ public sealed class ImportContext
         Source = source;
         Bytes = bytes;
         Settings = settings;
+        foreach (ImportSubAsset sub in settings.SubAssets)
+        {
+            _subAssets[sub.Name] = sub.Uid;
+        }
     }
+
+    private readonly Dictionary<string, AssetUid> _subAssets = new(StringComparer.Ordinal);
 
     /// <summary>The path of the asset relative to <c>res://</c>.</summary>
     public string Source { get; }
@@ -53,6 +62,31 @@ public sealed class ImportContext
     public ImportSettings Settings { get; }
 
     internal List<string> Read { get; } = [];
+
+    /// <summary>The sub-assets this import asked for that its <c>.wimp</c> did not list yet: the importer writes them there after the import.</summary>
+    internal List<ImportSubAsset> NewSubAssets { get; } = [];
+
+    /// <summary>
+    /// The UID of a file this import makes from the asset (<c>material/paint</c>, <c>texture/albedo</c>): the one the <c>.wimp</c> lists for the name, or a new one that is written to it after the import. The same
+    /// name gets the same UID in every later import, so a reference to the file survives re-importing the asset.
+    /// </summary>
+    /// <exception cref="ContentException">The name is empty, longer than 256 characters, or has a control character or white space at its ends.</exception>
+    public AssetUid SubAsset(string name)
+    {
+        if (name.Length is 0 or > 256 || name != name.Trim() || name.Any(char.IsControl))
+        {
+            throw new ContentException($"'{Source}': '{name}' is not a name a sub-asset can have (1 to 256 characters, no control characters, no white space at the ends).");
+        }
+
+        if (!_subAssets.TryGetValue(name, out AssetUid uid))
+        {
+            uid = AssetUid.New();
+            _subAssets[name] = uid;
+            NewSubAssets.Add(new ImportSubAsset(name, uid));
+        }
+
+        return uid;
+    }
 
     /// <summary>Reads a file of the project (or of a mounted package); one under <c>res://</c> other than the asset becomes a dependency.</summary>
     public byte[] ReadFile(string path)
@@ -102,6 +136,45 @@ public sealed class ModelImporter : IAssetImporter
 
     public string Fingerprint => "2; " + BasisEncoder.Settings;
 
+    /// <summary>
+    /// The names a model's materials and textures have as sub-assets: <c>material/&lt;name&gt;</c> (<c>material/&lt;index&gt;</c> for one with no name) and <c>texture/&lt;name&gt;</c>. A name that an earlier one
+    /// already took gets <c>#&lt;index&gt;</c> after it, so every material and texture has a name of its own, and the same one every time the model is imported.
+    /// </summary>
+    internal static List<string> SubAssetNames(ModelData model)
+    {
+        var taken = new HashSet<string>(StringComparer.Ordinal);
+        var names = new List<string>();
+        for (int i = 0; i < model.Materials.Count; i++)
+        {
+            names.Add(Unique(taken, "material/", model.Materials[i].Name, i));
+        }
+
+        for (int i = 0; i < model.Textures.Count; i++)
+        {
+            names.Add(Unique(taken, "texture/", model.Textures[i].Name, i));
+        }
+
+        return names;
+    }
+
+    private static string Unique(HashSet<string> taken, string prefix, string name, int index)
+    {
+        string label = name.Trim();
+        string candidate = prefix + (label.Length == 0 || label.Any(char.IsControl) ? index.ToString(CultureInfo.InvariantCulture) : label);
+        if (candidate.Length > 240)
+        {
+            candidate = candidate[..240].TrimEnd();
+        }
+
+        string result = candidate;
+        for (int attempt = 0; !taken.Add(result); attempt++)
+        {
+            result = candidate + "#" + index.ToString(CultureInfo.InvariantCulture) + (attempt == 0 ? "" : "." + attempt.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return result;
+    }
+
     public ImportResult? Import(ImportContext context)
     {
         ModelData model = GltfLoader.Load(context.SourcePath, new ContentOptions
@@ -110,6 +183,11 @@ public sealed class ModelImporter : IAssetImporter
             OptimizeMeshes = context.Settings.Optimize,
             ReadFile = context.ReadFile,
         });
+        foreach (string name in SubAssetNames(model))
+        {
+            context.SubAsset(name); // the UIDs of the model's materials and textures are minted now and kept in its .wimp, so that they are the same in every import
+        }
+
         return new ImportResult(ModelFile.Write(model, context.Settings.Compression), AssetFormats.Model.Extension);
     }
 }

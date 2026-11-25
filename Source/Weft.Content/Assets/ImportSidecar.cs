@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
+using Weft.Content.Import;
+using Weft.Content.Xml;
 using Weft.Core.Assets;
 
 namespace Weft.Content.Assets;
@@ -12,6 +16,12 @@ public static class ImportSidecar
 {
     /// <summary>The name of the root element.</summary>
     public const string RootName = "Import";
+
+    /// <summary>The version of the sidecar this engine writes (the <c>version</c> attribute of the root). A sidecar without one is version 1.</summary>
+    public const int CurrentVersion = 2;
+
+    /// <summary>The name of the element that lists a sub-asset.</summary>
+    public const string SubAssetName = "SubAsset";
 
     /// <summary>The suffix that makes the sidecar's name from the asset's.</summary>
     public static readonly string Suffix = AssetFormats.Sidecar.Extension;
@@ -42,5 +52,113 @@ public static class ImportSidecar
         }
 
         return RootTag.SetUid(sidecarText, uid, "the import settings");
+    }
+
+    /// <summary>
+    /// The sidecar's text after an import, as version 2: <c>version</c> and <c>sourceHash</c> set on the root (replaced in place or added after the last attribute) and a <c>&lt;SubAsset&gt;</c> element added for each of
+    /// <paramref name="newSubAssets"/> (the ones this import minted; the ones already there stay as they are). Nothing else changes: comments, layout, other attributes, and the elements this engine does not use yet
+    /// (<c>Clip</c>, <c>Lod</c>, <c>Collision</c>) stay byte for byte. The UID is <see cref="SetUid"/>'s.
+    /// </summary>
+    /// <exception cref="ContentException">The text is not an <c>&lt;Import&gt;</c> document the edit can be made in.</exception>
+    public static string Refresh(string sidecarText, string sourceHash, IReadOnlyList<ImportSubAsset> newSubAssets)
+    {
+        string text = SetRootAttribute(sidecarText, "version", CurrentVersion.ToString(CultureInfo.InvariantCulture));
+        text = SetRootAttribute(text, "sourceHash", sourceHash);
+        foreach (ImportSubAsset sub in newSubAssets)
+        {
+            if (!RootChildren.TryScan(text, out RootChildren.Layout? layout))
+            {
+                throw new ContentException("The import settings cannot be read as text to add a sub-asset to them.");
+            }
+
+            text = RootChildren.Append(text, layout, $"<{SubAssetName} name=\"{EscapeAttribute(sub.Name)}\" uid=\"{sub.Uid}\"/>");
+        }
+
+        Check(text, sourceHash, newSubAssets);
+        return text;
+    }
+
+    /// <summary>The text with a new UID for every <c>&lt;SubAsset&gt;</c>: a copy of an asset and its sidecar that is given a UID of its own must not share its sub-assets' UIDs with the original.</summary>
+    /// <exception cref="ContentException">The text cannot be read as text to edit.</exception>
+    public static string RenewSubAssetUids(string sidecarText)
+    {
+        if (!RootChildren.TryScan(sidecarText, out RootChildren.Layout? layout))
+        {
+            throw new ContentException("The import settings cannot be read as text to give their sub-assets new UIDs.");
+        }
+
+        string text = sidecarText;
+        for (int i = layout.Children.Count - 1; i >= 0; i--)
+        {
+            RootChildren.Child child = layout.Children[i];
+            if (child.Name == SubAssetName && child.Find("uid") is { } uid)
+            {
+                text = RootChildren.SetValue(text, uid, AssetUid.New().ToString());
+            }
+        }
+
+        return text;
+    }
+
+    /// <summary>The text without its <c>&lt;SubAsset&gt;</c> elements (and the white space before each); unchanged when it has none or cannot be read as text.</summary>
+    internal static string RemoveSubAssets(string sidecarText)
+    {
+        if (!RootChildren.TryScan(sidecarText, out RootChildren.Layout? layout))
+        {
+            return sidecarText;
+        }
+
+        string text = sidecarText;
+        for (int i = layout.Children.Count - 1; i >= 0; i--)
+        {
+            if (layout.Children[i].Name == SubAssetName)
+            {
+                text = RootChildren.Remove(text, layout.Children[i]);
+            }
+        }
+
+        return text;
+    }
+
+    private static string SetRootAttribute(string text, string name, string value)
+    {
+        if (!RootTag.TryFind(text, out RootTag.Tag? tag) || tag.Name != RootName)
+        {
+            throw new ContentException($"The import settings are not an <{RootName}> element: cannot add {name}.");
+        }
+
+        return RootTag.Set(text, tag, name, value);
+    }
+
+    private static string EscapeAttribute(string value) =>
+        value.Replace("&", "&amp;", StringComparison.Ordinal).Replace("<", "&lt;", StringComparison.Ordinal).Replace(">", "&gt;", StringComparison.Ordinal).Replace("\"", "&quot;", StringComparison.Ordinal);
+
+    /// <summary>Reads the edited text back: a surprise in the text is an error, not a damaged file.</summary>
+    private static void Check(string text, string sourceHash, IReadOnlyList<ImportSubAsset> added)
+    {
+        try
+        {
+            XmlNode root = XmlNode.Parse(text.TrimStart('\uFEFF'), "the import settings");
+            int found = 0;
+            foreach (XmlNode child in root.Children)
+            {
+                foreach (ImportSubAsset sub in added)
+                {
+                    if (child.Name == SubAssetName && child.Attribute("name") == sub.Name && child.Attribute("uid") == sub.Uid.ToString())
+                    {
+                        found++;
+                    }
+                }
+            }
+
+            if (root.Attribute("version") != CurrentVersion.ToString(CultureInfo.InvariantCulture) || root.Attribute("sourceHash") != sourceHash || found != added.Count)
+            {
+                throw new ContentException("Updating the import settings did not work.");
+            }
+        }
+        catch (XmlParseException e)
+        {
+            throw new ContentException($"Cannot update the import settings: {e.Message}", e);
+        }
     }
 }

@@ -32,7 +32,9 @@ internal static partial class RootTag
     /// <param name="Name">The element's name.</param>
     /// <param name="Attributes">Its attributes in the order they are written.</param>
     /// <param name="InsertAt">Where a new attribute goes: after the last one, or after the name when there is none (before any white space that precedes <c>&gt;</c> or <c>/&gt;</c>, so the tag keeps its look).</param>
-    public sealed record Tag(string Name, IReadOnlyList<Attribute> Attributes, int InsertAt)
+    /// <param name="End">Just after the <c>&gt;</c> that closes the start tag.</param>
+    /// <param name="SelfClosing">The tag ends in <c>/&gt;</c>: the element has no content.</param>
+    public sealed record Tag(string Name, IReadOnlyList<Attribute> Attributes, int InsertAt, int End, bool SelfClosing)
     {
         /// <summary>The attribute called <paramref name="name"/>, if the tag has it.</summary>
         public Attribute? Find(string name)
@@ -90,12 +92,13 @@ internal static partial class RootTag
                 insertAt = position;
             }
 
-            if (!TagEndAt().IsMatch(text, position))
+            Match end = TagEndAt().Match(text, position);
+            if (!end.Success)
             {
                 return false;
             }
 
-            tag = new Tag(start.Groups["name"].Value, attributes, insertAt);
+            tag = new Tag(start.Groups["name"].Value, attributes, insertAt, end.Index + end.Length, end.Value.EndsWith("/>", StringComparison.Ordinal));
             return true;
         }
         catch (RegexMatchTimeoutException)

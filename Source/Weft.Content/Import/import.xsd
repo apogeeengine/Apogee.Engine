@@ -1,6 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- <asset>.wimp, beside an asset: how to import it. Every attribute is optional. -->
+<!-- <asset>.wimp, beside an asset: how to import it, and what the importer remembers about it. Version 2. Every attribute is optional unless it says otherwise; the order of the elements is free. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:simpleType name="AssetUid">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="uid://[0-9a-hjkmnp-tv-z]{13}"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="FloatList">
+    <xs:list itemType="xs:float"/>
+  </xs:simpleType>
+  <xs:simpleType name="Quaternion">
+    <xs:annotation><xs:documentation>A rotation as x y z w, four numbers separated by spaces.</xs:documentation></xs:annotation>
+    <xs:restriction base="FloatList">
+      <xs:length value="4"/>
+    </xs:restriction>
+  </xs:simpleType>
   <xs:element name="Import">
     <xs:complexType>
       <xs:sequence>
@@ -17,7 +31,135 @@
             </xs:sequence>
           </xs:complexType>
         </xs:element>
+        <xs:element name="SubAsset" minOccurs="0" maxOccurs="4096">
+          <xs:annotation><xs:documentation>A file the import makes from this asset (a model's material or texture): its name, and the UID it was given the first time it was made. The importer writes these; the UID stays with the name through every later import.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" use="required">
+              <xs:simpleType>
+                <xs:restriction base="xs:string">
+                  <xs:minLength value="1"/>
+                  <xs:maxLength value="256"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+            <xs:attribute name="uid" type="AssetUid" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="MaterialRemap" minOccurs="0" maxOccurs="1024">
+          <xs:annotation><xs:documentation>Models: use the material asset at ref (a .wmat, by path or uid://) in place of what the model has in that material slot.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="slot" use="required">
+              <xs:simpleType>
+                <xs:restriction base="xs:string">
+                  <xs:minLength value="1"/>
+                  <xs:maxLength value="256"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+            <xs:attribute name="ref" use="required">
+              <xs:simpleType>
+                <xs:restriction base="xs:string">
+                  <xs:minLength value="1"/>
+                  <xs:maxLength value="1024"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Socket" minOccurs="0" maxOccurs="1024">
+          <xs:annotation><xs:documentation>Models: a named attachment point (a hand, a muzzle), on a node of the model, at this position and rotation relative to it.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" use="required">
+              <xs:simpleType>
+                <xs:restriction base="xs:string">
+                  <xs:minLength value="1"/>
+                  <xs:maxLength value="256"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+            <xs:attribute name="node" type="xs:string" default="">
+              <xs:annotation><xs:documentation>The name of the node of the model the socket is attached to; empty is the model's root.</xs:documentation></xs:annotation>
+            </xs:attribute>
+            <xs:attribute name="position" type="xs:vector3" default="0 0 0"/>
+            <xs:attribute name="rotation" type="Quaternion" default="0 0 0 1"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Clip" minOccurs="0" maxOccurs="1024">
+          <xs:annotation><xs:documentation>Kept for animation import, which does not read it yet: a named part of the source's animation, from start to end in seconds (the whole of it when they are left out).</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" use="required">
+              <xs:simpleType>
+                <xs:restriction base="xs:string">
+                  <xs:minLength value="1"/>
+                  <xs:maxLength value="256"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+            <xs:attribute name="loop" type="xs:boolean" default="false"/>
+            <xs:attribute name="start">
+              <xs:simpleType>
+                <xs:restriction base="xs:float">
+                  <xs:minInclusive value="0"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+            <xs:attribute name="end">
+              <xs:simpleType>
+                <xs:restriction base="xs:float">
+                  <xs:minInclusive value="0"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Lod" minOccurs="0" maxOccurs="16">
+          <xs:annotation><xs:documentation>Kept for model levels of detail, which are not made yet: from this share of the screen's height down, the model has this share of its triangles taken away.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="screenSize" use="required">
+              <xs:simpleType>
+                <xs:restriction base="xs:float">
+                  <xs:minExclusive value="0"/>
+                  <xs:maxInclusive value="1"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+            <xs:attribute name="reduction" use="required">
+              <xs:simpleType>
+                <xs:restriction base="xs:float">
+                  <xs:minInclusive value="0"/>
+                  <xs:maxInclusive value="1"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Collision" minOccurs="0" maxOccurs="1">
+          <xs:annotation><xs:documentation>Kept for collision shapes made at import, which are not yet: what shape the model's collision takes.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="shape" use="required">
+              <xs:simpleType>
+                <xs:restriction base="xs:string">
+                  <xs:enumeration value="none"/>
+                  <xs:enumeration value="box"/>
+                  <xs:enumeration value="convex"/>
+                  <xs:enumeration value="mesh"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
+          </xs:complexType>
+        </xs:element>
       </xs:sequence>
+      <xs:attribute name="version" type="xs:positiveInteger" default="1">
+        <xs:annotation><xs:documentation>The version of this format: 2. A sidecar without it is version 1, which this schema also accepts; the next import writes it as version 2.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="sourceHash">
+        <xs:annotation><xs:documentation>The SHA-256 of the source file as the last import read it, in lower-case hexadecimal. The importer writes it and keeps it current; it is not part of the import settings, so it never makes an asset import again.</xs:documentation></xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:pattern value="[0-9a-f]{64}"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
       <xs:attribute name="uid">
         <xs:annotation><xs:documentation>The identity of the asset, which stays the same when the file is renamed or moved with this file. The importer writes it the first time the asset is imported; do not change it. It is not part of the import settings: changing it does not import the asset again.</xs:documentation></xs:annotation>
         <xs:simpleType>

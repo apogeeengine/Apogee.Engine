@@ -67,8 +67,42 @@ game had (and its index entry) until the source is fixed.
 
 ### UIDs and the key
 
-Importing also gives each asset a [UID](assets.md) in its `.wimp` (`<Import uid="uid://…"/>`, made if there is no sidecar) and lists them in `imported/assets.xml`. The `uid` attribute is not part of the key
-(`ImportSettings.KeyText` leaves it out), so a UID that is added, or that changes, imports nothing again.
+Importing also gives each asset a [UID](assets.md) in its `.wimp` (`<Import uid="uid://…"/>`, made if there is no sidecar) and lists them in `imported/assets.xml`. What the importer writes into the sidecar
+(`uid`, `version`, `sourceHash` and the `<SubAsset>` elements, below) is not part of the key (`ImportSettings.KeyText` leaves it out), so a UID that is added, or that changes, imports nothing again. The key is made
+from the sidecar as the import left it, so even the change of shape a first `<SubAsset>` makes (an `<Import srgb="false"/>` that gets content) does not import the asset a second time.
+
+### What the importer writes: version 2
+
+The sidecar is version 2 (`version="2"` on the root; a sidecar with no `version` is version 1, and one from a newer engine is refused). Every import, and every `--import` that finds the asset up to date, makes sure the `.wimp`
+has these, changing nothing else in the file (comments, layout, quotes, line endings and the elements it does not use are kept character for character, because the edit is made on the text, not by writing the document again).
+A version 1 sidecar is therefore **rewritten as version 2 by the next import**, in place, with no command and nothing to migrate; its UID and settings are kept.
+
+```xml
+<Import version="2" uid="uid://4k2m9x7q1w3ze" sourceHash="9f86d081…" srgb="false">
+  <SubAsset name="material/paint" uid="uid://0123456789abc"/>
+  <SubAsset name="texture/albedo" uid="uid://0123456789abd"/>
+</Import>
+```
+
+- `sourceHash` is the SHA-256 of the source file, in lower-case hexadecimal, as the last import read it. It is written on import and set again whenever the file is found to differ, so it always says which source the
+  sidecar (and the artifact) belong to. The key already hashes the source, so the hash is information for tools and for people reading a diff, not a second thing that makes an asset import again.
+- `<SubAsset name uid/>` lists the files an import makes from the asset and the UID each was given. The importer asks for a UID by name (`ImportContext.SubAsset`); the first time it mints one and writes it here, and
+  every later import finds it by the name, so a reference to a sub-asset survives re-importing the asset. A model's names are `material/<name>` (the glTF material's name, or its index when it has none) and
+  `texture/<name>` (the image's name, or its file name or index), with `#<index>` added to a name an earlier one took. A name that is no longer asked for (a material that was deleted from the model) stays in the file, so
+  its UID is the same if it comes back. A copy of an asset and its sidecar gets new sub-asset UIDs along with its new UID. The sub-asset files themselves (a `.wmat` and a `.wtex` for each) are not written yet: models still
+  embed their materials and textures, and only the UIDs are reserved.
+
+These are read but nothing in the engine applies them yet (models and animation use them in later steps), and the sidecar keeps them as they are:
+
+- `<MaterialRemap slot ref/>` replaces a model's material slot (named like the glTF material) with the material asset at `ref`, a path or a `uid://`.
+- `<Socket name node position rotation/>` is a named attachment point: `node` is the model's node it hangs on (empty for the root), `position` is `x y z`, `rotation` is a quaternion `x y z w`; they default to the origin
+  and no rotation. `ImportSettings.Sockets` has them for the model importer.
+- `<Clip name loop start end/>` (a named part of the source's animation, `start` and `end` in seconds), `<Lod screenSize reduction/>` and `<Collision shape="none|box|convex|mesh"/>` are kept for animation, levels of
+  detail and collision shapes. They are validated by the schema and left untouched.
+
+A sidecar is refused, with its file and the line, when it is larger than `ImportSettings.MaxLength` (1 Mi characters), has more than 4096 sub-assets (1024 remaps, sockets or clips, 16 lods), a UID that is not a UID,
+the same UID twice (or the asset's own UID in a sub-asset), the same name twice in sub-assets, material slots, sockets or clips, a name with a control character or spaces at its ends, a rotation that is not four numbers
+or is all zeros, or an element or attribute the schema does not have. The asset then fails to import (reported like any failed import) and the sidecar is not touched.
 
 ### Settings
 
@@ -186,7 +220,7 @@ and `--pack --cooked` stay as they are.
 
 ## Tests
 
-`Tests/Weft.Content.Tests`: GPU compression (transcoding to BC7, ASTC and RGBA8 and how close it stays, the colour space read from the file, normal maps, determinism, the sidecar, a model's textures and the caps of the loader), the registry (order, an asset that is not one, what an earlier importer read, the fingerprint, a package's own artifacts, shader variants in the settings), the KTX 2 writer read back by libktx's reader (sRGB and linear, odd sizes, one level or a chain, the data format descriptor), the model file (every field bit for
+`Tests/Weft.Content.Tests`: GPU compression (transcoding to BC7, ASTC and RGBA8 and how close it stays, the colour space read from the file, normal maps, determinism, the sidecar, the version 2 sidecar (`ImportSidecarTests`: read in full, hash of the source, sub-asset UIDs that survive re-importing and copies, a version 1 sidecar rewritten in place, elements kept byte for byte, hostile files refused), a model's textures and the caps of the loader), the registry (order, an asset that is not one, what an earlier importer read, the fingerprint, a package's own artifacts, shader variants in the settings), the KTX 2 writer read back by libktx's reader (sRGB and linear, odd sizes, one level or a chain, the data format descriptor), the model file (every field bit for
 bit, deterministic, a mesh that is not a triangle list, damaged and foreign files), and the importer (artifacts and the index, nothing imported twice, a change to the source, a dependency or
 the settings, deleted sources, failures that keep the old artifact, hidden folders, a damaged index, settings checked against their schema) and `ContentLoader` (the artifact is the one
 used, a source otherwise, a mod's files). cooked XML (`XmlBinaryTests`: every field of a tree back, escapes and non-ASCII text, the same bytes every time, size against the text, text and cooked read alike, a newer version or a flag refused, every truncation and a thousand flipped bytes, counts that do not fit the file, nesting). `Tests/Weft.Graphics.Tests`: the shader bundle (variants, damaged files, another ABI, backends that are not written yet). `Tests/Weft.Rendering.Tests`: the shader importer and `ShaderLibrary` (dependencies, variants, the compiler never started when an artifact exists, no compiler no artifact, a mod's artifacts). `Tests/Weft.Runtime.Tests` runs `--import` and `--pack --cooked` end to end, for shaders too.

@@ -79,7 +79,7 @@ public class AssetUidTests
         Assert.Equal(["a.dat"], report.Imported);
         AssetUid uid = project.UidInSidecar("a.dat");
         Assert.False(uid.IsNone);
-        Assert.Equal($"<Import uid=\"{uid}\"/>\n", project.Read("a.dat.wimp"));
+        Assert.Equal($"<Import uid=\"{uid}\" version=\"2\" sourceHash=\"{HashOf("one")}\"/>\n", project.Read("a.dat.wimp"));
         Assert.Contains($"uid=\"{uid}\" path=\"res://a.dat\"", project.Read("imported/assets.xml"), StringComparison.Ordinal);
     }
 
@@ -93,10 +93,15 @@ public class AssetUidTests
         project.Write("a.dat.wimp", sidecar);
 
         project.Import();
+        string written = project.Read("a.dat.wimp");
         project.Import(force: true);
 
-        Assert.Equal(sidecar, project.Read("a.dat.wimp")); // not one character changed
+        // The only change is the version and the hash of the source, added where an attribute goes; the comment, the layout and the quotes are as they were.
+        Assert.Equal($"<!-- mine -->\n<Import   srgb='false'\n  uid=\"{uid}\" version=\"2\" sourceHash=\"{HashOf("one")}\" />\n", written);
+        Assert.Equal(written, project.Read("a.dat.wimp")); // and a second import changes nothing
     }
+
+    private static string HashOf(string text) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
 
     [Fact]
     public void ASidecarWithoutAUidGetsOneAndKeepsEverythingElse()
@@ -109,7 +114,7 @@ public class AssetUidTests
 
         AssetUid uid = project.UidInSidecar("a.dat");
         Assert.False(uid.IsNone);
-        Assert.Equal("\uFEFF<?xml version=\"1.0\"?>\r\n<!-- keep -->\r\n<Import srgb='false' mips=\"false\"\r\n        optimize=\"true\" uid=\"" + uid + "\" >\r\n</Import>\r\n", project.Read("a.dat.wimp"));
+        Assert.Equal("\uFEFF<?xml version=\"1.0\"?>\r\n<!-- keep -->\r\n<Import srgb='false' mips=\"false\"\r\n        optimize=\"true\" uid=\"" + uid + "\" version=\"2\" sourceHash=\"" + HashOf("one") + "\" >\r\n</Import>\r\n", project.Read("a.dat.wimp"));
     }
 
     [Theory]

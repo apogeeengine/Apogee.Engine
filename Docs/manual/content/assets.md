@@ -66,7 +66,7 @@ from the editor is therefore an authored asset with a UID from its first save, w
 ### The UID does not change the import key
 
 An artifact is imported again when its [key](import.md#when-something-is-imported-again) changes, and the key hashes the text of the `.wimp`. A UID is written into that text after the first import, so the key
-is made from `ImportSettings.KeyText(text)`: the same text without the root's `uid` attribute (and a sidecar that holds only a UID counts as no sidecar). Minting or changing a UID therefore imports nothing again, and
+is made from `ImportSettings.KeyText(text)`: the same text without what the importer writes there: the root's `uid`, `version` and `sourceHash` attributes and the `<SubAsset>` elements (a sidecar that holds only those counts as no sidecar). Minting or changing a UID therefore imports nothing again, and
 the keys made before UIDs existed are still valid. Changing a real setting still imports the asset again.
 
 ## Moves, deleted sidecars and copies
@@ -75,7 +75,7 @@ the keys made before UIDs existed are still valid. Changing a real setting still
 - **Move without the sidecar:** the file is a new asset with a new UID, and references to the old UID cannot follow. The import says so in the log when UIDs disappeared in a run that made new ones.
 - **Delete the sidecar** (and leave the file): the next import makes it again with the **same** UID, from `assets.xml`.
 - **Copy an asset with its sidecar:** two files now have one UID. The import keeps the UID on the original (the path `assets.xml` recorded for it, or the first path in order when there is no record) and gives
-  the others a new one, and lists them in `ImportReport.Reassigned`. A copy made on a root that cannot be written to keeps the shared UID with a warning; the UID then names the original.
+  the others a new one, and lists them in `ImportReport.Reassigned`. A copy made on a root that cannot be written to keeps the shared UID with a warning; the UID then names the original. The copy's `<SubAsset>` UIDs are renewed too, so that no two files share one.
 
 ## From C#
 

@@ -195,7 +195,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
             {
                 kept[source] = previous;
                 consumed.UnionWith(previous.Dependencies);
-                EnsureUid(source, uids); // a project imported before UIDs existed gets them here, without importing anything
+                EnsureSidecar(source, sourceBytes, uids, []); // a project imported before UIDs, hashes or version 2 existed gets them here, without importing anything
                 upToDate.Add(source);
                 return;
             }
@@ -209,9 +209,13 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
             List<string> dependencies = [.. context.Read.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
             string artifactPath = $"{CacheFolder}/{source}{result.ArtifactExtension}";
             files.WriteAllBytes("res://" + artifactPath, result.Bytes);
-            kept[source] = new ImportEntry(source, artifactPath, KeyOf(importer, settingsText, sourceBytes, dependencies), dependencies);
+
+            // The sidecar is written after the import (the UID, the hash of the source, the sub-assets that were minted), and the key is made from it as it is now: what is written is not part of the key,
+            // but the text that people wrote may have changed its shape around it (a root that had no content has some now).
+            EnsureSidecar(source, sourceBytes, uids, context.NewSubAssets);
+            string writtenText = files.FileExists(settingsPath) ? files.ReadAllText(settingsPath) : "";
+            kept[source] = new ImportEntry(source, artifactPath, KeyOf(importer, writtenText, sourceBytes, dependencies), dependencies);
             consumed.UnionWith(dependencies);
-            EnsureUid(source, uids);
             imported.Add(source);
         }
         catch (Exception e) when (e is ContentException or System.IO.IOException or UnauthorizedAccessException)
@@ -254,19 +258,21 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
     private AssetUid SidecarUid(string source) => files.FileExists("res://" + source + ImportSidecar.Suffix) ? ImportSidecar.ReadUid(ReadText("res://" + source + ImportSidecar.Suffix)) : AssetUid.None;
 
     /// <summary>
-    /// Gives an imported asset the UID in its <c>.wimp</c> if it has none: the UID the project's list has for the path when the sidecar was deleted (so deleting a sidecar loses nothing),
-    /// a new one otherwise. A sidecar that exists has its text kept (only the attribute is added), and one that does not is made. The key ignores the attribute, so nothing imports again.
+    /// Brings an imported asset's <c>.wimp</c> up to date after it was imported or found current: the UID if it has none (the one the project's list has for the path when the sidecar was deleted, so deleting
+    /// a sidecar loses nothing, a new one otherwise), <c>version="2"</c> (so a version 1 sidecar becomes a version 2 one: the same file), <c>sourceHash</c> as the source is now, and a <c>&lt;SubAsset&gt;</c> for each of
+    /// <paramref name="newSubAssets"/>. A sidecar that exists has its text kept (only those attributes and elements are added or replaced), and one that does not is made. The key ignores all of it, so nothing imports again.
+    /// The file is written only when the text changes.
     /// </summary>
-    private void EnsureUid(string source, UidRun uids)
+    private void EnsureSidecar(string source, byte[] sourceBytes, UidRun uids, IReadOnlyList<ImportSubAsset> newSubAssets)
     {
         string path = "res://" + source + ImportSidecar.Suffix;
         string text = files.FileExists(path) ? ReadText(path) : "";
-        if (!ImportSidecar.ReadUid(text).IsNone)
+        string updated = ImportSidecar.ReadUid(text).IsNone ? ImportSidecar.SetUid(text, uids.Make("res://" + source)) : text;
+        updated = ImportSidecar.Refresh(updated, Convert.ToHexString(SHA256.HashData(sourceBytes)).ToLowerInvariant(), newSubAssets);
+        if (updated != text)
         {
-            return;
+            files.WriteAllText(path, updated);
         }
-
-        files.WriteAllText(path, ImportSidecar.SetUid(text, uids.Make("res://" + source)));
     }
 
     /// <summary>Gives an authored file (a scene) a UID in its root element if it has none. A file that is not XML (a damaged document) has nowhere to put one and is left alone.</summary>
@@ -349,7 +355,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
                 {
                     files.WriteAllText(
                         AuthoredAssets.IsAuthored(path) ? path : path + ImportSidecar.Suffix,
-                        AuthoredAssets.IsAuthored(path) ? AuthoredAssets.SetUid(ReadText(path), replacement) : ImportSidecar.SetUid(ReadText(path + ImportSidecar.Suffix), replacement));
+                        AuthoredAssets.IsAuthored(path) ? AuthoredAssets.SetUid(ReadText(path), replacement) : ImportSidecar.RenewSubAssetUids(ImportSidecar.SetUid(ReadText(path + ImportSidecar.Suffix), replacement))); // a copy shares no sub-asset UIDs with its original either
                 }
                 catch (Exception e) when (e is ContentException or System.IO.IOException or UnauthorizedAccessException)
                 {

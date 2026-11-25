@@ -20,7 +20,7 @@ design: the layout may still change when the format is built, and nothing in the
 | --- | --- | --- | --- | --- |
 | [`.wscn`](#wscn-scene) | a scene: entities, components, prefab instances | XML; cooked XML in packs | `WXMB` when cooked | implemented |
 | [`.wprf`](#wprf-prefab) | a prefab | XML; cooked XML in packs | `WXMB` when cooked | implemented |
-| [`.wimp`](#wimp-import-settings) | the import settings and the UID of the source file it sits beside | XML | none | implemented |
+| [`.wimp`](#wimp-import-settings) | the import settings, the UID, the hash and the sub-asset UIDs of the source file it sits beside | XML | none | implemented (version 2) |
 | [`.wgam`](#wgam-game-manifest) | a game's manifest (`game.wgam`) | XML | none | implemented |
 | [`.wmod`](#wmod-package-manifest) | a package's or mod's manifest (`mod.wmod`) | XML | none | implemented |
 | [`.wpak`](#wpak-pack) | a pack: a game's files, compressed and optionally encrypted | binary, own layout | `WPAK`, or a hash of the key | implemented |
@@ -173,23 +173,39 @@ is an error.
 
 ### wimp: import settings
 
-**Purpose.** The sidecar of a source file: `car.glb.wimp` sits beside `car.glb`, holds the asset's UID and changes how it is imported. See [Sidecars and artifacts](#sidecars-and-artifacts).
+**Purpose.** The sidecar of a source file: `car.glb.wimp` sits beside `car.glb`, holds the asset's UID, remembers what the importer made of it, and changes how it is imported. See [Sidecars and artifacts](#sidecars-and-artifacts).
 
-**Layout.** The root is `<Import>`; the schema is `import.xsd` (embedded in `Weft.Content`). Every attribute is optional.
+**Layout.** The root is `<Import>`; the schema is `import.xsd` (embedded in `Weft.Content`). Every attribute is optional; the order of the child elements is free.
 
 | Attribute | For | Meaning |
 | --- | --- | --- |
+| `version` (1) | any asset | the version of this format: 2. A sidecar without it is version 1 |
 | `uid` | any asset | the identity of the asset; written by the first import, never changed by hand. It is not part of the import key: minting or changing it imports nothing again. |
+| `sourceHash` | any asset | the SHA-256 of the source file as the last import read it, 64 lower-case hexadecimal digits; written by the importer, not part of the key |
 | `srgb` (true) | images | colour maps are sRGB; normal maps, roughness and masks are linear |
 | `normalMap` (false) | images | the image is a normal map: linear, and encoded for accuracy |
 | `compression` (`uastc`) | images, textures of models | `uastc` or `none` (8-bit RGBA) |
 | `mips` (true) | images | build the mip chain |
 | `optimize` (true) | models | merge duplicate vertices and reorder for the GPU's vertex cache |
 
-A shader's sidecar may hold `<Variant>` children, each with `<Define name [value]>` children: one more version of the shader to compile.
+| Element | For | Meaning | Used by the engine |
+| --- | --- | --- | --- |
+| `<Variant>` with `<Define name [value]>` children | shaders | one more version of the shader to compile | yes |
+| `<SubAsset name uid/>` (up to 4096) | models | a file the import makes from the asset (`material/paint`, `texture/albedo`) and the UID it was given; minted once per name, written by the importer, kept by name through every import | yes: the model importer asks for one per material and texture; the files themselves are not written yet |
+| `<MaterialRemap slot ref/>` | models | use the material asset `ref` (path or `uid://`, a `.wmat`) for the model's material slot `slot` | read, not applied yet |
+| `<Socket name node position rotation/>` | models | a named attachment point on a node of the model (empty `node` is the root); `position` is `x y z` (default `0 0 0`), `rotation` a quaternion `x y z w` (default `0 0 0 1`) | read (`ImportSettings.Sockets`), not written into the model yet |
+| `<Clip name loop start end/>` | animation | a named part of the source's animation, `start`/`end` in seconds | kept, not read by anything |
+| `<Lod screenSize reduction/>` | models | a level of detail: from this share of the screen's height, this share of the triangles taken away | kept, not read by anything |
+| `<Collision shape/>` | models | `none`, `box`, `convex` or `mesh` | kept, not read by anything |
 
 ```xml
-<Import uid="uid://4k2m9x7q1w3ze" srgb="false" mips="false"/>
+<Import version="2" uid="uid://4k2m9x7q1w3ze" sourceHash="9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" srgb="false">
+  <SubAsset name="material/paint" uid="uid://0123456789abc"/>
+  <MaterialRemap slot="paint" ref="materials/paint.wmat"/>
+  <Socket name="hand" node="arm.R" position="0 0.1 0" rotation="0 0 0 1"/>
+  <Clip name="walk" loop="true" start="0" end="1.5"/>
+  <Collision shape="convex"/>
+</Import>
 ```
 
 ```xml
@@ -198,14 +214,15 @@ A shader's sidecar may hold `<Variant>` children, each with `<Define name [value
 </Import>
 ```
 
-**Versioning.** The sidecar has no `version` attribute today and the schema accepts exactly what is above. The settings are part of the import key, whose version is `AssetImporter.ImporterVersion` (4): when the
-importer changes what it writes, that number goes up and every artifact is made again. A second version of the sidecar is planned (below).
+**Versioning.** The reader accepts version 1 (no `version` attribute) and 2, and refuses a larger number ("written by a newer engine"). The next import of an asset rewrites its sidecar as version 2, in the same file: the
+engine edits the text (the root's attributes and the `<SubAsset>` elements), so comments, layout, quotes, line endings and every element it does not use stay character for character; there is no command and no other
+migration. The settings, minus the attributes and elements the importer writes (`uid`, `version`, `sourceHash`, `<SubAsset>`), are part of the import key, whose version is `AssetImporter.ImporterVersion` (4): when the
+importer changes what it writes, that number goes up and every artifact is made again.
 
-**Planned.** Version 2 of the sidecar, still rooted at `<Import>`, adds: `sourceHash` (SHA-256 of the source, in hexadecimal, written on import); `<SubAsset name uid/>` (stable UIDs for the textures and materials of a model,
-minted once and kept across imports by name); `<MaterialRemap slot ref/>` (replace a model's material slot with a `.wmat`); `<Socket name node position rotation/>`; and options kept for later features
-(`<Clip name loop start end/>`, `<Lod screenSize reduction/>`, `<Collision shape/>`). A version 1 sidecar would be rewritten as version 2 by the next import. None of this is read by the engine yet.
+**Limits.** A sidecar over 1 Mi characters, with more than 4096 sub-assets, a repeated UID or name, a UID that is not one, or an unknown element or attribute is refused with a message that names the file.
 
-**Status.** Implemented (version 1). Owning page: [Asset import](import.md#settings); the UID: [Asset identity](assets.md#where-a-uid-lives).
+**Status.** Implemented (version 2): `uid`, `sourceHash`, `<SubAsset>`, `<Variant>` and the settings are written or read by the engine; `<MaterialRemap>` and `<Socket>` are read and available to the model importer and will be
+applied by the model steps that follow; `<Clip>`, `<Lod>` and `<Collision>` are validated and preserved and have no reader yet. Owning page: [Asset import](import.md#settings); the UID: [Asset identity](assets.md#where-a-uid-lives).
 
 ### wgam: game manifest
 
