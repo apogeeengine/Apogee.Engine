@@ -157,7 +157,7 @@ public sealed class MaterialAsset
                     throw new ContentException($"{origin} (line {child.Line}): the texture '{name}' is used twice.");
                 }
 
-                textures.Add(new MaterialTexture(name, ParseRef(child.Attribute("ref") ?? "", $"the texture '{name}'", origin, child.Line, IsTexture, "an image, " + AssetFormats.Ktx2.Extension + " or " + TextureExtension)));
+                textures.Add(new MaterialTexture(name, ParseRef(child.Attribute("ref") ?? "", $"the texture '{name}'", origin, child.Line, IsTexture, "an image, " + AssetFormats.Ktx2.Extension + " or " + AssetFormats.Texture.Extension)));
                 continue;
             }
 
@@ -241,9 +241,6 @@ public sealed class MaterialAsset
         return accepts(reference) ? reference : throw new ContentException($"{origin} (line {line}): {what} is '{text}', which is not the kind of file it should be ({expected}).");
     }
 
-    // The ".wtex" row is added to the table by the texture format; until then its extension is spelled here.
-    private const string TextureExtension = ".wtex";
-
     private static bool Has(AssetRef reference, string extension) =>
         !reference.HasPath || reference.Path.EndsWith(extension, StringComparison.OrdinalIgnoreCase);
 
@@ -252,7 +249,7 @@ public sealed class MaterialAsset
     private static bool IsMaterial(AssetRef reference) => Has(reference, AssetFormats.Material.Extension);
 
     private static bool IsTexture(AssetRef reference) =>
-        !reference.HasPath || AssetFormats.ExtensionsOfType("texture").Append(AssetFormats.Ktx2.Extension).Append(TextureExtension).Any(e => reference.Path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
+        !reference.HasPath || AssetFormats.ExtensionsOfType("texture").Append(AssetFormats.Ktx2.Extension).Append(AssetFormats.Texture.Extension).Any(e => reference.Path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
 
     // ---- Writing ------------------------------------------------------------------------------------------------------------------
 
