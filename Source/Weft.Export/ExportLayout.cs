@@ -1,4 +1,5 @@
 using System.IO;
+using Weft.Content.Assets;
 using Weft.Content.Packages;
 
 namespace Weft.Export;
@@ -38,7 +39,7 @@ public sealed class ExportLayout
     public string? Bundle { get; }
 
     /// <summary>The first part of the game's pack: <c>&lt;game root&gt;/data/game.wpak</c>.</summary>
-    public string PackPath => Path.Combine(GameRoot, "data", "game.wpak");
+    public string PackPath => Path.Combine(GameRoot, "data", "game" + AssetFormats.Pack.Extension);
 
     /// <summary>The layout of the export of <paramref name="manifest"/> into <paramref name="output"/> for <paramref name="target"/>.</summary>
     public static ExportLayout For(ExportTarget target, GameManifest manifest, string output)

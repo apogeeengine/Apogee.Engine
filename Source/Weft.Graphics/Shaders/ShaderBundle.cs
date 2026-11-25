@@ -34,8 +34,7 @@ public static class ShaderAbi
 /// </summary>
 public static class ShaderBundle
 {
-    public const string Extension = ".wshd";
-
+    // Weft.Graphics does not reference Weft.Content, where the table of file formats is: the magic and the version are the ones of its row (AssetFormats.Shader), which a test in Weft.Rendering.Tests checks.
     private const uint Magic = 0x44485357; // "WSHD"
     private const int FormatVersion = 1;
 

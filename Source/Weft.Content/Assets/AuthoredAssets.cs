@@ -10,15 +10,15 @@ namespace Weft.Content.Assets;
 
 /// <summary>
 /// Assets that are written by people or tools as XML, rather than imported from another format: they carry their own UID, in the <c>uid</c> attribute of the document's root element
-/// (<c>&lt;Scene version="1" uid="uid://…"&gt;</c>, <c>&lt;Prefab …&gt;</c>), and have no <c>.wimp</c>. Scenes and prefabs now; materials add their extension to <see cref="Extensions"/> when they land.
+/// (<c>&lt;Scene version="1" uid="uid://…"&gt;</c>, <c>&lt;Prefab …&gt;</c>), and have no <c>.wimp</c>. Scenes and prefabs now; materials add a row to <see cref="AssetFormats"/> when they land.
 /// </summary>
 public static class AuthoredAssets
 {
     /// <summary>The extensions of authored assets, with the dot, in lower case.</summary>
-    public static IReadOnlyList<string> Extensions { get; } = [".wscn", ".wprf"];
+    public static IReadOnlyList<string> Extensions => AssetFormats.ExtensionsOf(AssetFormKind.Authored);
 
     /// <summary>Whether <paramref name="path"/> names an authored asset (by its extension, not case-sensitive).</summary>
-    public static bool IsAuthored(string path) => Extensions.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase));
+    public static bool IsAuthored(string path) => AssetFormats.IsAuthored(path);
 
     /// <summary>
     /// The UID in the root of the document, or <see cref="AssetUid.None"/> when there is none, it is not valid, or the bytes are not an XML document (a damaged file). It reads as far

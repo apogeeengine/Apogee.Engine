@@ -17,6 +17,9 @@ public sealed record PackageDependency(string Id, VersionRange Version);
 /// </summary>
 public sealed class PackageManifest
 {
+    /// <summary>The name of the file, at the root of a package.</summary>
+    public static readonly string FileName = "mod" + Assets.AssetFormats.Mod.Extension;
+
     /// <summary>The newest API of the engine that packages are written against (<see cref="Weft.Core.EngineVersion.Api"/>, from <c>Engine.props</c>). A package that needs a newer one is not loaded.</summary>
     public const int EngineApiVersion = Weft.Core.EngineVersion.Api;
 
@@ -57,7 +60,7 @@ public sealed class PackageManifest
 
     private static SchemaSet LoadSchema()
     {
-        using Stream stream = typeof(PackageManifest).Assembly.GetManifestResourceStream("Packages/mod.xsd") ?? throw new InvalidOperationException("The embedded schema of mod.wmod is missing.");
+        using Stream stream = typeof(PackageManifest).Assembly.GetManifestResourceStream(Assets.AssetFormats.Mod.SchemaResource!) ?? throw new InvalidOperationException("The embedded schema of mod.wmod is missing.");
         using var reader = new StreamReader(stream);
         var set = new SchemaSet();
         set.LoadText(reader.ReadToEnd(), "mod.xsd");

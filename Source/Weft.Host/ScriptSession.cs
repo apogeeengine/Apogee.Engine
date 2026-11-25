@@ -273,7 +273,7 @@ public sealed class ScriptSession : IDisposable
     {
         foreach (string path in paths)
         {
-            if (!path.EndsWith(".wprf", StringComparison.OrdinalIgnoreCase))
+            if (!AssetFormats.Prefab.Matches(path))
             {
                 continue;
             }
@@ -641,8 +641,8 @@ public sealed class ScriptSession : IDisposable
             return [];
         }
 
-        return [.. Directory.EnumerateFiles(data, "*.wpak")
-            .Where(f => !(Regex.Match(Path.GetFileName(f), @"^(.*)_\d{3}\.wpak$") is { Success: true } part && File.Exists(Path.Combine(data, part.Groups[1].Value + ".wpak"))))
+        return [.. Directory.EnumerateFiles(data, "*" + AssetFormats.Pack.Extension)
+            .Where(f => !(Regex.Match(Path.GetFileName(f), "^(.*)_\\d{3}" + Regex.Escape(AssetFormats.Pack.Extension) + "$") is { Success: true } part && File.Exists(Path.Combine(data, part.Groups[1].Value + AssetFormats.Pack.Extension))))
             .Order(StringComparer.Ordinal)];
     }
 

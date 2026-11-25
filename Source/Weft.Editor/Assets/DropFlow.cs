@@ -5,6 +5,7 @@ using Weft.Core.Logging;
 using Weft.Core.Numerics;
 using Weft.Platform;
 using Weft.Host;
+using Weft.Content.Assets;
 
 namespace Weft.Editor.Assets;
 
@@ -270,7 +271,7 @@ public sealed class DropFlow(Func<EditorProject?> current, IDropSurface surface,
         Log.Info("Import", $"Adding {plan.Files.Count} file(s) to {_folder}.");
     }
 
-    private static bool IsModel(string path) => path.EndsWith(".glb", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase);
+    private static bool IsModel(string path) => AssetFormats.Find(path) is { AssetType: "model" };
 
     private static void Summarize(ImportJobReport report, DropPlan plan)
     {

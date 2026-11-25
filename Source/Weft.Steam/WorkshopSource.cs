@@ -4,6 +4,7 @@ using System.IO;
 using System.Xml.Linq;
 using Weft.Content.FileSystem;
 using Weft.Core.Logging;
+using Weft.Content.Packages;
 
 namespace Weft.Steam;
 
@@ -20,10 +21,10 @@ public sealed class WorkshopSource : IFileSource
     {
         foreach ((string item, string folder) in items)
         {
-            string? id = ReadId(Path.Combine(folder, "mod.wmod"));
+            string? id = ReadId(Path.Combine(folder, PackageManifest.FileName));
             if (id is null)
             {
-                Log.Warn("Steam", $"Workshop item {item} ({folder}) has no mod.wmod with an id: it is not a mod.");
+                Log.Warn("Steam", $"Workshop item {item} ({folder}) has no {PackageManifest.FileName} with an id: it is not a mod.");
             }
             else if (!_mods.TryAdd(id, new DirectorySource(folder)))
             {

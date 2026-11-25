@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Weft.Content;
+using Weft.Content.Assets;
 using Weft.Content.Import;
 using Weft.Graphics.Shaders;
 
@@ -24,7 +25,7 @@ public sealed class ShaderImporter : IAssetImporter
 
     public string Name => "shader";
 
-    public IReadOnlyList<string> Extensions { get; } = [".slang"];
+    public IReadOnlyList<string> Extensions { get; } = AssetFormats.ExtensionsOfType("shader");
 
     /// <summary>Slang's version, the optimization level and the ABI the code is for: a new compiler or a new engine layout imports again.</summary>
     public string Fingerprint => $"slang {ShaderCompiler.CompilerVersion}; abi {ShaderAbi.Version}; opt {_optimization}";
@@ -85,7 +86,7 @@ public sealed class ShaderImporter : IAssetImporter
             }
         }
 
-        return new ImportResult(ShaderBundle.Write(Path.GetFileNameWithoutExtension(context.Source), variants), ShaderBundle.Extension);
+        return new ImportResult(ShaderBundle.Write(Path.GetFileNameWithoutExtension(context.Source), variants), AssetFormats.Shader.Extension);
     }
 
     /// <summary>

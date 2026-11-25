@@ -166,10 +166,10 @@ public sealed class PackageSet : IDisposable
 
         foreach (string folder in files.EnumerateDirectories(path))
         {
-            string manifestPath = folder + "/mod.wmod";
+            string manifestPath = folder + "/" + PackageManifest.FileName;
             if (!files.FileExists(manifestPath))
             {
-                problems.Add($"{folder} has no mod.wmod, so it is not a package.");
+                problems.Add($"{folder} has no {PackageManifest.FileName}, so it is not a package.");
                 continue;
             }
 
@@ -199,14 +199,14 @@ public sealed class PackageSet : IDisposable
             }
 
             zips.Add(zip);
-            if (((IFileSource)zip).Kind("mod.wmod") != FileKind.File)
+            if (((IFileSource)zip).Kind(PackageManifest.FileName) != FileKind.File)
             {
-                problems.Add($"{file} has no mod.wmod at its root, so it is not a package.");
+                problems.Add($"{file} has no {PackageManifest.FileName} at its root, so it is not a package.");
                 continue;
             }
 
             string name = VfsPath.FileName(file)[..^".zip".Length];
-            if (Check(System.Text.Encoding.UTF8.GetString(zip.ReadAllBytes("mod.wmod")), file + "!mod.wmod", name, problems) is { } manifest)
+            if (Check(System.Text.Encoding.UTF8.GetString(zip.ReadAllBytes(PackageManifest.FileName)), file + "!" + PackageManifest.FileName, name, problems) is { } manifest)
             {
                 candidates.Add(new PackageCandidate(manifest, kind, file, () => zip));
             }

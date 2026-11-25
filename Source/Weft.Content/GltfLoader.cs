@@ -146,7 +146,7 @@ public static class GltfLoader
             try
             {
                 // External .bin files are found relative to this path; embedded buffers need none.
-                string reference = Resolve(_name + ".gltf");
+                string reference = Resolve(_name + Assets.AssetFormats.Gltf.Extension);
                 fixed (byte* path = Utf8.ToZeroTerminated(reference))
                 {
                     result = CgltfApi.LoadBuffers(&parseOptions, data, path);

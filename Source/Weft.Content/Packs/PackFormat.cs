@@ -47,7 +47,7 @@ internal static unsafe class PackFormat
 {
     public const int HeaderSize = 80;
     public const uint Version = 1;
-    public const uint PlainMagic = 0x4B415057; // "WPAK"
+    public static readonly uint PlainMagic = Assets.AssetFormats.Pack.Magic;
     public const int Alignment = 16;
     public const int SealOverhead = 12 + 16;
     public const int MinimumCompressedSize = 64;
@@ -63,7 +63,7 @@ internal static unsafe class PackFormat
 
         byte[] input = [.. "Weft pack magic"u8, .. key.Bytes];
         uint magic = BinaryPrimitives.ReadUInt32LittleEndian(SHA256.HashData(input));
-        return magic is PlainMagic or 0 ? magic ^ 0x80808081 : magic;
+        return magic == PlainMagic || magic == 0 ? magic ^ 0x80808081 : magic;
     }
 
     public static byte[] DeriveKey(PackKey key, ReadOnlySpan<byte> salt) => HKDF.DeriveKey(HashAlgorithmName.SHA256, key.Bytes.ToArray(), 32, salt.ToArray(), "Weft pack v1"u8.ToArray());

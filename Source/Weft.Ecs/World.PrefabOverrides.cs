@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Weft.Content;
+using Weft.Content.Assets;
 using Weft.Content.FileSystem;
 using Weft.Content.Xml;
 using Weft.Core.Logging;
@@ -543,7 +544,7 @@ public sealed unsafe partial class World
                     XmlNode back;
                     try
                     {
-                        back = XmlFile.Read(files, file.Path);
+                        back = AuthoredDocument.Read(files.ReadAllBytes(file.Path), AssetFormats.Prefab, file.Path).Root;
                         PrefabDocument.Check(back, file.Path, warnNextId: false);
                     }
                     catch (Exception e) when (e is ContentException or FormatException)
@@ -699,7 +700,7 @@ public sealed unsafe partial class World
         try
         {
             bytes = files.ReadAllBytes(path);
-            fresh = XmlFile.Read(bytes, path);
+            fresh = AuthoredDocument.Read(bytes, AssetFormats.Prefab, path).Root;
             PrefabDocument.Check(fresh, path, warnNextId: false);
         }
         catch (Exception e) when (e is ContentException or FormatException or IOException)

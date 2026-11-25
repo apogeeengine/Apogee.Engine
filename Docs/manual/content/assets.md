@@ -32,6 +32,25 @@ sorted by path, and a pack carries it, so a shipped game finds a UID without sca
 own and is mounted at `mod://id/` is read with its paths under `mod://id/`. In a `--pack --cooked` pack the list is [cooked XML](import.md#cooked-xml) and is the only record of the imported assets' UIDs
 (their sidecars and sources are left out), so `AssetDatabase` believes a cooked list without looking for the files.
 
+## Kinds of files
+
+Which extension is which kind of file is written once, in the table `AssetFormats` (`Weft.Content`); everything that needs an extension or a magic reads it: the importers, the [hot reload](hot-reload.md), the editor's asset lists and file dialogs, the [packer](packs.md) and the move and reference search of this page. A row (`AssetFormat`) has the extension (one extension is one format, found without regard to case), a **kind**, a label, and for an XML format the name of its root element, the newest `version` the engine reads and its embedded schema; for a binary format its four-byte magic; and what a cooked pack does with it.
+
+| Kind | What it is | Rows today |
+| --- | --- | --- |
+| `Authored` | XML written by people and tools, its own source: the UID is in its root, no sidecar; cooked to binary XML in a cooked pack | `.wscn`, `.wprf` |
+| `Manifest` | read from where it is, by name; not an asset | `.wgam`, `.wmod` |
+| `Sidecar` | the import settings and the UID of the source beside it | `.wimp` |
+| `Source` | made by other tools; an importer makes an artifact of it | `.glb`, `.gltf` (and `.bin`, which a `.gltf` reads), `.png`, `.jpg`, `.jpeg`, `.slang` |
+| `Imported` | what an importer makes, in `imported/` | `.wmdl`, `.wshd`, `.ktx2` |
+| `Pack` | a pack | `.wpak` |
+| `Cooked` | XML cooked into a tree; it keeps the extension of its source, so it has none | the magic `WXMB` |
+| `Plain` | a format everyone knows that the engine reads as it is | `.luau`, `.xml`, `.wav`, `.ogg`, `.flac`, `.mp3`, `.ttf`, `.otf`, `.rml`, `.rcss` |
+
+From C#: `AssetFormats.Find(path)` is the row of a file by its last extension (`x.glb.wimp` is a sidecar), `AssetFormats.IsAuthored(path)`, `AssetFormats.ImportedArtifacts`, `AssetFormats.FindMagic(bytes)`, and `AssetFormats.Register` adds a row (a refused row, such as an extension another row has, changes nothing). `AuthoredAssets.Extensions` and `AuthoredAssets.IsAuthored` are these for the authored kind.
+
+`AuthoredDocument.Read(bytes, format, origin)` reads an authored file, text or cooked, and checks what every authored format shares: the root element is the format's, the `version` is a number the engine reads (a missing one is accepted), and, when a schema is given, the document matches it. It returns the tree, the version and the UID. Scenes and prefabs are read through it; what is particular to a format (a prefab has exactly one root entity) is checked by the code that owns the format.
+
 ## When a UID is made
 
 - **`Weft.Runtime --import`** (`AssetImporter.Run`) gives a UID to every imported file that has none, by creating or editing its `.wimp`, and to every authored file that has none, by adding the attribute to its root.

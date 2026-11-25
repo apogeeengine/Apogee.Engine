@@ -9,6 +9,7 @@ using Weft.Core.Logging;
 using Weft.DevTools;
 using Weft.Host;
 using Weft.Native.CImGui;
+using Weft.Content.Assets;
 
 namespace Weft.Editor.Panels;
 
@@ -207,7 +208,7 @@ public sealed class AssetBrowserPanel
             _ => "  (not imported)",
         };
 
-        bool isScene = path.EndsWith(".wscn", StringComparison.OrdinalIgnoreCase);
+        bool isScene = AssetFormats.Scene.Matches(path);
         Gui.PushId(path);
         bool revealed = path == _revealed;
         if (revealed && _scrollToRevealed)

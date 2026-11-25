@@ -13,6 +13,7 @@ using Weft.Native.CImGui;
 using Weft.Native.ImGuizmo;
 using Weft.Reflection;
 using Weft.Rendering;
+using Weft.Content.Assets;
 
 namespace Weft.Editor.Panels;
 
@@ -183,7 +184,7 @@ public sealed unsafe class ViewportPanel
             return;
         }
 
-        if (Gui.AcceptText("ASSET") is { } path && (path.EndsWith(".glb", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase)))
+        if (Gui.AcceptText("ASSET") is { } path && AssetFormats.Find(path) is { AssetType: "model" })
         {
             ctx.Project.CreateModel(path, Place(renderer, Gui.Mouse - min, size));
         }

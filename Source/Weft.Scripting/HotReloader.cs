@@ -41,7 +41,7 @@ public sealed record ReloadReport(
 /// </summary>
 public sealed class HotReloader : IDisposable
 {
-    private static readonly string[] s_assetExtensions = [".glb", ".gltf", ".bin", ".png", ".jpg", ".jpeg"];
+    private static readonly string[] s_assetExtensions = [.. AssetFormats.ExtensionsOfType("model"), AssetFormats.GltfBuffer.Extension, .. AssetFormats.ExtensionsOfType("texture")];
 
     private readonly VirtualFileSystem _files;
     private readonly LuauVm _vm;
@@ -87,7 +87,7 @@ public sealed class HotReloader : IDisposable
         {
             string name = VfsPath.FileName(path);
             string extension = Path.GetExtension(name).ToLowerInvariant();
-            if (extension == ".luau")
+            if (extension == AssetFormats.Luau.Extension)
             {
                 if (_vm.IsModuleLoaded(path))
                 {
@@ -108,18 +108,18 @@ public sealed class HotReloader : IDisposable
                     restart.Add(path);
                 }
             }
-            else if (name == "mod.wmod")
+            else if (name == PackageManifest.FileName)
             {
                 restart.Add(path);
             }
-            else if (name.EndsWith(".wimp", StringComparison.OrdinalIgnoreCase) || s_assetExtensions.Contains(extension))
+            else if (name.EndsWith(ImportSidecar.Suffix, StringComparison.OrdinalIgnoreCase) || s_assetExtensions.Contains(extension))
             {
                 if (path.StartsWith("res://", StringComparison.Ordinal))
                 {
                     assets.Add(path);
                 }
             }
-            else if (extension == ".slang")
+            else if (extension == AssetFormats.Slang.Extension)
             {
                 shaders.Add(path);
             }
@@ -127,7 +127,7 @@ public sealed class HotReloader : IDisposable
             {
                 documents.Add(path);
             }
-            else if ((extension is ".xml" or ".xsd") && _packages is not null && IsDefinitionFile(path))
+            else if ((extension == AssetFormats.XmlData.Extension || extension == ".xsd") && _packages is not null && IsDefinitionFile(path))
             {
                 defs = true;
             }

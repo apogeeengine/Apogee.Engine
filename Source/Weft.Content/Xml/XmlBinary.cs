@@ -27,7 +27,7 @@ public static class XmlBinary
     /// <summary>The version of the encoding that <see cref="Write"/> produces and the newest <see cref="Read"/> accepts.</summary>
     public const int Version = 1;
 
-    private const uint Magic = 0x424D5857; // "WXMB" read as a little-endian u32
+    private static readonly uint s_magic = Assets.AssetFormats.CookedXml.Magic;
     private const int HeaderSize = 16;
 
     /// <summary>The fewest bytes a node takes (name, line, attribute count, text, child count: one varint each), so a count of nodes can be checked against the file.</summary>
@@ -36,7 +36,7 @@ public static class XmlBinary
     private static readonly UTF8Encoding s_strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <summary>Whether the bytes start with the magic of a cooked XML file (a text XML file cannot: it begins with <c>&lt;</c>, a byte order mark or white space).</summary>
-    public static bool IsBinary(ReadOnlySpan<byte> bytes) => bytes.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(bytes) == Magic;
+    public static bool IsBinary(ReadOnlySpan<byte> bytes) => bytes.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(bytes) == s_magic;
 
     /// <summary>The encoding of the tree. The same tree always gives the same bytes.</summary>
     /// <exception cref="ContentException">The tree nests deeper than the text parser allows (<see cref="XmlNode.MaxDepth"/>), has an element or attribute with no name, a negative line, or text that is not valid Unicode.</exception>
@@ -126,7 +126,7 @@ public static class XmlBinary
             // The strings are encoded here, in the order they were first used, so the header (which comes first) can say how many there are.
             using var output = new MemoryStream();
             Span<byte> header = stackalloc byte[HeaderSize];
-            BinaryPrimitives.WriteUInt32LittleEndian(header, Magic);
+            BinaryPrimitives.WriteUInt32LittleEndian(header, s_magic);
             BinaryPrimitives.WriteUInt16LittleEndian(header[4..], Version);
             BinaryPrimitives.WriteUInt16LittleEndian(header[6..], 0);
             BinaryPrimitives.WriteUInt32LittleEndian(header[8..], (uint)_strings.Count);

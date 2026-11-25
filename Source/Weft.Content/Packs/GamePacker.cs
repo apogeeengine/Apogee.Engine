@@ -200,7 +200,7 @@ public static class GamePacker
                 foreach (ImportEntry entry in entries)
                 {
                     replaced.Add(entry.Source);
-                    replaced.Add(entry.Source + ".wimp");
+                    replaced.Add(entry.Source + ImportSidecar.Suffix);
                     replaced.UnionWith(entry.Dependencies);
                 }
 
@@ -230,16 +230,16 @@ public static class GamePacker
         /// </summary>
         private static HashSet<string> DefinitionsOf(string folder, List<string> paths)
         {
-            const string Manifest = "mod.wmod";
+            string manifestName = PackageManifest.FileName;
             var found = new HashSet<string>(StringComparer.Ordinal);
-            foreach (string manifestPath in paths.Where(p => p.StartsWith(BasePackages, StringComparison.Ordinal) && p.EndsWith("/" + Manifest, StringComparison.Ordinal) && p.IndexOf('/', BasePackages.Length) == p.Length - Manifest.Length - 1))
+            foreach (string manifestPath in paths.Where(p => p.StartsWith(BasePackages, StringComparison.Ordinal) && p.EndsWith("/" + manifestName, StringComparison.Ordinal) && p.IndexOf('/', BasePackages.Length) == p.Length - manifestName.Length - 1))
             {
                 if (!PackageManifest.TryParse(File.ReadAllText(Path.Combine(folder, manifestPath)), manifestPath, out PackageManifest? manifest, out _))
                 {
                     continue;
                 }
 
-                string package = manifestPath[..^Manifest.Length];
+                string package = manifestPath[..^manifestName.Length];
                 foreach (string content in manifest!.ContentFolders)
                 {
                     string prefix = package + content + "/";

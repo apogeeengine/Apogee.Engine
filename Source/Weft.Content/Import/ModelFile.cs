@@ -15,7 +15,7 @@ namespace Weft.Content.Import;
 /// </summary>
 public static unsafe class ModelFile
 {
-    public const uint Magic = 0x4C444D57; // "WMDL"
+    public static readonly uint Magic = Assets.AssetFormats.Model.Magic;
     public const uint Version = 1;
 
     public static bool IsModelFile(ReadOnlySpan<byte> file) => file.Length >= 8 && BitConverter.ToUInt32(file) == Magic;

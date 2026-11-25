@@ -203,9 +203,9 @@ internal static class Commands
         Console.WriteLine($"  title:      {upload.Title ?? "(unchanged)"}");
         Console.WriteLine($"  visibility: {options.WorkshopVisibility}");
         Console.WriteLine($"  tags:       {(upload.Tags.Count == 0 ? "(none)" : string.Join(", ", upload.Tags))}");
-        if (!File.Exists(System.IO.Path.Combine(folder, "mod.wmod")))
+        if (!File.Exists(System.IO.Path.Combine(folder, PackageManifest.FileName)))
         {
-            Console.Error.WriteLine($"{folder} has no mod.wmod: it is not a mod folder.");
+            Console.Error.WriteLine($"{folder} has no {PackageManifest.FileName}: it is not a mod folder.");
             return 1;
         }
 

@@ -33,10 +33,10 @@ namespace Weft.Ecs;
 // one is version 2. docs/manual/content/scenes.md is the reference; Scene/scene.xsd describes the structure.
 public sealed unsafe partial class World
 {
-    private const string SceneRoot = "Scene";
+    private static readonly string SceneRoot = AssetFormats.Scene.RootElement!;
     private const string SceneEntity = "Entity";
     private const int SceneVersion = 1;           // what a scene without instances is written as
-    private const int SceneVersionWithInstances = 2;   // a scene that holds an instance: an engine that does not know instances refuses it instead of loading them empty
+    private static readonly int SceneVersionWithInstances = AssetFormats.Scene.Version;   // a scene that holds an instance: an engine that does not know instances refuses it instead of loading them empty
 
     private readonly Dictionary<string, (Func<uint, AssetRef?> ToRef, Func<AssetRef, uint> FromRef)> _assetTypes = new(StringComparer.Ordinal);
     private readonly object _origin = new();   // what a snapshot says about the world it came from (see WorldSnapshot)
@@ -917,24 +917,7 @@ public sealed unsafe partial class World
     public List<Entity> LoadScene(XmlNode root, Entity parent = default)
     {
         ArgumentNullException.ThrowIfNull(root);
-        if (root.Name != SceneRoot)
-        {
-            throw new FormatException($"the document is not a scene: its root is <{root.Name}>, not <{SceneRoot}>");
-        }
-
-        if (root.Attribute("version") is { } versionText)
-        {
-            if (!int.TryParse(versionText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int version))
-            {
-                throw new FormatException($"the scene has the version '{versionText}', which is not a number");
-            }
-
-            if (version > SceneVersionWithInstances)
-            {
-                throw new FormatException($"the scene is version {version}; this engine reads up to {SceneVersionWithInstances}");
-            }
-        }
-
+        AuthoredDocument.Check(root, AssetFormats.Scene);
         return Load(root, parent);
     }
 
@@ -1257,7 +1240,7 @@ public sealed unsafe partial class World
         XmlNode root;
         try
         {
-            root = XmlFile.Read(files, resolved);
+            root = AuthoredDocument.Read(files.ReadAllBytes(resolved), AssetFormats.Scene, resolved).Root;
         }
         catch (ContentException e)
         {

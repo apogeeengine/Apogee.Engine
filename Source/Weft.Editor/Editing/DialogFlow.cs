@@ -4,6 +4,7 @@ using System.IO;
 using Weft.Content.FileSystem;
 using Weft.Core.Logging;
 using Weft.Platform;
+using Weft.Content.Assets;
 
 namespace Weft.Editor.Editing;
 
@@ -28,7 +29,7 @@ public enum DialogKind
 public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> current, Action<string> tell, Action<string> openProject, Action<DialogKind> unavailable)
 {
     /// <summary>The filters of the scene dialogs.</summary>
-    public static IReadOnlyList<(string Name, string Pattern)> SceneFilters { get; } = [("Scenes", "wscn"), ("All files", "*")];
+    public static IReadOnlyList<(string Name, string Pattern)> SceneFilters { get; } = [("Scenes", AssetFormats.Scene.Extension[1..]), ("All files", "*")];
 
     /// <summary>A dialog is open: the menus are greyed, and another request is refused.</summary>
     public bool Busy => dialogs.Busy;
@@ -135,9 +136,9 @@ public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> curren
 
     private void OpenScenePath(EditorProject project, string path)
     {
-        if (!path.EndsWith(".wscn", StringComparison.OrdinalIgnoreCase))
+        if (!AssetFormats.Scene.Matches(path))
         {
-            tell($"{path} is not a scene: scene files end in .wscn.");
+            tell($"{path} is not a scene: scene files end in {AssetFormats.Scene.Extension}.");
             return;
         }
 
@@ -161,9 +162,9 @@ public sealed class DialogFlow(IFileDialogs dialogs, Func<EditorProject?> curren
 
     private void SaveScenePath(EditorProject project, string path)
     {
-        if (!path.EndsWith(".wscn", StringComparison.OrdinalIgnoreCase))
+        if (!AssetFormats.Scene.Matches(path))
         {
-            path += ".wscn";
+            path += AssetFormats.Scene.Extension;
         }
 
         if (VirtualPaths.ToVirtual(project.GameFolder, path) is not { } virtualPath)

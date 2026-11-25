@@ -79,9 +79,9 @@ public sealed class DropPlan
     // A .gltf is text. One bigger than this is a mistake or has its data embedded: the .glb form is the one for that.
     private const long MaxGltfBytes = 64L * 1024 * 1024;
 
-    private static readonly string[] s_plainExtensions = [".luau", ".xml", ".wgam", ".wmod", ".wav", ".ogg", ".flac", ".mp3", ".ttf", ".otf", ".rml", ".rcss"];
+    private static readonly string[] s_plainExtensions = [.. AssetFormats.ExtensionsOf(AssetFormKind.Plain), .. AssetFormats.ExtensionsOf(AssetFormKind.Manifest)];
 
-    private static readonly string[] s_companionExtensions = [".bin", ".png", ".jpg", ".jpeg"];
+    private static readonly string[] s_companionExtensions = [AssetFormats.GltfBuffer.Extension, .. AssetFormats.ExtensionsOfType("texture")];
 
     private readonly List<PlannedFile> _files = [];
     private readonly List<RefusedFile> _refused = [];
@@ -361,7 +361,7 @@ public sealed class DropPlan
             }
         }
 
-        private static bool IsGltf(string path) => path.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase);
+        private static bool IsGltf(string path) => AssetFormats.Gltf.Matches(path);
 
         /// <summary>A file that is not a glTF: itself, and its <c>.wimp</c> when it has one beside it.</summary>
         private Unit? Single(string source, string folder)

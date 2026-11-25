@@ -143,7 +143,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
             return AssetStatus.NotImported;
         }
 
-        string settingsPath = "res://" + source + ".wimp";
+        string settingsPath = "res://" + source + ImportSidecar.Suffix;
         string settingsText = files.FileExists(settingsPath) ? files.ReadAllText(settingsPath) : "";
         return KeyOf(importer, settingsText, files.ReadAllBytes("res://" + source), entry.Dependencies) == entry.Key ? AssetStatus.UpToDate : AssetStatus.Stale;
     }
@@ -186,7 +186,7 @@ public sealed class AssetImporter(VirtualFileSystem files, IReadOnlyList<IAssetI
     {
         try
         {
-            string settingsPath = "res://" + source + ".wimp";
+            string settingsPath = "res://" + source + ImportSidecar.Suffix;
             string settingsText = files.FileExists(settingsPath) ? files.ReadAllText(settingsPath) : "";
             ImportSettings settings = settingsText.Length > 0 ? ImportSettings.Parse(settingsText, settingsPath) : new ImportSettings();
             byte[] sourceBytes = files.ReadAllBytes("res://" + source);

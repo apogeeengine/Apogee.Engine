@@ -1,6 +1,8 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using Weft.Content.Assets;
+using Weft.Content.Packages;
 
 namespace Weft.Export;
 
@@ -125,7 +127,7 @@ public static class RuntimeFolder
         string path = relativePath.Replace('\\', '/').TrimStart('/');
         string[] segments = path.Split('/');
         string file = segments[^1];
-        if (segments.Length == 1 && (file is "steam_appid.txt" or "game.wgam"))
+        if (segments.Length == 1 && (file == "steam_appid.txt" || file == GameManifest.FileName))
         {
             return false;
         }
@@ -156,7 +158,7 @@ public static class RuntimeFolder
 
         // A shader source and the file of its import settings (x.slang and x.slang.wimp): a shipped game loads the compiled shaders of Shaders/imported and never reads either.
         if (segments[0] == "Shaders" && segments.Length > 1 && segments[1] != "imported"
-            && (file.EndsWith(".slang", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".slang.wimp", StringComparison.OrdinalIgnoreCase)))
+            && (AssetFormats.Slang.Matches(file) || file.EndsWith(AssetFormats.Slang.Extension + ImportSidecar.Suffix, StringComparison.OrdinalIgnoreCase)))
         {
             return false;
         }

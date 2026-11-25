@@ -232,9 +232,9 @@ public sealed unsafe partial class World
         ArgumentException.ThrowIfNullOrEmpty(path);
         VirtualFileSystem files = Files ?? throw new InvalidOperationException("this world has no files to save a prefab to");
         string resolved = ResolveScenePath(path);
-        if (!resolved.EndsWith(".wprf", StringComparison.OrdinalIgnoreCase))
+        if (!AssetFormats.Prefab.Matches(resolved))
         {
-            throw new ArgumentException($"a prefab file's name ends in .wprf: '{resolved}'", nameof(path));
+            throw new ArgumentException($"a prefab file's name ends in {AssetFormats.Prefab.Extension}: '{resolved}'", nameof(path));
         }
 
         PrefabLibrary library = Prefabs;

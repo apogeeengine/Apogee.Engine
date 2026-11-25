@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Weft.Content.FileSystem;
 using Weft.Content.Import;
+using Weft.Content.Packages;
 using Weft.Core.Assets;
 
 namespace Weft.Content.Assets;
@@ -100,7 +101,7 @@ public sealed partial class AssetDatabase
         return false;
     }
 
-    private static bool IsManifestPath(string path) => path == GameRoot + "game.wgam" || VfsPath.FileName(path) == "mod.wmod";
+    private static bool IsManifestPath(string path) => path == GameRoot + GameManifest.FileName || VfsPath.FileName(path) == PackageManifest.FileName;
 
     // The UID of the asset being moved: from the file where it is (at the old path, or at the new one when it has moved), or from the .wimp an interrupted move left behind.
     private AssetUid UidForMove(string source, string target)
@@ -140,7 +141,7 @@ public sealed partial class AssetDatabase
 
         if (IsManifestPath(source) || IsManifestPath(target))
         {
-            throw new ContentException($"'{source}' to '{target}': game.wgam and mod.wmod are read from where they are, not found by their path. They are not assets and are not moved here.");
+            throw new ContentException($"'{source}' to '{target}': {GameManifest.FileName} and {PackageManifest.FileName} are read from where they are, not found by their path. They are not assets and are not moved here.");
         }
 
         for (string? above = VfsPath.ParentOf(target); above is not null; above = VfsPath.ParentOf(above))

@@ -12,6 +12,7 @@ using Weft.Editor.Input;
 using Weft.Host;
 using Weft.Native.ImGuizmo;
 using Weft.Reflection;
+using Weft.Content.Assets;
 
 namespace Weft.Editor;
 
@@ -389,7 +390,7 @@ public sealed class EditorPreferences
     {
         string full = Normalize(gameFolder);
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(OperatingSystem.IsLinux() ? full : full.ToLowerInvariant()));
-        return "project." + Convert.ToHexStringLower(hash.AsSpan(0, 8)) + ".wscn";
+        return "project." + Convert.ToHexStringLower(hash.AsSpan(0, 8)) + AssetFormats.Scene.Extension;
     }
 
     /// <summary>The virtual path (<c>res://scenes/level.wscn</c>) of the scene that was open last in the project, or null.</summary>

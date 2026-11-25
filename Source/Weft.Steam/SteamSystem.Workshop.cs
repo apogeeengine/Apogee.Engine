@@ -6,6 +6,7 @@ using Weft.Interop;
 using Weft.Native.Steam;
 using Weft.Reflection;
 using SteamApi = Weft.Native.Steam.Steam;
+using Weft.Content.Packages;
 
 namespace Weft.Steam;
 
@@ -142,9 +143,9 @@ public sealed unsafe partial class SteamSystem
             return;
         }
 
-        if (!Directory.Exists(upload.Folder) || !File.Exists(Path.Combine(upload.Folder, "mod.wmod")))
+        if (!Directory.Exists(upload.Folder) || !File.Exists(Path.Combine(upload.Folder, PackageManifest.FileName)))
         {
-            done(new WorkshopUploadResult(false, upload.ItemId ?? "", $"{upload.Folder} is not a mod folder (it has no mod.wmod).", false));
+            done(new WorkshopUploadResult(false, upload.ItemId ?? "", $"{upload.Folder} is not a mod folder (it has no {PackageManifest.FileName}).", false));
             return;
         }
 

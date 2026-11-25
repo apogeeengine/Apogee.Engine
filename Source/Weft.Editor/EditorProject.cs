@@ -17,6 +17,7 @@ using Weft.Host.Editing;
 using Weft.Reflection;
 using Weft.Rendering;
 using Weft.Scripting;
+using Weft.Content.Assets;
 
 namespace Weft.Editor;
 
@@ -262,9 +263,9 @@ public sealed class EditorProject : IDisposable
 
     public void SaveSceneAs(string path)
     {
-        if (!path.EndsWith(".wscn", StringComparison.OrdinalIgnoreCase))
+        if (!AssetFormats.Scene.Matches(path))
         {
-            path += ".wscn";
+            path += AssetFormats.Scene.Extension;
         }
 
         StopIfPlaying();
@@ -275,7 +276,7 @@ public sealed class EditorProject : IDisposable
     }
 
     /// <summary>The scene files of the game (every <c>.wscn</c> under <c>res://</c>), as virtual paths.</summary>
-    public List<string> SceneFiles() => [.. Session.Files!.EnumerateFiles("res://", "*.wscn", recursive: true).Order(StringComparer.Ordinal)];
+    public List<string> SceneFiles() => [.. Session.Files!.EnumerateFiles("res://", "*" + AssetFormats.Scene.Extension, recursive: true).Order(StringComparer.Ordinal)];
 
     // ---- Importing dropped files ----
 

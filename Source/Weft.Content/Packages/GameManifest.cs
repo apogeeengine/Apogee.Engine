@@ -30,7 +30,7 @@ public readonly record struct GameWindow(int Width, int Height, bool Fullscreen,
 public sealed class GameManifest
 {
     /// <summary>The name of the file, at the root of the game folder.</summary>
-    public const string FileName = "game.wgam";
+    public static readonly string FileName = "game" + Assets.AssetFormats.Game.Extension;
 
     private static readonly Lazy<SchemaSet> s_schema = new(LoadSchema);
 
@@ -88,7 +88,7 @@ public sealed class GameManifest
 
     private static SchemaSet LoadSchema()
     {
-        using Stream stream = typeof(GameManifest).Assembly.GetManifestResourceStream("Packages/game.xsd") ?? throw new InvalidOperationException("The embedded schema of game.wgam is missing.");
+        using Stream stream = typeof(GameManifest).Assembly.GetManifestResourceStream(Assets.AssetFormats.Game.SchemaResource!) ?? throw new InvalidOperationException("The embedded schema of game.wgam is missing.");
         using var reader = new StreamReader(stream);
         var set = new SchemaSet();
         set.LoadText(reader.ReadToEnd(), "game.xsd");
@@ -186,7 +186,7 @@ public sealed class GameManifest
 
         built.EntryScene = RelativePath(record, node, "EntryScene", origin, errors);
         built.Icon = RelativePath(record, node, "Icon", origin, errors);
-        if (built.Icon is { } icon && !icon.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        if (built.Icon is { } icon && !Assets.AssetFormats.Png.Matches(icon))
         {
             errors.Add($"{origin}:{LineOf(node, "Icon")}: the icon '{icon}' is not a .png file.");
         }

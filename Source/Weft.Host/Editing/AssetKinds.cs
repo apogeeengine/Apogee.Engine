@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Weft.Content.Import;
+using Weft.Content.Assets;
 
 namespace Weft.Host.Editing;
 
@@ -26,9 +27,9 @@ public static class AssetKinds
 
     static AssetKinds()
     {
-        Register("model", ExtensionsOfImporter("model", [".glb", ".gltf"]), "Model");
-        Register("texture", ExtensionsOfImporter("image", [".png", ".jpg", ".jpeg"]), "Texture");
-        Register("scene", [".wscn"], "Scene");
+        Register("model", ExtensionsOfImporter("model", AssetFormats.ExtensionsOfType("model")), "Model");
+        Register("texture", ExtensionsOfImporter("image", AssetFormats.ExtensionsOfType("texture")), "Texture");
+        Register("scene", AssetFormats.ExtensionsOfType("scene"), "Scene");
     }
 
     /// <summary>Changes whenever a kind is registered: what lists files by kind looks again when it differs from what it saw.</summary>

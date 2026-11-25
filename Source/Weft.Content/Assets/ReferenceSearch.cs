@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Weft.Content.FileSystem;
+using Weft.Content.Packages;
 using Weft.Content.Xml;
 using Weft.Core.Assets;
 
@@ -146,7 +147,7 @@ internal static class ReferenceSearch
         VfsPath.TryParse(folder, out string canonical, out string? problem) ? canonical : throw new ContentException($"'{folder}' is not a valid folder: {problem}.");
 
     // The game's manifest and a package's: they name files by a path relative to the game folder or to the package.
-    private static bool IsManifest(string file) => file == "res://game.wgam" || VfsPath.FileName(file) == "mod.wmod";
+    private static bool IsManifest(string file) => file == "res://" + GameManifest.FileName || VfsPath.FileName(file) == PackageManifest.FileName;
 
     private static bool IsXmlDocument(string file, List<string> folders)
     {
@@ -315,7 +316,7 @@ internal static class ReferenceSearch
             return null; // a manifest that cannot be read is reported by whatever loads it
         }
 
-        bool game = file == "res://game.wgam";
+        bool game = file == "res://" + GameManifest.FileName;
         string folder = VfsPath.DirectoryOf(file);
         var sites = new List<AssetReferenceSite>();
         foreach (XmlNode element in tree.Children)

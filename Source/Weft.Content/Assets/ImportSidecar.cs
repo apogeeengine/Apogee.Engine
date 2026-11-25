@@ -14,7 +14,7 @@ public static class ImportSidecar
     public const string RootName = "Import";
 
     /// <summary>The suffix that makes the sidecar's name from the asset's.</summary>
-    public const string Suffix = ".wimp";
+    public static readonly string Suffix = AssetFormats.Sidecar.Extension;
 
     /// <summary>The UID in the sidecar's text, or <see cref="AssetUid.None"/> when there is none, the text is empty, is not an <c>&lt;Import&gt;</c> or the attribute is not a valid UID. It never throws.</summary>
     public static AssetUid ReadUid(string sidecarText) => RootTag.ReadUid(sidecarText, RootName);

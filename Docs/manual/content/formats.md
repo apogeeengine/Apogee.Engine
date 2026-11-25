@@ -54,6 +54,8 @@ Files that are not assets and are not in this table: `imported/index.xml` and `i
 ([Settings](../platform/settings.md)), the definitions in a package's `data/*.xml` with their `schemas/*.xsd` ([Definitions and schemas](defs.md)), and the cache of compiled shaders under the user's folder (a
 private file, `WSHC2`, which nothing else reads).
 
+**The table is the source of truth.** The extensions, the magics, the root elements and the versions of the formats the engine reads are one table in the code (`AssetFormats` in `Weft.Content`, see [Asset identity](assets.md#kinds-of-files)), and the importers, the hot reload, the editor, the packer and the readers go by it. A format that is *planned* below has no row until the code that reads it lands.
+
 ## Conventions
 
 - **Little-endian**, everywhere. A magic is written as the four ASCII letters in this order: `WPAK` is the bytes `57 50 41 4B`. Tables below write offsets from the start of the file.

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Weft.Content.Assets;
 using Weft.Content.FileSystem;
 
 namespace Weft.Content.Import;
@@ -97,7 +98,7 @@ public sealed class ModelImporter : IAssetImporter
 {
     public string Name => "model";
 
-    public IReadOnlyList<string> Extensions { get; } = [".glb", ".gltf"];
+    public IReadOnlyList<string> Extensions { get; } = AssetFormats.ExtensionsOfType("model");
 
     public string Fingerprint => "2; " + BasisEncoder.Settings;
 
@@ -109,7 +110,7 @@ public sealed class ModelImporter : IAssetImporter
             OptimizeMeshes = context.Settings.Optimize,
             ReadFile = context.ReadFile,
         });
-        return new ImportResult(ModelFile.Write(model, context.Settings.Compression), ".wmdl");
+        return new ImportResult(ModelFile.Write(model, context.Settings.Compression), AssetFormats.Model.Extension);
     }
 }
 
@@ -118,7 +119,7 @@ public sealed class ImageImporter : IAssetImporter
 {
     public string Name => "image";
 
-    public IReadOnlyList<string> Extensions { get; } = [".png", ".jpg", ".jpeg"];
+    public IReadOnlyList<string> Extensions { get; } = AssetFormats.ExtensionsOfType("texture");
 
     public string Fingerprint => "2; " + BasisEncoder.Settings;
 
@@ -127,6 +128,6 @@ public sealed class ImageImporter : IAssetImporter
         ImportSettings settings = context.Settings;
         TextureData texture = ImageDecoder.Decode(context.Source, context.Bytes, settings.Srgb && !settings.NormalMap, SamplerData.Default, settings.Mips);
         bool compress = settings.Compression == TextureCompression.Uastc && Math.Min(texture.Width, texture.Height) >= BasisEncoder.MinimumSize;
-        return new ImportResult(compress ? BasisEncoder.Encode(texture, settings.NormalMap) : Ktx2Writer.Write(texture, Ktx2Writer.ImportLevel), ".ktx2");
+        return new ImportResult(compress ? BasisEncoder.Encode(texture, settings.NormalMap) : Ktx2Writer.Write(texture, Ktx2Writer.ImportLevel), AssetFormats.Ktx2.Extension);
     }
 }

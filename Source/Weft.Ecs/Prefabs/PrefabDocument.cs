@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Weft.Content.Assets;
 using Weft.Content.Xml;
 using Weft.Core.Logging;
 
@@ -10,8 +11,8 @@ namespace Weft.Ecs;
 // positive numbers, each used once in the file.
 internal static class PrefabDocument
 {
-    public const string RootName = "Prefab";
-    public const int Version = 1;
+    public static readonly string RootName = AssetFormats.Prefab.RootElement!;
+    public static readonly int Version = AssetFormats.Prefab.Version;
 
     /// <summary>Whether <paramref name="text"/> is an entity id of a prefab: a number from 1 to 2^31-1.</summary>
     public static bool TryParseId(string? text, out int id) =>
@@ -27,23 +28,7 @@ internal static class PrefabDocument
     /// </summary>
     public static void Check(XmlNode document, string origin, bool warnNextId = true)
     {
-        if (document.Name != RootName)
-        {
-            throw new FormatException($"{origin} is not a prefab: its root is <{document.Name}>, not <{RootName}>");
-        }
-
-        if (document.Attribute("version") is { } versionText)
-        {
-            if (!int.TryParse(versionText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int version))
-            {
-                throw new FormatException($"the prefab {origin} has the version '{versionText}', which is not a number");
-            }
-
-            if (version > Version)
-            {
-                throw new FormatException($"the prefab {origin} is version {version}; this engine reads up to {Version}");
-            }
-        }
+        AuthoredDocument.Check(document, AssetFormats.Prefab, origin);
 
         int roots = 0;
         foreach (XmlNode child in document.Children)
