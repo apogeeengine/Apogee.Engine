@@ -23,6 +23,12 @@ public static class AssetDumpers
     private static readonly Lock s_lock = new();
     private static readonly Dictionary<uint, AssetDumper> s_dumpers = [];
 
+    static AssetDumpers()
+    {
+        // The formats that are on the container register theirs here, so that it is there before anything dumps.
+        Register(AssetFormats.Texture.Magic, Textures.WtexFile.Dump);
+    }
+
     /// <summary>Registers the dumper of the files whose magic is <paramref name="magic"/> (<see cref="BinaryAsset.Fourcc"/>).</summary>
     /// <exception cref="InvalidOperationException">The magic has a dumper already.</exception>
     public static void Register(uint magic, AssetDumper dumper)

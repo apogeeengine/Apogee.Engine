@@ -83,7 +83,7 @@ internal sealed class RuntimeOptions
           --luau-docs <folder>                 write the Luau API as Markdown pages (the Manual's API reference)
           --workshop-upload <mod folder> [--item <id>] [--title <text>] [--description <text>] [--preview <image>] [--visibility private|friends|unlisted|public] [--tags <a,b>] [--note <text>] [--confirm]
                                                publish a mod folder (it has a mod.wmod) as a Steam Workshop item of the game in ./steam_appid.txt, or update --item; without --confirm it only says what it would do
-          --dump <file>                        write an artifact as text: a .wmdl, .wshd or any other file on the common container (header, UID, import hash, blocks with their CRCs, META), cooked XML as XML, a .wpak as its list of files
+          --dump <file> [--ktx2 <out.ktx2>]    write an artifact as text: a .wmdl, .wshd, .wtex or any other file on the common container (header, UID, import hash, blocks with their CRCs, META), cooked XML as XML, a .wpak as its list of files; for a .wtex, --ktx2 also writes it as a KTX 2 file
           --gpu-info                           list the GPUs of Vulkan and Metal, one line each: `vulkan: <name> (<kind>, <api>) ok` or `... unusable: <reasons>`
           --version                            print the engine's version, the commit it was built from, the platform and whether the program is CoreCLR or NativeAOT
           --help
@@ -123,6 +123,9 @@ internal sealed class RuntimeOptions
 
     /// <summary>With --pack: the pack to write.</summary>
     public string Output { get; private set; } = "";
+
+    /// <summary>With --dump of a <c>.wtex</c>: the KTX 2 file to write as well (null writes none).</summary>
+    public string? Ktx2Output { get; private set; }
 
     /// <summary>With --pack: the size at which a pack continues in a new part, in megabytes.</summary>
     public long SplitMegabytes { get; private set; } = 1536;
@@ -433,6 +436,14 @@ internal sealed class RuntimeOptions
 
                     options.Path = dumpFile;
                     break;
+                case "--ktx2":
+                    if (!TryValue(args, ref i, out string ktx2Output, out problem))
+                    {
+                        return false;
+                    }
+
+                    options.Ktx2Output = ktx2Output;
+                    break;
                 case "--gpu-info":
                     options.Command = RuntimeCommand.GpuInfo;
                     break;
@@ -555,6 +566,12 @@ internal sealed class RuntimeOptions
         if (options.Command != RuntimeCommand.Export && (options.Target is not null || options.RuntimeDirectory is not null || options.Console))
         {
             problem = "--target, --runtime and --console go with --export.";
+            return false;
+        }
+
+        if (options.Ktx2Output is not null && options.Command != RuntimeCommand.Dump)
+        {
+            problem = "--ktx2 goes with --dump.";
             return false;
         }
 

@@ -364,7 +364,7 @@ internal static class Commands
 
     /// <summary>
     /// Writes an artifact as text on the standard output: a file on the common container as its header, UID, import hash, blocks and <c>META</c>; cooked XML as XML; a pack as its list of files
-    /// (an encrypted one needs <c>WEFT_PACK_KEY</c>). 0 fine, 1 the file is missing or not valid, 2 it could not be read.
+    /// (an encrypted one needs <c>WEFT_PACK_KEY</c>). With <c>--ktx2</c> a <c>.wtex</c> is written as a KTX 2 file too. 0 fine, 1 the file is missing or not valid, 2 it could not be read.
     /// </summary>
     public static int Dump(RuntimeOptions options)
     {
@@ -384,7 +384,7 @@ internal static class Commands
             string name = System.IO.Path.GetFileName(options.Path);
             byte[] bytes = File.ReadAllBytes(options.Path);
             Weft.Content.Formats.AssetDumpers.Dump(bytes, name, Console.Out);
-            return 0;
+            return options.Ktx2Output is null ? 0 : WriteKtx2(options.Path, name, bytes, options.Ktx2Output);
         }
         catch (ContentException e)
         {
@@ -396,6 +396,28 @@ internal static class Commands
             Console.Error.WriteLine(e.Message);
             return 2;
         }
+    }
+
+    /// <summary>Writes the texture in <paramref name="bytes"/> as a KTX 2 file (<c>--dump x.wtex --ktx2 out.ktx2</c>); 1 when it is not a texture or the output is the input.</summary>
+    private static int WriteKtx2(string path, string name, byte[] bytes, string output)
+    {
+        if (System.IO.Path.GetFullPath(output) == System.IO.Path.GetFullPath(path))
+        {
+            Console.Error.WriteLine("--ktx2 would overwrite the file that is dumped.");
+            return 1;
+        }
+
+        if (!Weft.Content.Textures.WtexFile.IsWtex(bytes))
+        {
+            Console.Error.WriteLine($"{name} is not a .wtex texture: --ktx2 writes one as a KTX 2 file.");
+            return 1;
+        }
+
+        byte[] ktx2 = Weft.Content.Textures.WtexFile.Read(bytes, name).ToKtx2();
+        File.WriteAllBytes(output, ktx2);
+        Console.WriteLine();
+        Console.WriteLine($"wrote {output} ({ktx2.Length} bytes)");
+        return 0;
     }
 
     private static int DumpPack(string path)

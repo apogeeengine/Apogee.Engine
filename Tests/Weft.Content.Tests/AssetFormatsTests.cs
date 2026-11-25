@@ -30,6 +30,7 @@ public class AssetFormatsTests
             (AssetFormats.Pack, ".wpak", AssetFormKind.Pack, "WPAK"),
             (AssetFormats.Model, ".wmdl", AssetFormKind.Imported, "WMDL"),
             (AssetFormats.Shader, ".wshd", AssetFormKind.Imported, "WSHD"),
+            (AssetFormats.Texture, ".wtex", AssetFormKind.Imported, "WTEX"),
             (AssetFormats.Ktx2, ".ktx2", AssetFormKind.Imported, null),
             (AssetFormats.CookedXml, "", AssetFormKind.Cooked, "WXMB"),
             (AssetFormats.Glb, ".glb", AssetFormKind.Source, null),
@@ -171,7 +172,7 @@ public class AssetFormatsTests
         Assert.True(AssetFormats.IsAuthored("res://a/b.WPRF"));
         Assert.False(AssetFormats.IsAuthored("res://a/b.wimp"));
         Assert.False(AssetFormats.IsAuthored("res://a/b.xml"));
-        Assert.Equal([AssetFormats.Model, AssetFormats.Shader, AssetFormats.Ktx2], AssetFormats.ImportedArtifacts);
+        Assert.Equal([AssetFormats.Model, AssetFormats.Shader, AssetFormats.Texture, AssetFormats.Ktx2], AssetFormats.ImportedArtifacts);
         Assert.Equal([".wscn"], AssetFormats.ExtensionsOfType("scene"));
         Assert.Equal([".slang"], AssetFormats.ExtensionsOfType("shader"));
         Assert.Empty(AssetFormats.ExtensionsOfType("nobody"));

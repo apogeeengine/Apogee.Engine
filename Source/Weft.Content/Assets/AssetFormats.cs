@@ -109,6 +109,9 @@ public static class AssetFormats
     /// <summary>A compiled shader bundle (<c>x.slang.wshd</c>).</summary>
     public static readonly AssetFormat Shader = Register(new(".wshd", AssetFormKind.Imported, "Compiled shader", Version: 1, Magic: Fourcc('W', 'S', 'H', 'D')));
 
+    /// <summary>An imported texture (<c>x.png.wtex</c>), on the common container: <see cref="Weft.Content.Textures.WtexFile"/>.</summary>
+    public static readonly AssetFormat Texture = Register(new(".wtex", AssetFormKind.Imported, "Imported texture", Version: 1, Magic: Fourcc('W', 'T', 'E', 'X')));
+
     /// <summary>
     /// An imported image (<c>x.png.ktx2</c>), a standard KTX 2 file. Its magic here is the first four bytes of the 12-byte identifier (<c>0xAB 'K' 'T' 'X'</c>); <see cref="Ktx2Loader.IsKtx2"/> checks all twelve.
     /// </summary>

@@ -27,8 +27,8 @@ design: the layout may still change when the format is built, and nothing in the
 | [`.wmdl`](#wmdl-model) | an imported model | binary, own layout | `WMDL` | implemented (version 1); version 2 planned |
 | [`.wshd`](#wshd-shader) | a compiled shader module | binary, own layout | `WSHD` | implemented (version 1); on the common container planned |
 | [cooked XML](#cooked-xml-wxmb) | any XML document of a cooked pack, as a tree | binary, own layout | `WXMB` | implemented |
-| [`.ktx2`](#ktx2-textures) | an imported image (a standard KTX 2 file) | binary, Khronos format | the KTX 2 identifier (`«KTX 20»`) | implemented; replaced by `.wtex` when that lands |
-| [`.wtex`](#wtex-texture) | a texture, in a portable form and in a GPU form | binary, common container | `WTEX` | planned |
+| [`.ktx2`](#ktx2-textures) | an imported image (a standard KTX 2 file) | binary, Khronos format | the KTX 2 identifier (`«KTX 20»`) | implemented; `.wtex` takes its place as the imported form with the image import |
+| [`.wtex`](#wtex-texture) | a texture, in a portable form and in a GPU form | binary, common container | `WTEX` | implemented (version 1); image import does not write it yet |
 | [`.wsnd`](#wsnd-sound) | an imported sound | binary, common container | `WSND` | planned |
 | [`.wmat`](#wmat-material) | a material and its parameters | XML; cooked XML in packs | `WXMB` when cooked | implemented |
 | [`.wdat`](#wdat-data-record) | one typed data record, referenced by an asset reference | XML | none | planned |
@@ -447,14 +447,120 @@ space included) and the levels. Details of what the importer writes and its sett
 
 **Versioning.** KTX 2 is versioned by Khronos; libktx reads it. The engine's own part is the importer's fingerprint (the encoder settings), which is part of the import key.
 
-**Planned.** `.wtex` replaces this form: [wtex](#wtex-texture). A `.ktx2` would then be an importable *source*, not an artifact.
+**Planned.** `.wtex` replaces this form: [wtex](#wtex-texture), which reads and writes the same level bytes and converts to and from a `.ktx2`. A `.ktx2` would then be an importable *source*, not an artifact.
 
 **Status.** Implemented. Owning page: [Asset import](import.md#gpu-texture-compression).
+
+### wtex: texture
+
+**Purpose.** One container for every texture, in two forms: a **portable** form that import writes (UASTC blocks, transcoded at load as today) and a **GPU** form that export writes (blocks the GPU samples directly,
+so there is no transcoding at load).
+
+Why not stay with KTX 2: it already gives a level index with the smallest level first, per-level zstd, key/value data, the colour space in the descriptor, and it can hold BC7, BC5, BC6H and ASTC payloads. What an
+own container adds is: the same header, UID, import hash, `--dump` and reader as every other artifact; mips aligned to 4096 bytes (KTX 2 aligns levels to the block size), a **resident tail** (all mips of 64 KiB or less in
+one block at the front, so one read gives a usable texture) and typed engine fields instead of key/value strings; and a GPU form that is read without libktx, uploaded straight from the decompressed span into the
+staging buffer. The cost is that KTX tools cannot open a `.wtex`; the payload is the same bytes a KTX 2 level holds, so a `.wtex` and a `.ktx2` convert to each other by rewrapping (`--dump x.wtex --ktx2 out.ktx2`).
+
+**Layout.** On the [common container](#the-common-binary-container), magic `WTEX`, format version 1 (`WtexFile` in `Weft.Content`). The header's flags are the texture's flags too, so that a tool that has read only
+the first 64 bytes knows whether the file is portable; a file where the two differ is refused.
+
+`META` is 48 bytes, little-endian, the same size in every file of version 1 (a reader refuses any other size):
+
+| Offset | Field | Size | Meaning |
+| --- | --- | --- | --- |
+| 0 | width | `u32` | of the first level, 1 to 16384 |
+| 4 | height | `u32` | of the first level, 1 to 16384 |
+| 8 | depth | `u32` | 1 unless the texture is 3D, then 2 to 2048 |
+| 12 | layers | `u32` | 1 unless the texture is an array (`Array`), then 1 to 2048 |
+| 16 | faces | `u32` | 1, or 6 for a cube map (`Cube`) |
+| 20 | mip count | `u32` | 1 to 15, and at most the length of the full chain of the largest of width, height and depth |
+| 24 | flags | `u32` | see below |
+| 28 | payload | `u8` | 0 `Uastc`, 1 `Rgba8`, 2 `Bc7`, 3 `Bc5`, 4 `Bc4`, 5 `Bc6hU`, 6 `Rgba16f` |
+| 29 | texture group | `u8` | 0 `World`, 1 `Character`, 2 `Ui`, 3 `Effects`, 4 `Lightmap`: a quality setting per group |
+| 30 | LOD bias | `s8` | how many mip levels the quality setting drops more (positive) or fewer (negative) for this texture |
+| 31 | tail mip | `u8` | the first mip level that is in `TAIL`, 0 to mip count minus 1 |
+| 32 | alpha cutoff | `f32` | the coverage reference for `AlphaCoverage`, 0 to 1 (0.5 unless the importer says otherwise) |
+| 36 | filter | `u8` | 0 nearest, 1 linear |
+| 37 | mipmaps | `u8` | 0 or 1: whether the mip levels are sampled |
+| 38 | wrap U | `u8` | 0 repeat, 1 mirrored repeat, 2 clamp to edge |
+| 39 | wrap V | `u8` | the same |
+| 40 | reserved | 8 bytes | zero (a reader refuses anything else) |
+
+The sampler fields are hints for a texture used by itself; a model's material slot may override them. Flags (in code `WtexTraits`: an analyzer does not allow a type to be named `…Flags`):
+
+| Bit | Flag | Meaning |
+| --- | --- | --- |
+| 0 | `Portable` | the file is an import form: a cooked game holds the GPU form of it instead |
+| 1 | `Srgb` | the colours are sRGB (the format the GPU samples is an sRGB one) |
+| 2 | `NormalMapRG` | a normal map: the first two channels hold the normal |
+| 3 | `AlphaCoverage` | the alpha is a coverage that mips keep, against the alpha cutoff |
+| 4 | `Premultiplied` | the colour channels are multiplied by alpha |
+| 5 | `Hdr` | high dynamic range: set exactly when the payload is `Bc6hU` or `Rgba16f` |
+| 6 | `Cube` | set exactly when there are six faces |
+| 7 | `Array` | the layers are separate images (without it there is one layer) |
+
+Other combinations are refused: a bit this engine does not know; UASTC without `Portable` (UASTC is only the portable form; the other payloads may be either); `Srgb` for a payload that is not colour (`Bc5`, `Bc4`,
+`Bc6hU`, `Rgba16f`) or together with `NormalMapRG`; a cube map that is not square; a 3D texture that is an array or a cube map.
+
+**Levels.** What each payload is, the same bytes a KTX 2 file holds:
+
+| Payload | One block | Vulkan format |
+| --- | --- | --- |
+| `Uastc` | 4x4 texels in 16 bytes | undefined (`0`): a KTX 2 file says UASTC in its descriptor |
+| `Rgba8` | 1 texel in 4 bytes | `R8G8B8A8_UNORM` (37), `_SRGB` (43) |
+| `Bc7` | 4x4 in 16 bytes | `BC7_UNORM_BLOCK` (145), `_SRGB_BLOCK` (146) |
+| `Bc5` | 4x4 in 16 bytes | `BC5_UNORM_BLOCK` (141) |
+| `Bc4` | 4x4 in 8 bytes | `BC4_UNORM_BLOCK` (139) |
+| `Bc6hU` | 4x4 in 16 bytes | `BC6H_UFLOAT_BLOCK` (143) |
+| `Rgba16f` | 1 texel in 8 bytes | `R16G16B16A16_SFLOAT` (97) |
+
+Level *n* is the texture with width, height and depth halved *n* times (never under 1), and is `ceil(w/bw) * ceil(h/bh) * bytes * depth * layers * faces` bytes: no padding in a row, a level or between its images, which follow
+each other layer by layer, then face by face, then slice by slice (as a KTX 2 level does). A reader checks the size of every block against this before it allocates.
+
+**Blocks.** `META`, then `TAIL`, then `MIP<n>` for each level below the tail from the largest of the tail's neighbours down to 0: **exactly** these, in this order, so a file read from its start is progressively usable
+(smallest first, as a streamer reads it). A reader refuses a file that has another set of blocks, another order, a codec that is not for pixels (only none and zstd are), flags in a block row, or a block aligned to less
+than 4096 bytes.
+
+- `TAIL` holds the levels from the tail mip on, the **smallest first**, one after the other with nothing between them, so that the offset of every level is a multiple of the size of its block (as a buffer offset for an
+  upload has to be). A writer puts into the tail every level of 64 KiB or less, and always the last level; so a small texture is only a tail, and a texture of one big level has a tail of that level. A reader takes any tail
+  index: the 64 KiB is the writer's rule. The tail is stored as it is (no codec): it is small, read at once, and can be mapped.
+- `MIP<n>` holds level *n* (all faces and layers) and is compressed with zstd (level 12 unless the writer is told another, or told 0 for none). The kind has room for one character after `MIP`, so *n* is written as a
+  hexadecimal digit: `MIP0` to `MIP9`, `MIPA` to `MIPE` (a texture has at most 15 levels).
+- Every block but `META` is aligned to 4096 bytes and holds raw bytes whose CRC-32C is in the table; the CRC is checked every time a level is read.
+
+**Forms.** Import writes the **Portable** form: UASTC, or RGBA8 for `compression="none"` and for textures under 4 pixels (and, later, BC6H or half-float RGBA for HDR). The development runtime, and mods (which are
+never cooked), transcode a portable texture at load, as a `.ktx2` is today. `--pack --cooked` and export rewrite every portable texture to the **GPU form of the desktop profile**: colour to BC7, normal maps
+(`NormalMapRG`) to BC5, single-channel masks to BC4. Every desktop Vulkan GPU, lavapipe and Apple's Macs have BC; a GPU form met by a GPU without it is a `ContentException` that says so. The result is cached by import
+hash (`imported/.cooked/<hash>.wtex`, an export cache, not kept in version control). The GPU form is 10 to 30 percent bigger on disk than RDO-compressed UASTC with zstd; that is accepted for no work at load.
+
+**KTX 2.** `WtexFile.ToKtx2()` writes the texture as a KTX 2 file and `WtexFile.FromKtx2` and `ReadKtx2` read one; `Weft.Runtime --dump x.wtex --ktx2 out.ktx2` writes the file after the text dump.
+
+- *wtex to KTX 2* (`Ktx2Writer`): the levels are the same bytes, without supercompression, smallest first in the file, each at a multiple of the size of its block, with the Vulkan format of the table above, a type size of 2
+  for `Rgba16f` and 1 for the others, `pixelDepth` and `layerCount` 0 when the texture is neither 3D nor an array, and six faces for a cube map. The data format descriptor is the one libktx writes for the format (a
+  test compares the bytes), and for UASTC the one its encoder writes for a texture with alpha (the UASTC model, the RGBA channel, the sRGB or linear transfer function, the premultiplied bit; the encoder says RGB for an opaque texture, which a wtex does not remember, and the two transcode the same). What a KTX 2 file does not keep is the engine's own
+  fields: the group, LOD bias, alpha cutoff, sampler hints, `NormalMapRG` and `AlphaCoverage`.
+- *KTX 2 to wtex*: UASTC (with or without zstd supercompression: libktx inflates it, and the bytes after that are the level), RGBA8, BC7, BC5, BC4, BC6H and half-float RGBA in the formats above; 2D, 3D, cube map and array.
+  ETC1S (BasisLZ), zlib, 1D textures, a file that asks for its mips to be generated, and every other Vulkan format are refused. The flags that follow from the file are set: `Portable` for UASTC and RGBA8 (the forms a
+  cooked game rewrites), `Srgb` from the Vulkan format (from the transfer function of the descriptor for UASTC), `Premultiplied` from the descriptor, `Hdr`, `Cube` and `Array`; the caller adds the rest, and the group, bias,
+  cutoff and sampler (`WtexSettings`). The header and the level index are checked against the limits above and against the sizes of the levels *before* libktx reads the file, so that a hostile file cannot make it inflate
+  more than the texture needs.
+
+**Hostile input.** The container's checks (sizes against the length of the file before allocation, blocks in order and not overlapping, a total of at most 4 GiB, a CRC for every block) and, on top of them: every number of
+`META` is judged against the limits above before any size is computed from it (no field is trusted: a width of four billion is a refused file, not an allocation), the sizes of the blocks must be exactly the ones the
+shape implies (a level over 1 GiB, or levels over 4 GiB together, are refused), and a damaged block is found when its level is read, not when the file is opened. Anything wrong is a `ContentException` that names the file.
+
+**Dump.** `--dump` writes `width`, `height`, `depth`, `layers`, `faces`, `mips`, `payload`, `vk_format`, `form` (`portable` or `gpu`), `flags`, `group`, `lod_bias`, `alpha_cutoff`, `sampler`, `tail_mip` and one line per
+level (`level 3 = 128x128, 65536 bytes, in TAIL+0`, or in `MIP3`) after the container's block table. A texture whose `META` is not valid says `invalid = ` and why; the table of blocks is still there.
+
+**Versioning.** The format version in the container header; a reader takes the versions it knows (1) and refuses the others, with "Update the engine" for a newer one and "import it again" for an older one.
+
+**Status.** Implemented: the reader, the writer, the conversion to and from KTX 2 and the dump. Image import still writes `.ktx2` and the loaders still read it; writing and loading `.wtex` comes with image import, and
+cooking to the GPU form with the packer. Related page today: [Asset import](import.md#gpu-texture-compression).
 
 ## The common binary container
 
 Every binary artifact the engine makes, apart from packs and cooked XML, shares one container: `.wmdl`, `.wtex`, `.wsnd` and `.wshd`, and the planned `.wanm`, `.wcol`, `.wnav` and `.wbak`. One reader and writer
-(`BinaryAsset` and `BinaryAssetWriter` in `Weft.Content`), one place for the UID and the import hash, one `--dump`. **The container is implemented; no format has moved onto it yet** (`.wmdl` and `.wshd` are still
+(`BinaryAsset` and `BinaryAssetWriter` in `Weft.Content`), one place for the UID and the import hash, one `--dump`. **The container is implemented, and [`.wtex`](#wtex-texture) is the first format on it** (`.wmdl` and `.wshd` are still
 version 1 in their own layouts, and a version-1 file is not mistaken for a container: see below). The container has no extension and no row in the table of formats: each format on it has its own, and
 its magic is the one in the table.
 
@@ -520,7 +626,7 @@ imported again and never read as a container. A file with a newer container vers
 
 **`--dump`.** `Weft.Runtime --dump <file>` writes an artifact as text on the standard output: for a container the header, the UID, the import hash and one line per block (offset, sizes, CRC and whether it
 holds), then `META` as `name = value` lines by the dumper registered for the magic (`AssetDumpers.Register`, one per format, added with the format); a cooked XML file as XML text; a pack as its list of files.
-See [the runtime](../scripting/runtime.md#dumping-an-artifact). `--dump <file.wtex> --ktx2 <out>`, which would write a texture as a KTX 2 file, comes with [wtex](#wtex-texture).
+See [the runtime](../scripting/runtime.md#dumping-an-artifact). `--dump <file.wtex> --ktx2 <out>` writes a texture as a KTX 2 file as well: [wtex](#wtex-texture).
 
 Packs and cooked XML keep their own layouts (above); only their magics follow the naming.
 
@@ -528,42 +634,6 @@ Packs and cooked XML keep their own layouts (above); only their magics follow th
 
 Everything from here on is *planned: not read by the engine yet*. The text says what each format is meant to hold; the names of elements and attributes are fixed when the format is built, with its schema and its tests.
 Authored formats are XML with a root `version`, a `uid` attribute on the root (the asset's identity), an embedded `.xsd`, and are cooked as [cooked XML](#cooked-xml-wxmb) in a shipped pack.
-
-### wtex: texture
-
-**Purpose.** One container for every texture, in two forms: a **portable** form that import writes (UASTC blocks, transcoded at load as today) and a **GPU** form that export writes (blocks the GPU samples directly,
-so there is no transcoding at load).
-
-Why not stay with KTX 2: it already gives a level index with the smallest level first, per-level zstd, key/value data, the colour space in the descriptor, and it can hold BC7, BC5, BC6H and ASTC payloads. What an
-own container adds is: the same header, UID, import hash, `--dump` and reader as every other artifact; mips aligned to 4096 bytes (KTX 2 aligns levels to the block size), a **resident tail** (all mips of 64 KiB or less in
-one block at the front, so one read gives a usable texture) and typed engine fields instead of key/value strings; and a GPU form that is read without libktx, uploaded straight from the decompressed span into the
-staging buffer. The cost is that KTX tools cannot open a `.wtex`; the payload is the same bytes a KTX 2 level holds, so a `.wtex` and a `.ktx2` convert to each other by rewrapping (`--dump x.wtex --ktx2 out.ktx2`).
-
-**Layout.** On the [common container](#the-common-binary-container), magic `WTEX`.
-
-`META`:
-
-| Field | Meaning |
-| --- | --- |
-| width, height, depth, layers, faces, mip count | the shape of the texture |
-| payload | `Uastc`, `Rgba8`, `Bc7`, `Bc5`, `Bc4`, `Bc6hU`, `Rgba16f` |
-| flags | **Portable** (the UASTC import form), `Srgb`, `NormalMapRG`, `AlphaCoverage`, `Premultiplied`, `Hdr`, `Cube`, `Array` |
-| alpha cutoff | the coverage reference |
-| texture group | `World`, `Character`, `Ui`, `Effects`, `Lightmap`: a quality setting per group |
-| LOD bias | `s8` |
-| tail mip index | where the resident tail starts |
-| sampler hints | wrap and filter (a model's material slot may override them) |
-
-Blocks: `TAIL` (the mips from the tail index on, smallest first) and `MIP<n>` (each larger mip its own block, zstd per block); all faces and layers of a level are in its block.
-
-**Forms.** Import writes the **Portable** form: UASTC, or RGBA8 for `compression="none"` and for textures under 4 pixels (and, later, BC6H or half-float RGBA for HDR). The development runtime, and mods (which are
-never cooked), transcode a portable texture at load, as a `.ktx2` is today. `--pack --cooked` and export rewrite every portable texture to the **GPU form of the desktop profile**: colour to BC7, normal maps
-(`NormalMapRG`) to BC5, single-channel masks to BC4. Every desktop Vulkan GPU, lavapipe and Apple's Macs have BC; a GPU form met by a GPU without it is a `ContentException` that says so. The result is cached by import
-hash (`imported/.cooked/<hash>.wtex`, an export cache, not kept in version control). The GPU form is 10 to 30 percent bigger on disk than RDO-compressed UASTC with zstd; that is accepted for no work at load.
-
-**Versioning.** The format version in the container header; a reader takes the versions it knows and refuses the others with "import it again".
-
-**Status.** Planned. Related page today: [Asset import](import.md#gpu-texture-compression).
 
 ### wsnd: sound
 

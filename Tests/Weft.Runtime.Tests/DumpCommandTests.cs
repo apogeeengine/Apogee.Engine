@@ -1,8 +1,10 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using Weft.Content;
 using Weft.Content.Formats;
 using Weft.Content.Packs;
+using Weft.Content.Textures;
 using Weft.Native.Tests;
 using Weft.Core.Assets;
 using Weft.Runtime;
@@ -20,7 +22,7 @@ public class DumpCommandTests
         return options;
     }
 
-    private static (int Exit, string Out, string Error) Run(string file)
+    private static (int Exit, string Out, string Error) Run(string file, string? ktx2 = null)
     {
         TextWriter oldOut = Console.Out;
         TextWriter oldError = Console.Error;
@@ -30,7 +32,7 @@ public class DumpCommandTests
         Console.SetError(error);
         try
         {
-            return (Commands.Dump(Options("--dump", file)), output.ToString(), error.ToString());
+            return (Commands.Dump(ktx2 is null ? Options("--dump", file) : Options("--dump", file, "--ktx2", ktx2)), output.ToString(), error.ToString());
         }
         finally
         {
@@ -81,6 +83,68 @@ public class DumpCommandTests
         {
             Directory.Delete(folder, recursive: true);
         }
+    }
+
+    [Fact]
+    public void DumpWritesATextureAndItsKtx2()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "weft-dump-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var info = new WtexInfo { Width = 16, Height = 16, MipCount = 5, Payload = WtexPayload.Bc7, Flags = WtexTraits.Srgb };
+            var levels = new ReadOnlyMemory<byte>[5];
+            for (int level = 0; level < levels.Length; level++)
+            {
+                levels[level] = new byte[info.LevelSize(level)];
+            }
+
+            string file = Path.Combine(folder, "a.png.wtex");
+            string ktx2 = Path.Combine(folder, "a.ktx2");
+            File.WriteAllBytes(file, WtexFile.Write(info, levels, new WtexWriteOptions { Uid = new AssetUid(0x77) }));
+
+            (int exit, string output, string error) = Run(file, ktx2);
+
+            Assert.Equal(0, exit);
+            Assert.Equal("", error);
+            Assert.Contains("payload = Bc7", output, StringComparison.Ordinal);
+            Assert.Contains(new AssetUid(0x77).ToString(), output, StringComparison.Ordinal);
+            Assert.Contains("wrote " + ktx2, output, StringComparison.Ordinal);
+            byte[] written = File.ReadAllBytes(ktx2);
+            Assert.True(written.AsSpan().StartsWith(Ktx2Loader.Magic));
+            Assert.Equal(146u, BinaryPrimitives.ReadUInt32LittleEndian(written.AsSpan(12)));    // BC7 sRGB
+            Assert.Equal(16u, BinaryPrimitives.ReadUInt32LittleEndian(written.AsSpan(20)));
+
+            // Without --ktx2 nothing is written; the output may not be the input; and only a texture can be written as one.
+            File.Delete(ktx2);
+            Assert.Equal(0, Run(file).Exit);
+            Assert.False(File.Exists(ktx2));
+            Assert.Equal(1, Run(file, file).Exit);
+            Assert.Equal(1, Run(file, Path.Combine(folder, ".", "a.png.wtex")).Exit);
+            string other = Path.Combine(folder, "b.bin");
+            var container = new BinaryAssetWriter(BinaryAsset.Fourcc("DUMP"), 1);
+            container.AddMeta(new byte[16]);
+            File.WriteAllBytes(other, container.ToArray());
+            (int notTexture, _, string message) = Run(other, ktx2);
+            Assert.Equal(1, notTexture);
+            Assert.Contains("not a .wtex", message, StringComparison.Ordinal);
+            Assert.False(File.Exists(ktx2));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Ktx2GoesWithDump()
+    {
+        Assert.Equal("a.ktx2", Options("--dump", "a.wtex", "--ktx2", "a.ktx2").Ktx2Output);
+        Assert.Null(Options("--dump", "a.wtex").Ktx2Output);
+        Assert.False(RuntimeOptions.TryParse(["--ktx2", "a.ktx2"], out _, out string? problem));
+        Assert.Equal("--ktx2 goes with --dump.", problem);
+        Assert.False(RuntimeOptions.TryParse(["--dump", "a.wtex", "--ktx2"], out _, out problem));
+        Assert.Equal("--ktx2 needs a value.", problem);
     }
 
     [Fact]

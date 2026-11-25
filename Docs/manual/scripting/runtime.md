@@ -14,7 +14,7 @@ Weft.Runtime --run <file.luau> [--frames <n>]     a script with a `world` global
     --size <w>x<h>  --overlay  --gpu <name>       the window or image size (1280x720), the dev overlay in images, which GPU
 Weft.Runtime --game <folder> [--user <folder>]  a game: its packages and mods (see Packages and mods), then the same loops as --run
 Weft.Runtime --export <game folder> <out> --target <rid> [--cooked]  export the game as a folder that runs on its own (see Exporting a game)
-Weft.Runtime --dump <file>                        write an artifact as text: its header, UID, import hash, blocks and META (see Dumping an artifact)
+Weft.Runtime --dump <file> [--ktx2 <out.ktx2>]    write an artifact as text: its header, UID, import hash, blocks and META; a .wtex also as a KTX 2 file (see Dumping an artifact)
 Weft.Runtime --workshop-upload <mod folder> ... publish a mod folder as a Steam Workshop item (only describes it without --confirm; see Steam)
 Weft.Runtime --luau-defs <folder>                 weft.d.luau and the engine's Luau modules, for luau-lsp
 ```
@@ -138,6 +138,9 @@ modules, so that luau-lsp can resolve `require("@engine/test")`. A project's `.l
 - A file on the [common container](../content/formats.md#the-common-binary-container) is written as its header (the magic and version, the flags, the asset's UID, the import hash), its block table (kind, codec,
   alignment, offset, stored and raw size, CRC-32C, and whether the CRC holds: `ok`, or `BAD` with the reason, so that one damaged block does not hide the rest), and then its `META` as `name = value` lines
   by the dumper that the format registered (`AssetDumpers.Register`). A format that has none shows the size of its `META`.
+- A `.wtex` texture's `META` is its shape, payload, flags, group and sampler, with one line for where each mip level is (the [wtex](../content/formats.md#wtex-texture) dumper). `--dump x.wtex --ktx2 out.ktx2` also writes
+  the texture as a KTX 2 file, the same level bytes without supercompression, to open it in a KTX tool or in libktx; it is refused (exit 1) for a file that is not a `.wtex` and when `out.ktx2` is the file that is dumped,
+  and `--ktx2` without `--dump` is a command line error.
 - A block with a codec whose raw size is over 64 MiB is listed as `not checked`: a dump does not decode what a hostile file could make it decode.
 - A dumper that fails on a `META` that makes no sense to it is reported on a line and the dump ends there.
 - Cooked XML (`WXMB`) is written as the XML it holds, as at most 16 million characters (a cooked file shares its strings, so a small one can expand a great deal), with every control character as a
