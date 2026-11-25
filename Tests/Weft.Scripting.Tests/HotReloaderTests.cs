@@ -229,6 +229,34 @@ public class HotReloaderTests
     }
 
     [Fact]
+    public void AnImportSettingsFileEditedByHandIsImportedAgainButTheImportersOwnWritesAreNotChanges()
+    {
+        Weft.Native.Tests.NativeRequirements.Require(typeof(Weft.Native.Luau.Lua).Assembly, "luau");
+        using var project = new Project();
+        File.WriteAllBytes(Path.Combine(project.Root, "ground.png"), Png(16, 1));
+        Assert.True(new AssetImporter(project.Files).Run().Success);
+        string sidecar = Path.Combine(project.Root, "ground.png.wimp");
+        string written = File.ReadAllText(sidecar);
+        byte[] before = File.ReadAllBytes(Path.Combine(project.Root, "imported", "ground.png.ktx2"));
+        using var reloader = new HotReloader(project.Files, project.Vm, null, s_debounce);
+
+        // The importer found the asset up to date and writes the sidecar again (a version 1 sidecar becomes version 2): the sidecar changed on disk, the asset did not.
+        File.WriteAllText(sidecar, System.Text.RegularExpressions.Regex.Replace(written, "sourceHash=\"[0-9a-f]+\"", "sourceHash=\"0\""));
+        Thread.Sleep(300);
+        Assert.False(reloader.Poll().Any);
+        Assert.Equal(before, File.ReadAllBytes(Path.Combine(project.Root, "imported", "ground.png.ktx2")));
+
+        // A person changes a setting: the asset is imported again, and the importer's rewrite of the sidecar after that is not a change.
+        File.WriteAllText(sidecar, written.Replace("<Import ", "<Import srgb=\"false\" ", StringComparison.Ordinal));
+        ReloadReport report = Next(reloader);
+
+        Assert.Equal(["res://ground.png.wimp"], report.Assets);
+        Assert.NotEqual(before, File.ReadAllBytes(Path.Combine(project.Root, "imported", "ground.png.ktx2")));
+        Thread.Sleep(300);
+        Assert.False(reloader.Poll().Any);
+    }
+
+    [Fact]
     public void WithoutAnImportTheHostIsToldTheSourceChangedAndShadersAreReported()
     {
         Weft.Native.Tests.NativeRequirements.Require(typeof(Weft.Native.Luau.Lua).Assembly, "luau");

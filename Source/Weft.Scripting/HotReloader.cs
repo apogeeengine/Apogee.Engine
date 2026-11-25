@@ -112,7 +112,16 @@ public sealed class HotReloader : IDisposable
             {
                 restart.Add(path);
             }
-            else if (name.EndsWith(ImportSidecar.Suffix, StringComparison.OrdinalIgnoreCase) || s_assetExtensions.Contains(extension))
+            else if (name.EndsWith(ImportSidecar.Suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                // The importer writes sidecars too (the UID, version, source hash, sub-assets, after every import): that is not a change of the settings. A sidecar whose asset is still
+                // up to date by its import key (which leaves out what the importer maintains) changed in nothing the import depends on; one that was edited by hand is stale.
+                if (path.StartsWith("res://", StringComparison.Ordinal) && !IsUpToDate(path[..^ImportSidecar.Suffix.Length]))
+                {
+                    assets.Add(path);
+                }
+            }
+            else if (s_assetExtensions.Contains(extension))
             {
                 if (path.StartsWith("res://", StringComparison.Ordinal))
                 {
@@ -176,6 +185,19 @@ public sealed class HotReloader : IDisposable
         }
 
         return new ReloadReport(modules, defs, assets, shaders, restart, failures, documents);
+    }
+
+    /// <summary>The asset at <paramref name="assetPath"/> (<c>res://models/car.glb</c>) has been imported, and nothing it is imported from has changed since: its sidecar was written by the importer, not by a person.</summary>
+    private bool IsUpToDate(string assetPath)
+    {
+        try
+        {
+            return new AssetImporter(_files, _importers).StatusOf(assetPath["res://".Length..]) == AssetStatus.UpToDate;
+        }
+        catch (Exception e) when (e is ContentException or IOException or UnauthorizedAccessException)
+        {
+            return false; // a sidecar that cannot be read is for the import to say so
+        }
     }
 
     private bool IsDefinitionFile(string path) =>
