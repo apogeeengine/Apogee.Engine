@@ -24,10 +24,10 @@ writes the new path).
 | Asset | UID in | Example |
 | --- | --- | --- |
 | An imported file (`.glb`, `.png`, `.slang`…) | the `uid` attribute of its [`<asset>.wimp`](import.md#settings) | `<Import uid="uid://4k2m9x7q1w3ze" srgb="false"/>` |
-| An authored file (`.wscn`, `.wprf`) | the `uid` attribute of the document's root | `<Scene version="1" uid="uid://…">`, `<Prefab version="1" uid="uid://…" nextId="4">` |
+| An authored file (`.wscn`, `.wprf`, `.wmat`) | the `uid` attribute of the document's root | `<Scene version="1" uid="uid://…">`, `<Prefab version="1" uid="uid://…" nextId="4">`, `<Material version="1" uid="uid://…" shader="…">` |
 | The whole project | `imported/assets.xml`, a list written by the import | `<Asset uid="uid://…" path="res://models/car.glb"/>` |
 
-`AuthoredAssets.Extensions` lists the authored kinds: [scenes](scenes.md) and [prefabs](prefabs.md). The sidecar and the document are the truth; `assets.xml` is a copy that makes lookups fast. It is rewritten by every import (only when its text changes),
+`AuthoredAssets.Extensions` lists the authored kinds: [scenes](scenes.md), [prefabs](prefabs.md) and [materials](formats.md#wmat-material). The sidecar and the document are the truth; `assets.xml` is a copy that makes lookups fast. It is rewritten by every import (only when its text changes),
 sorted by path, and a pack carries it, so a shipped game finds a UID without scanning. The paths in it are written as the folder looked when it was imported (`res://…`); a package that was imported on its
 own and is mounted at `mod://id/` is read with its paths under `mod://id/`. In a `--pack --cooked` pack the list is [cooked XML](import.md#cooked-xml) and is the only record of the imported assets' UIDs
 (their sidecars and sources are left out), so `AssetDatabase` believes a cooked list without looking for the files.

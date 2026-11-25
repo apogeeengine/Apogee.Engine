@@ -88,6 +88,9 @@ public static class AssetFormats
     /// <summary>A prefab (<c>.wprf</c>).</summary>
     public static readonly AssetFormat Prefab = Register(new(".wprf", AssetFormKind.Authored, "Prefab", "Prefab", 1, "Scene/prefab.xsd", Cook: CookRule.Xml));
 
+    /// <summary>A material, or an instance of one (<c>.wmat</c>): the shader, its parameters and textures, and a parent it overrides.</summary>
+    public static readonly AssetFormat Material = Register(new(".wmat", AssetFormKind.Authored, "Material", "Material", 1, "Materials/material.xsd", AssetType: "material", Cook: CookRule.Xml));
+
     /// <summary>The import settings of a source file (<c>x.glb.wimp</c>).</summary>
     public static readonly AssetFormat Sidecar = Register(new(".wimp", AssetFormKind.Sidecar, "Import settings", "Import", 0, "Import/import.xsd"));
 

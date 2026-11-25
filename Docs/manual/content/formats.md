@@ -30,7 +30,7 @@ design: the layout may still change when the format is built, and nothing in the
 | [`.ktx2`](#ktx2-textures) | an imported image (a standard KTX 2 file) | binary, Khronos format | the KTX 2 identifier (`«KTX 20»`) | implemented; replaced by `.wtex` when that lands |
 | [`.wtex`](#wtex-texture) | a texture, in a portable form and in a GPU form | binary, common container | `WTEX` | planned |
 | [`.wsnd`](#wsnd-sound) | an imported sound | binary, common container | `WSND` | planned |
-| [`.wmat`](#wmat-material) | a material and its parameters | XML | none | planned |
+| [`.wmat`](#wmat-material) | a material and its parameters | XML; cooked XML in packs | `WXMB` when cooked | implemented |
 | [`.wdat`](#wdat-data-record) | one typed data record, referenced by an asset reference | XML | none | planned |
 | [`.wcur`](#wcur-curve) | a curve: float or colour over time | XML | none | planned |
 | [`.wloc`](#wloc-string-table) | the strings of one language | XML | none | planned |
@@ -170,6 +170,59 @@ is an error.
 **In a pack.** Stored as [cooked XML](#cooked-xml-wxmb) at the same path by `--pack --cooked` ([Cooked builds](prefabs.md#cooked-builds)).
 
 **Status.** Implemented. Owning page: [Prefabs](prefabs.md).
+
+### wmat: material
+
+**Purpose.** A material, or an instance of one: the shader template, typed parameters, texture asset references, a few switches, and a `parent` it overrides. A material says only what it sets, so a child lists
+only what it changes. The document is read and merged by `MaterialAsset` in `Weft.Content` (`Materials/`); the renderer does not use it yet (it draws the materials of a model as they are in its `.wmdl`), and a model
+import does not write `.wmat` files yet.
+
+**Layout.** The root is `<Material>`; the schema is `material.xsd` (embedded in `Weft.Content`). The order of the children is free.
+
+| Part | Meaning |
+| --- | --- |
+| `<Material version uid>` | `version` is 1. `uid` is the file's identity: the import adds it, and it stays when the file moves. |
+| `shader` | the shader template, a `.slang` module, as an [asset reference](assets.md). Required unless there is a `parent`, which then supplies it. |
+| `parent` | another `.wmat` as an asset reference: this material starts as a copy of it and changes what it names. |
+| `alphaMode`, `alphaCutoff`, `doubleSided` | `opaque` (the default), `mask` or `blend`; the alpha under which a `mask` pixel is not drawn, 0 to 1 (0.5 by default); and whether both faces of a triangle are drawn (false by default). Left out, a child has its parent's. |
+| `<Float name value>` | a number. |
+| `<Vec2 …>`, `<Vec3 …>`, `<Vec4 …>` | two, three or four numbers separated by spaces. |
+| `<Color …>` | a linear color: red green blue, and alpha (1 when left out). |
+| `<Int …>`, `<Bool …>` | a whole number (32 bits), `true` or `false`. |
+| `<Texture name ref>` | a texture the shader samples: an image (`.png`, `.jpg`), `.ktx2` or `.wtex`, as an asset reference. |
+
+A name starts with a letter or `_` and has up to 64 letters, digits and `_`. It is the name the shader declares; the engine does not check it against the shader. A parameter name is used once, a texture name is
+used once, and a parameter and a texture may share a name. The names that mirror what a model's material has today are `baseColor` (color), `metallic`, `roughness`, `normalScale` and `occlusionStrength` (floats), `emissive` (a `Vec3`) and `unlit` (a bool), with the textures `baseColor`, `metallicRoughness`, `normal`, `occlusion` and `emissive`.
+
+```xml
+<Material version="1" uid="uid://4k2m9x7q1w3ze" shader="res://shaders/lit.slang" parent="res://materials/base.wmat" alphaMode="mask" alphaCutoff="0.35" doubleSided="true">
+  <Color name="baseColor" value="0.8 0.2 0.1 1"/>
+  <Float name="roughness" value="0.4"/>
+  <Float name="metallic" value="0"/>
+  <Vec2 name="uvScale" value="2 2"/>
+  <Vec3 name="emissive" value="0 0.5 1"/>
+  <Vec4 name="tint" value="1 1 1 0.5"/>
+  <Int name="layers" value="3"/>
+  <Bool name="receiveShadows" value="false"/>
+  <Texture name="baseColor" ref="res://textures/brick.png"/>
+  <Texture name="normal" ref="res://textures/brick_n.ktx2|uid://4k2m9x7q1w3zf"/>
+</Material>
+```
+
+**Parents.** `MaterialAsset.Resolve(assets, path)` lays the chain over itself, from the top parent down: a parameter or texture of the same name is replaced where it stands, a new one is added after, and a switch the
+child leaves out is its parent's. The result (`ResolvedMaterial`) has a value for everything and lists the files it was made from. A child cannot change the type of a parameter (a `Float` that a parent defines
+cannot be a `Vec3` below it). A parent is found by its path, or by its UID when the file moved. The chain is refused when a parent does not exist or is not a valid material, when it comes back to a material it has
+been through (a cycle, named with the paths), or when it is more than 8 parents deep.
+
+**Moving files.** Every attribute whose whole text is an asset reference is found and rewritten when its file is renamed or moved ([Asset identity](assets.md#renaming-and-moving-assets-for-tools)): the `parent`, the `shader` and each
+`<Texture ref>`. A UID in a reference is never changed.
+
+**Limits.** A document is at most 1 MiB, has at most 256 parameters (of all types together) and 64 textures, and its names are at most 64 characters. The reader refuses anything else the schema does not describe, a
+number that is not finite or too large for a float, and a document with no shader and no parent.
+
+**In a pack.** Stored as [cooked XML](#cooked-xml-wxmb) at the same path by `--pack --cooked`; `MaterialAsset.Load` and `Parse` read both forms.
+
+**Status.** Implemented (version 1). Related page: [Rendering](../graphics/rendering.md).
 
 ### wimp: import settings
 
@@ -521,15 +574,6 @@ the channel count, the number of frames, loop points, a loudness gain and a stre
 16-bit PCM.
 
 **Status.** Planned. Related page today: [Audio](../audio/index.md).
-
-### wmat: material
-
-**Purpose.** A material, or an instance of one: the shader template, typed parameters, texture asset references, and a `parent` it overrides. Model materials from glTF would be imported as `.wmat` sub-assets, and a
-model's material slot could be remapped to another `.wmat` through its sidecar.
-
-**Layout.** XML; the parameters are a generic list of names and values, which is why the structure is expected to stay stable. A `parent` chain is resolved with the overrides applied, and a cycle is refused.
-
-**Status.** Planned. Related page today: [Rendering](../graphics/rendering.md).
 
 ### wdat: data record
 

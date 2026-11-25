@@ -23,6 +23,7 @@ public class AssetFormatsTests
         [
             (AssetFormats.Scene, ".wscn", AssetFormKind.Authored, null),
             (AssetFormats.Prefab, ".wprf", AssetFormKind.Authored, null),
+            (AssetFormats.Material, ".wmat", AssetFormKind.Authored, null),
             (AssetFormats.Sidecar, ".wimp", AssetFormKind.Sidecar, null),
             (AssetFormats.Game, ".wgam", AssetFormKind.Manifest, null),
             (AssetFormats.Mod, ".wmod", AssetFormKind.Manifest, null),
@@ -79,12 +80,12 @@ public class AssetFormatsTests
             Assert.False(string.IsNullOrEmpty(format.SchemaResource), format.Extension);
         }
 
-        Assert.Equal(["Scene", "Prefab"], AssetFormats.All.Where(f => f.Kind == AssetFormKind.Authored).Select(f => f.RootElement));
+        Assert.Equal(["Scene", "Prefab", "Material"], AssetFormats.All.Where(f => f.Kind == AssetFormKind.Authored).Select(f => f.RootElement));
         Assert.Equal(2, AssetFormats.Scene.Version);
         Assert.Equal(1, AssetFormats.Prefab.Version);
 
         // The schemas that belong to this assembly are embedded where the rows say.
-        foreach (AssetFormat format in new[] { AssetFormats.Sidecar, AssetFormats.Game, AssetFormats.Mod })
+        foreach (AssetFormat format in new[] { AssetFormats.Material, AssetFormats.Sidecar, AssetFormats.Game, AssetFormats.Mod })
         {
             using System.IO.Stream? stream = typeof(AssetFormats).Assembly.GetManifestResourceStream(format.SchemaResource!);
             Assert.NotNull(stream);
@@ -165,7 +166,7 @@ public class AssetFormatsTests
     [Fact]
     public void AuthoredAndImportedAreListedFromTheTable()
     {
-        Assert.Equal([".wscn", ".wprf"], AssetFormats.ExtensionsOf(AssetFormKind.Authored));
+        Assert.Equal([".wscn", ".wprf", ".wmat"], AssetFormats.ExtensionsOf(AssetFormKind.Authored));
         Assert.Equal(AuthoredAssets.Extensions, AssetFormats.ExtensionsOf(AssetFormKind.Authored));
         Assert.True(AssetFormats.IsAuthored("res://a/b.WPRF"));
         Assert.False(AssetFormats.IsAuthored("res://a/b.wimp"));

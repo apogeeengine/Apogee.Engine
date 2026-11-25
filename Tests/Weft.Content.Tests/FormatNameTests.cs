@@ -35,7 +35,7 @@ public class FormatNameTests
     [Fact]
     public void TheNewExtensionsAreTheEnginesNames()
     {
-        Assert.Equal([".wscn", ".wprf"], AuthoredAssets.Extensions);
+        Assert.Equal([".wscn", ".wprf", ".wmat"], AuthoredAssets.Extensions);
         Assert.Equal(".wimp", ImportSidecar.Suffix);
         Assert.Equal("game.wgam", GameManifest.FileName);
         Assert.True(AuthoredAssets.IsAuthored("res://scenes/start.wscn"));

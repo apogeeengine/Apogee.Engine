@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A .wmat file: a material, or an instance of one. Version 1. Every attribute is optional unless it says otherwise; the order of the elements is free. A material with a parent says only what it changes. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:simpleType name="AssetUid">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="uid://[0-9a-hjkmnp-tv-z]{13}"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="AssetRef">
+    <xs:annotation><xs:documentation>An asset reference: a path, uid://..., or both (path|uid://...).</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="1024"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Name">
+    <xs:annotation><xs:documentation>The name of a parameter or a texture, as the shader declares it.</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Za-z_][A-Za-z0-9_]{0,63}"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="FloatList">
+    <xs:list itemType="xs:float"/>
+  </xs:simpleType>
+  <xs:simpleType name="Vec2">
+    <xs:restriction base="FloatList">
+      <xs:length value="2"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Vec3">
+    <xs:restriction base="FloatList">
+      <xs:length value="3"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Vec4">
+    <xs:restriction base="FloatList">
+      <xs:length value="4"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Color">
+    <xs:annotation><xs:documentation>A linear color: red green blue, and optionally alpha (1 when left out), each usually between 0 and 1 (a value above 1 is allowed, for light).</xs:documentation></xs:annotation>
+    <xs:restriction base="FloatList">
+      <xs:minLength value="3"/>
+      <xs:maxLength value="4"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="AlphaMode">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="opaque"/>
+      <xs:enumeration value="mask"/>
+      <xs:enumeration value="blend"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Cutoff">
+    <xs:restriction base="xs:float">
+      <xs:minInclusive value="0"/>
+      <xs:maxInclusive value="1"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:element name="Material">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Float" minOccurs="0" maxOccurs="256">
+          <xs:annotation><xs:documentation>A number parameter.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" type="Name" use="required"/>
+            <xs:attribute name="value" type="xs:float" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Vec2" minOccurs="0" maxOccurs="256">
+          <xs:annotation><xs:documentation>A parameter of two numbers (an offset, a scale).</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" type="Name" use="required"/>
+            <xs:attribute name="value" type="Vec2" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Vec3" minOccurs="0" maxOccurs="256">
+          <xs:annotation><xs:documentation>A parameter of three numbers.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" type="Name" use="required"/>
+            <xs:attribute name="value" type="Vec3" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Vec4" minOccurs="0" maxOccurs="256">
+          <xs:annotation><xs:documentation>A parameter of four numbers.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" type="Name" use="required"/>
+            <xs:attribute name="value" type="Vec4" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Color" minOccurs="0" maxOccurs="256">
+          <xs:annotation><xs:documentation>A color parameter, in linear space.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" type="Name" use="required"/>
+            <xs:attribute name="value" type="Color" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Int" minOccurs="0" maxOccurs="256">
+          <xs:annotation><xs:documentation>A whole-number parameter.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" type="Name" use="required"/>
+            <xs:attribute name="value" type="xs:int" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Bool" minOccurs="0" maxOccurs="256">
+          <xs:annotation><xs:documentation>A true or false parameter.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" type="Name" use="required"/>
+            <xs:attribute name="value" type="xs:boolean" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Texture" minOccurs="0" maxOccurs="64">
+          <xs:annotation><xs:documentation>A texture the shader samples: an image or a texture asset, as an asset reference. Moving the texture rewrites the reference.</xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="name" type="Name" use="required"/>
+            <xs:attribute name="ref" type="AssetRef" use="required"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="version" type="xs:positiveInteger">
+        <xs:annotation><xs:documentation>The version of this format. 1.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="uid" type="AssetUid">
+        <xs:annotation><xs:documentation>The material's identity: the engine writes it, and it stays when the file moves.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="shader" type="AssetRef">
+        <xs:annotation><xs:documentation>The shader template (a .slang module) as an asset reference. Required unless there is a parent, which then supplies it.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="parent" type="AssetRef">
+        <xs:annotation><xs:documentation>Another material (a .wmat) as an asset reference: this one starts as a copy of it and changes what it names.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="alphaMode" type="AlphaMode">
+        <xs:annotation><xs:documentation>opaque (the default), mask (a pixel is drawn or not, by alphaCutoff) or blend.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="alphaCutoff" type="Cutoff">
+        <xs:annotation><xs:documentation>With alphaMode="mask", the alpha below which a pixel is not drawn. 0.5 by default.</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="doubleSided" type="xs:boolean">
+        <xs:annotation><xs:documentation>true draws both faces of a triangle. false by default.</xs:documentation></xs:annotation>
+      </xs:attribute>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

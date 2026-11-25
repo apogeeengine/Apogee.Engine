@@ -15,6 +15,8 @@
     <EmbeddedResource Include="Packages/game.xsd" LogicalName="Packages/game.xsd" />
     <!-- The schema of the <asset>.wimp settings files. -->
     <EmbeddedResource Include="Import/import.xsd" LogicalName="Import/import.xsd" />
+    <!-- The schema of the .wmat material documents. -->
+    <EmbeddedResource Include="Materials/material.xsd" LogicalName="Materials/material.xsd" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Weft.Content.Tests" />
