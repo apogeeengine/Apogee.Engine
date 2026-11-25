@@ -8,4 +8,4 @@ Weft is maintained by one person for now: reviews take time, and scope is guarde
 - Every feature has tests and a Manual page. Warnings are errors; no runtime reflection in `Source/`.
 - AI assistance is fine; submitting code you do not understand is not.
 
-Pages for contributors: [Help wanted](help-wanted.md) (what we need and how to check your work), [Continuous integration](continuous-integration.md) and [Writing docs](writing-docs.md).
+Pages for contributors: [Help wanted](help-wanted.md) (what we need and how to check your work), [Continuous integration](continuous-integration.md), [Releases](releases.md) and [Writing docs](writing-docs.md).

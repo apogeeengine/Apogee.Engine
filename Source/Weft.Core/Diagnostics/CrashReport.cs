@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -25,8 +24,8 @@ public enum CrashKind
 /// <summary>The text of a crash report. <see cref="Build"/> is a pure function; <see cref="CrashHandler"/> decides when to write one and where.</summary>
 public static class CrashReport
 {
-    /// <summary>The version of the engine: the informational version of <c>Weft.Core</c>, or <c>unknown</c>.</summary>
-    public static string EngineVersion { get; } = typeof(CrashReport).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+    /// <summary>The version of the engine with its commit (<see cref="Weft.Core.EngineVersion.Full"/>): <c>0.2.0-alpha+abc1234</c>.</summary>
+    public static string EngineVersion => Weft.Core.EngineVersion.Full;
 
     /// <summary>
     /// The plain text of a report: the kind and the time (UTC), the engine and runtime versions, the machine, <paramref name="context"/> (the game, its version, the GPU, ...), the thread, the exception

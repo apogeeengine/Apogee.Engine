@@ -63,6 +63,11 @@
       <xs:attribute name="name" type="xs:string" use="required"/>
       <xs:attribute name="organization" type="xs:string" use="required"/>
       <xs:attribute name="version" type="GameVersion" use="required"/>
+      <xs:attribute name="engine" type="xs:string">
+        <xs:annotation>
+          <xs:documentation>The versions of the engine the game runs on, as a range: &gt;=0.2, ^0.2.1, ~0.2.0 &lt;0.4, or * for any (the default). The game is refused to run and to export on another engine.</xs:documentation>
+        </xs:annotation>
+      </xs:attribute>
       <xs:attribute name="executable" type="ExecutableName"/>
       <xs:attribute name="identifier" type="ReverseDns"/>
       <xs:attribute name="userFolder" type="xs:string"/>

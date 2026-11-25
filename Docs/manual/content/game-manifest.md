@@ -24,6 +24,7 @@ Attributes of `<Game>`:
 | `name` | the game's name, required: the window title, the bundle name, the product name of an executable | none |
 | `organization` | who made it, required: the folder that holds the player's files of all your games, the company of an executable | none |
 | `version` | `major.minor.patch`, required (all three parts): the version of the game that mods are checked against, the file and bundle version | none |
+| `engine` | the versions of the engine the game runs on, as a range (`>=0.2`, `^0.2.1`, `~0.2.0 <0.4`; the syntax of a package's `gameVersion`), optional: `--game`, a launch and an export refuse a game whose range does not hold the engine, with a message that says which it needs. The status of the engine (`-alpha`) is ignored: `>=0.2` holds 0.2.0-alpha. See [Versions](../core/versions.md) | any (`*`) |
 | `executable` | the name of the executable of an export, without extension: letters, digits, `_`, `.`, `-`, up to 64, starting with a letter or digit | the letters and digits of `name` (`Game` if there are none) |
 | `identifier` | the reverse-DNS name of the game, lowercase letters, digits and dashes in at least two parts (`org.weft.fixturegame`): the macOS bundle identifier, the Linux application id | `com.<organization>.<executable>`, lowercase, letters, digits and dashes only |
 | `userFolder` | the name of the folder of the player's files, under the organization's | `name` |
@@ -48,6 +49,7 @@ Paths are plain relative paths inside the game folder: no `..`, no drive or sche
   `<local application data>/Weft/<game folder name>`.
 - **The game version.** `version` is what each package's `gameVersion` range is checked against ([Packages and mods](packages.md)): a mod that needs `^2.0` does not load in game 1.4.0, with a
   reason the game can show the player.
+- **The engine version.** `engine` is checked at `--game`, at a launch of an exported game and at export (against the engine that runs, which is the one whose runtime is exported): a game made for `>=0.3` does not start on 0.2.0, and the message names the range and the engine. Without it the game runs on any engine.
 - **The Steam app id.** `steamAppId` is the app id that `StartGame` hands to Steam (see [Steam](../network/steam.md#starting-a-game-under-steam)). A game that has none in its `game.wgam` but a
   `steam_appid.txt` in its folder still works, with a warning in the log that the file is deprecated.
 - **The entry scene**, when the game starts without a scene of its own (the editor's Play starts from the scene being edited).

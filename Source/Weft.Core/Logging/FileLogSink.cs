@@ -41,7 +41,7 @@ public sealed class FileLogSink : ILogSink, IDisposable
             Directory.CreateDirectory(directory);
             DeleteOldest(directory, keepFiles - 1);
             Open(directory);
-            WriteLine(string.Create(CultureInfo.InvariantCulture, $"Weft {CrashReport.EngineVersion}, {runName}, {System.Runtime.InteropServices.RuntimeInformation.OSDescription}, pid {Environment.ProcessId}"));
+            WriteLine(string.Create(CultureInfo.InvariantCulture, $"Weft {EngineVersion.Full}, {runName}, {System.Runtime.InteropServices.RuntimeInformation.OSDescription}, pid {Environment.ProcessId}"));
             WriteLine("Command line: " + Environment.CommandLine);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

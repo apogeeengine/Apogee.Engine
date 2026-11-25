@@ -1,5 +1,34 @@
 cmake_minimum_required(VERSION 3.20)
-project(WeftNative C CXX)
+
+# The engine's version is written once, in Engine.props at the root of the repository (the build of the C# projects reads it too): it is read here before project(), which gets it as its VERSION.
+set(WEFT_ENGINE_PROPS "${CMAKE_CURRENT_LIST_DIR}/../Engine.props")
+file(READ "${WEFT_ENGINE_PROPS}" WEFT_ENGINE_PROPS_TEXT)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${WEFT_ENGINE_PROPS}")
+function(weft_engine_property name out)
+  string(REGEX MATCH "<${name}>([^<]*)</${name}>" matched "${WEFT_ENGINE_PROPS_TEXT}")
+  if(NOT matched)
+    message(FATAL_ERROR "Engine.props has no <${name}>")
+  endif()
+  string(STRIP "${CMAKE_MATCH_1}" value)
+  set(${out} "${value}" PARENT_SCOPE)
+endfunction()
+weft_engine_property(WeftVersionMajor WEFT_VERSION_MAJOR)
+weft_engine_property(WeftVersionMinor WEFT_VERSION_MINOR)
+weft_engine_property(WeftVersionPatch WEFT_VERSION_PATCH)
+weft_engine_property(WeftVersionStatus WEFT_VERSION_STATUS)
+weft_engine_property(WeftApiVersion WEFT_API_VERSION)
+string(REGEX MATCH "<WeftVersionCodename>([^<]*)</WeftVersionCodename>" matched "${WEFT_ENGINE_PROPS_TEXT}")
+if(matched)
+  string(STRIP "${CMAKE_MATCH_1}" WEFT_VERSION_CODENAME) # empty for a release without a name
+else()
+  set(WEFT_VERSION_CODENAME "")
+endif()
+set(WEFT_VERSION_STRING "${WEFT_VERSION_MAJOR}.${WEFT_VERSION_MINOR}.${WEFT_VERSION_PATCH}")
+if(NOT WEFT_VERSION_STATUS STREQUAL "stable")
+  string(APPEND WEFT_VERSION_STRING "-${WEFT_VERSION_STATUS}")
+endif()
+
+project(WeftNative VERSION ${WEFT_VERSION_MAJOR}.${WEFT_VERSION_MINOR}.${WEFT_VERSION_PATCH} LANGUAGES C CXX)
 if(APPLE)
   enable_language(OBJC)
 endif()
@@ -30,7 +59,12 @@ endif()
 set(WEFT_OUT "${CMAKE_CURRENT_LIST_DIR}/../Bin/native/${WEFT_OS}-${WEFT_ARCH}")
 set(WEFT_THIRDPARTY "${CMAKE_CURRENT_LIST_DIR}/../ThirdParty")
 
+# weft_version.h (WEFT_VERSION_*), written into the build folder and on the include path of every library of the engine.
+set(WEFT_GENERATED "${CMAKE_BINARY_DIR}/generated")
+configure_file("${CMAKE_CURRENT_LIST_DIR}/weft_version.h.in" "${WEFT_GENERATED}/weft_version.h" @ONLY)
+
 function(weft_library target)
+  target_include_directories(${target} PRIVATE "${WEFT_GENERATED}")
   set_target_properties(${target} PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${WEFT_OUT}"
     RUNTIME_OUTPUT_DIRECTORY "${WEFT_OUT}")

@@ -1,0 +1,19 @@
+<Project>
+  <!--
+    The one place the engine's version is written. Everything else is derived from these values: the assemblies' versions (Directory.Build.props), the EngineVersion constants (Source/Weft.Core), the
+    native libraries' weft_version.h (Native/CMakeLists.txt), the documentation, the Windows and macOS metadata of an export. ./build.sh version check verifies it; Docs/contributing/releases.md
+    says how a release bumps it. Docs/manual/core/versions.md says what each value means.
+  -->
+  <PropertyGroup>
+    <WeftVersionMajor>0</WeftVersionMajor>
+    <WeftVersionMinor>2</WeftVersionMinor>
+    <WeftVersionPatch>0</WeftVersionPatch>
+    <!-- alpha, beta, rc<N> (rc1, rc2, ...) or stable: stable has no suffix in the version text. -->
+    <WeftVersionStatus>alpha</WeftVersionStatus>
+    <!-- A name for a release, or empty. It is shown next to the version and never part of it. -->
+    <WeftVersionCodename></WeftVersionCodename>
+    <WeftCopyrightYear>2026</WeftCopyrightYear>
+    <!-- The level of the mod API: a package's apiVersion is checked against it. Raise it when a change breaks the mods written for the level before. -->
+    <WeftApiVersion>1</WeftApiVersion>
+  </PropertyGroup>
+</Project>

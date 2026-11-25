@@ -1,4 +1,7 @@
 <Project>
+  <!-- The engine's version, written once (see the comment in it); everything below is derived from it. -->
+  <Import Project="$(MSBuildThisFileDirectory)Engine.props" />
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -10,12 +13,41 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <Deterministic>true</Deterministic>
     <Company>Weft</Company>
-    <Copyright>Copyright 2026 The Weft Authors</Copyright>
+    <Copyright>Copyright $(WeftCopyrightYear) The Weft Authors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/weftengine/weft</RepositoryUrl>
     <BaseOutputPath>$(MSBuildThisFileDirectory)Bin/$(MSBuildProjectName)/</BaseOutputPath>
     <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Bin/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
   </PropertyGroup>
+
+  <!--
+    The versions of every assembly, from Engine.props. WeftBuildNumber is the number of the CI run (WEFT_BUILD_NUMBER: github.run_number) and 0 on a developer's machine; it is the last part of
+    FileVersion, which holds 16 bits, so a number above 65535 starts again from 0 there (EngineVersion.Build keeps the whole number). The informational version is Version plus the commit
+    (+abc1234, from SourceRevisionId, set below): 0.2.0-alpha+abc1234. Nothing else sets a version: ./build.sh version check fails on a <Version> or <AssemblyVersion> anywhere else.
+  -->
+  <PropertyGroup>
+    <WeftBuildNumber>$(WEFT_BUILD_NUMBER)</WeftBuildNumber>
+    <WeftBuildNumber Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(WeftBuildNumber)', '^[0-9]{1,9}$'))">0</WeftBuildNumber>
+    <WeftVersionCore>$(WeftVersionMajor).$(WeftVersionMinor).$(WeftVersionPatch)</WeftVersionCore>
+    <WeftVersion>$(WeftVersionCore)-$(WeftVersionStatus)</WeftVersion>
+    <WeftVersion Condition="'$(WeftVersionStatus)' == 'stable'">$(WeftVersionCore)</WeftVersion>
+    <Version>$(WeftVersion)</Version>
+    <AssemblyVersion>$(WeftVersionCore).0</AssemblyVersion>
+    <FileVersion>$(WeftVersionCore).$([MSBuild]::Modulo($(WeftBuildNumber), 65536))</FileVersion>
+  </PropertyGroup>
+
+  <!-- The commit the build is of: the SDK appends SourceRevisionId to the informational version, and Weft.Core writes it into EngineVersion.Commit. Left empty outside a git checkout. -->
+  <Target Name="WeftSourceRevision" BeforeTargets="InitializeSourceControlInformation" Condition="'$(SourceRevisionId)' == ''">
+    <Exec Command="git rev-parse --short=7 HEAD" WorkingDirectory="$(MSBuildThisFileDirectory)" ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
+          StandardOutputImportance="low" StandardErrorImportance="low" ContinueOnError="true">
+      <Output TaskParameter="ExitCode" PropertyName="_WeftGitExitCode" />
+      <Output TaskParameter="ConsoleOutput" PropertyName="_WeftGitOutput" />
+    </Exec>
+    <!-- Only a successful run's output is looked at: an error message could hold a quote, which would break the condition. -->
+    <PropertyGroup Condition="'$(_WeftGitExitCode)' == '0'">
+      <SourceRevisionId Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(_WeftGitOutput)', '^[0-9a-f]{7,40}$'))">$(_WeftGitOutput)</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
 
   <!--
     A NativeAOT program is compiled for a fixed instruction set (the JIT asks the CPU when the program starts; ahead-of-time code cannot), and a CPU without it does

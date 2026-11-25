@@ -1,5 +1,6 @@
 // See weft_luau.h for what this layer is for.
 #include "weft_luau.h"
+#include "weft_version.h"
 
 #include <stdio.h>
 #include <stdlib.h>

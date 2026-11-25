@@ -5,6 +5,7 @@
 
 ```text
 Weft.Runtime                                      run the game next to the program (its game.wgam and data/*.wpak); see below
+Weft.Runtime --version                            print the engine's version: Weft 0.2.0-alpha (abc1234) linux-x64 NativeAOT
 Weft.Runtime --smoke                              load the native libraries and run the smoke tests
 Weft.Runtime --luau-test <folder> [--luau-filter <text>]
 Weft.Runtime --run <file.luau> [--frames <n>]     a script with a `world` global, in a window (until it is closed, or n frames)

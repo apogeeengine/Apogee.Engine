@@ -1,0 +1,11 @@
+/* The version of the engine, written by CMake from Engine.props (Native/CMakeLists.txt): do not edit the generated copy. The shims include it. */
+#pragma once
+
+#define WEFT_VERSION_MAJOR @WEFT_VERSION_MAJOR@
+#define WEFT_VERSION_MINOR @WEFT_VERSION_MINOR@
+#define WEFT_VERSION_PATCH @WEFT_VERSION_PATCH@
+#define WEFT_VERSION_API @WEFT_API_VERSION@
+#define WEFT_VERSION_STATUS "@WEFT_VERSION_STATUS@"
+#define WEFT_VERSION_CODENAME "@WEFT_VERSION_CODENAME@"
+/* "0.2.0-alpha", and "1.0.0" for a stable release: the same text as EngineVersion.Text in C#. */
+#define WEFT_VERSION_STRING "@WEFT_VERSION_STRING@"

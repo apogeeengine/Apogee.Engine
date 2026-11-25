@@ -4,6 +4,8 @@ site_url: https://weftengine.github.io/docs/
 repo_url: https://github.com/weftengine/weft
 repo_name: weftengine/weft
 edit_uri: edit/main/Docs/
+# The footer says which version the pages are of: ./build.sh docs sets WEFT_DOCS_FOOTER from Engine.props ("Weft Engine 0.2.0-alpha").
+copyright: !ENV [WEFT_DOCS_FOOTER, "Weft Engine"]
 docs_dir: Docs
 site_dir: Bin/site
 strict: true
@@ -67,6 +69,7 @@ nav:
           - Reflection: manual/core/reflection.md
           - ECS: manual/core/ecs.md
           - Profiling and SIMD: manual/core/profiling.md
+          - Versions: manual/core/versions.md
       - Native code:
           - Native bindings: manual/native/bindings.md
           - Native libraries: manual/native/native-libraries.md
@@ -121,4 +124,5 @@ nav:
       - Contributing: contributing/index.md
       - Help wanted: contributing/help-wanted.md
       - Continuous integration: contributing/continuous-integration.md
+      - Releases: contributing/releases.md
       - Writing docs: contributing/writing-docs.md

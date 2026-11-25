@@ -1,6 +1,7 @@
 name: Static checks
 
-# Fast checks that need no build: every commit of a pull request is signed off (the DCO), text files have no CRLF or trailing whitespace, LFS files are pointers where they should be, and the workflows are valid.
+# Fast checks that need no build of the engine: every commit of a pull request is signed off (the DCO), text files have no CRLF or trailing whitespace, LFS files are pointers where they should be, the workflows are valid,
+# and the engine's version is written in one place only (Engine.props), which on a release tag is the tag.
 on:
   workflow_call:
   workflow_dispatch:
@@ -47,3 +48,16 @@ jobs:
         run: |
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
           ./actionlint -color -shellcheck=
+      # Engine.props parses, the builds read it, nothing else sets a version, and on a tag (v0.2.0) the tag is v and the version of Engine.props (Docs/contributing/releases.md).
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Engine version
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          if [ -n "$TAG" ]; then
+            ./build.sh version check --tag "$TAG"
+          else
+            ./build.sh version check
+          fi

@@ -27,7 +27,7 @@ internal static class VersionResource
     private const uint OsNtWindows32 = 0x0004_0004; // VOS_NT_WINDOWS32: VOS_NT << 16 | VOS__WINDOWS32
     private const uint FileTypeApp = 1; // VFT_APP
 
-    /// <summary>The version resource of the game <paramref name="manifest"/>: its numbers are <c>major.minor.patch.0</c>, its strings are what the manifest says.</summary>
+    /// <summary>The version resource of the game <paramref name="manifest"/>: its numbers are <c>major.minor.patch.0</c>, its strings are what the manifest says, and <c>EngineVersion</c> is the engine's (<see cref="Weft.Core.EngineVersion.Text"/>).</summary>
     /// <exception cref="ExportException">A part of the version is above 65535 (the resource holds 16 bit numbers), or the resource would be over 64 KiB.</exception>
     public static byte[] Build(GameManifest manifest)
     {
@@ -52,6 +52,7 @@ internal static class VersionResource
             ("OriginalFilename", executable),
             ("ProductName", manifest.Name),
             ("ProductVersion", number),
+            ("EngineVersion", Weft.Core.EngineVersion.Text), // the engine the executable is made of: the game's own versions are the ones above
         ];
 
         var block = new BlockWriter();

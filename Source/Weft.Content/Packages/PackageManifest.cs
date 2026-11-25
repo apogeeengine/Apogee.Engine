@@ -17,8 +17,8 @@ public sealed record PackageDependency(string Id, VersionRange Version);
 /// </summary>
 public sealed class PackageManifest
 {
-    /// <summary>The newest API of the engine that packages are written against. A package that needs a newer one is not loaded.</summary>
-    public const int EngineApiVersion = 1;
+    /// <summary>The newest API of the engine that packages are written against (<see cref="Weft.Core.EngineVersion.Api"/>, from <c>Engine.props</c>). A package that needs a newer one is not loaded.</summary>
+    public const int EngineApiVersion = Weft.Core.EngineVersion.Api;
 
     private static readonly HashSet<string> s_reserved = new(StringComparer.Ordinal) { "engine", "self", "res", "user", "mod" };
     private static readonly Lazy<SchemaSet> s_schema = new(LoadSchema);

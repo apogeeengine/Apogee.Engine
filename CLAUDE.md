@@ -25,6 +25,7 @@ Steamworks · Dear ImGui (dev tools and the editor) · RmlUi with Luau in its do
 ./build.sh          # dotnet build Weft.slnx
 ./build.sh test     # dotnet test
 ./build.sh bench [filter]   # BenchmarkDotNet over Samples/Benchmarks (a sample: run by hand; Release; see Docs/manual/core/profiling.md)
+./build.sh version [check]   # print the engine's version (Engine.props, the only place it is written); `check` is the CI check (see Docs/contributing/releases.md)
 ./build.sh docs     # the C# (DocFX) and Luau (--luau-docs) API pages, then the site with mkdocs --strict into Bin/site; `docs serve` to preview
 ./build.sh native   # CMake: the shared libraries in Native/ (Flecs, Luau) into Bin/native/<rid>
 ./build.sh aot        # NativeAOT publish of Weft.Runtime into Bin/publish, then its shaders compiled ahead of time (Shaders/imported); ./build.sh aot-viewer does the Viewer sample

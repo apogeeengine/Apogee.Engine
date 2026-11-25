@@ -1156,6 +1156,58 @@ public class CommandTests
         Assert.Contains("--smoke", stderr, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void VersionPrintsTheEngineVersion()
+    {
+        Assert.Equal(RuntimeCommand.Version, Options("--version").Command);
+
+        // The runtime as a program: one line, the same text as EngineVersion.Describe, and exit code 0 (no game next to it is needed).
+        string program = typeof(Commands).Assembly.Location;
+        var info = new System.Diagnostics.ProcessStartInfo("dotnet") { RedirectStandardError = true, RedirectStandardOutput = true };
+        info.ArgumentList.Add(program);
+        info.ArgumentList.Add("--version");
+        using var process = System.Diagnostics.Process.Start(info)!;
+        string stdout = process.StandardOutput.ReadToEnd();
+        process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        Assert.Equal(0, process.ExitCode);
+        Assert.Equal(Weft.Core.EngineVersion.Describe() + Environment.NewLine, stdout);
+        Assert.StartsWith("Weft " + Weft.Core.EngineVersion.Text, stdout, StringComparison.Ordinal);
+        Assert.Contains("--version", RuntimeOptions.Usage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AGameThatNeedsAnotherEngineIsRefusedAndItsScriptsDoNotRun()
+    {
+        using var scratch = new Scratch();
+        scratch.Write("game/game.wgam", "<Game name=\"Future Game\" organization=\"Test\" version=\"1.0.0\" engine=\"&gt;=99.0\"/>");
+        scratch.Write("game/packages/core/mod.wmod", "<Mod id=\"core\" version=\"1.0.0\"><Script path=\"main.luau\"/></Mod>");
+        scratch.Write("game/packages/core/main.luau", "fs.write_text('user://ran.txt', 'ran')");
+        string user = System.IO.Path.Combine(scratch.Root, "user");
+        System.IO.TextWriter error = Console.Error;
+        var captured = new StringWriter();
+        Console.SetError(captured);
+        int exit;
+        try
+        {
+            exit = Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", user, "--headless", "--frames", "2"));
+        }
+        finally
+        {
+            Console.SetError(error);
+        }
+
+        Assert.Equal(2, exit);
+        Assert.Contains("Future Game 1.0.0 needs the engine >=99.0", captured.ToString(), StringComparison.Ordinal);
+        Assert.False(File.Exists(System.IO.Path.Combine(user, "ran.txt")));
+
+        // The same game with a range that holds this engine runs.
+        scratch.Write("game/game.wgam", "<Game name=\"Future Game\" organization=\"Test\" version=\"1.0.0\" engine=\"&gt;=0.1\"/>");
+        Assert.Equal(0, Commands.Run(Options("--game", System.IO.Path.Combine(scratch.Root, "game"), "--user", user, "--headless", "--frames", "2")));
+        Assert.True(File.Exists(System.IO.Path.Combine(user, "ran.txt")));
+    }
+
     private static RuntimeOptions Options(params string[] args)
     {
         Assert.True(RuntimeOptions.TryParse(args, out RuntimeOptions options, out string? problem), problem);

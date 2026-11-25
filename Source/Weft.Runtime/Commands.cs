@@ -97,6 +97,14 @@ internal static class Commands
         manifest = GameManifest.Load(folder, out IReadOnlyList<string> problems);
         if (problems.Count == 0)
         {
+            // A game that names the engines it runs on is refused on any other (game.wgam: engine=">=0.2").
+            if (manifest?.CheckEngine() is { } engineProblem)
+            {
+                Console.Error.WriteLine($"{GameManifest.FileName} of {folder}: {engineProblem}");
+                manifest = null;
+                return false;
+            }
+
             return true;
         }
 

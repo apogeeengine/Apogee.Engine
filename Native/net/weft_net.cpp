@@ -1,5 +1,6 @@
 // Our C API over GameNetworkingSockets: see weft_net.h.
 #include "weft_net.h"
+#include "weft_version.h"
 
 #include <steam/isteamnetworkingutils.h>
 #include <steam/steamnetworkingsockets.h>

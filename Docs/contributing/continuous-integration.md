@@ -1,11 +1,11 @@
 # Continuous integration
 
-GitHub Actions builds, tests and publishes every push to `main` and every pull request. The layout follows the habit of large open-source engines: `runner.yml` is the entry point and calls one workflow per concern, and each of those can also be started by hand from the Actions tab.
+GitHub Actions builds, tests and publishes every push to `main`, every release tag (`v0.2.0`) and every pull request. Each workflow sets `WEFT_BUILD_NUMBER` to the run number, the last part of the file version of the assemblies ([Versions](../manual/core/versions.md)). The layout follows the habit of large open-source engines: `runner.yml` is the entry point and calls one workflow per concern, and each of those can also be started by hand from the Actions tab.
 
 | Workflow | What it does |
 | --- | --- |
 | `runner.yml` | the entry point: static checks first, then the three platforms and the docs in parallel |
-| `static_checks.yml` | the DCO sign-off of every commit of a pull request, no CRLF or trailing whitespace, Git LFS pointers (`git lfs fsck --pointers`), and [actionlint](https://github.com/rhysd/actionlint) on the workflows |
+| `static_checks.yml` | the DCO sign-off of every commit of a pull request, no CRLF or trailing whitespace, Git LFS pointers (`git lfs fsck --pointers`), [actionlint](https://github.com/rhysd/actionlint) on the workflows, and `./build.sh version check` (`Engine.props` is valid, nothing else sets a version, a release tag is `v` and the version: [Releases](releases.md)) |
 | `linux_builds.yml` | **Tests:** Release build and every test project, GPU tests on lavapipe (Mesa's software Vulkan) with the validation layer, the bindings generator's tests with libclang. **NativeAOT:** `./build.sh aot`, the Luau tests and a fixture game from the published binary, rendered offscreen, shipped as a pack and without the shader compiler |
 | `windows_builds.yml` | **Tests:** Release build and every test project. **NativeAOT:** the publish, the Luau tests and the fixture game, with no GPU |
 | `macos_builds.yml` | Apple silicon and Intel: Release build, the tests (the Metal GPU tests skip unless the runner's GPU qualifies), the NativeAOT publish and the fixture game, uploaded as artifacts. The Intel job is experimental while a rare crash is investigated (see [Help wanted](help-wanted.md)) |

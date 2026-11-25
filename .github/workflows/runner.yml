@@ -1,10 +1,11 @@
 name: CI
 
-# The entry point: what runs on a push to main, on a pull request and when started by hand. Static checks run first (cheap, Linux); then one workflow per operating system builds, tests and publishes with NativeAOT,
+# The entry point: what runs on a push to main or of a release tag (v0.2.0: Docs/contributing/releases.md), on a pull request and when started by hand. Static checks run first (cheap, Linux); then one workflow per operating system builds, tests and publishes with NativeAOT,
 # and the docs build. Each is also callable by hand from the Actions tab. Samples (Samples/) are demos people run by hand: nothing here runs one.
 on:
   push:
     branches: [main]
+    tags: ["v[0-9]*"]
   pull_request:
   workflow_dispatch:
 

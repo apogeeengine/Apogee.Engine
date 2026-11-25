@@ -64,7 +64,8 @@ public class InfoPlistTests
         Assert.Equal(true, values["NSHighResolutionCapable"]);
         Assert.Equal("public.app-category.games", values["LSApplicationCategoryType"]);
         Assert.Equal("Copyright 2026 Test Studio", values["NSHumanReadableCopyright"]);
-        Assert.Equal(13, values.Count);
+        Assert.Equal(Weft.Core.EngineVersion.Text, values["WeftEngineVersion"]);
+        Assert.Equal(14, values.Count);
     }
 
     [Fact]

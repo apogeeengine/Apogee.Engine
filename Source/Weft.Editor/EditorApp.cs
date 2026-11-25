@@ -34,7 +34,7 @@ public static unsafe class EditorApp
 {
     private static readonly Vector4 Background = new(0.1f, 0.1f, 0.12f, 1f);
 
-    public const string Usage = "Usage: Weft.Editor [game folder] [--user <folder>]";
+    public const string Usage = "Usage: Weft.Editor [game folder] [--user <folder>] [--version]";
 
     public static int Run(string[] args)
     {
@@ -49,6 +49,11 @@ public static unsafe class EditorApp
             else if (args[i] is "-h" or "--help")
             {
                 Console.WriteLine(Usage);
+                return 0;
+            }
+            else if (args[i] == "--version")
+            {
+                Console.WriteLine(Weft.Core.EngineVersion.Describe("Weft Editor"));
                 return 0;
             }
             else if (!args[i].StartsWith('-') && folder is null)
@@ -132,9 +137,12 @@ public static unsafe class EditorApp
         }
     }
 
+    /// <summary>The name in the window's title bar and on the start screen: the program and the engine's version.</summary>
+    private static string TitleName => "Weft Editor " + Weft.Core.EngineVersion.Text;
+
     /// <summary>The window title for the game folder being edited (none: the start screen).</summary>
     private static string WindowTitle(string? gameFolder) =>
-        gameFolder is null ? "Weft Editor" : "Weft Editor: " + Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(gameFolder)));
+        gameFolder is null ? TitleName : TitleName + ": " + Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(gameFolder)));
 
     /// <summary>The frame loop and the panels it draws.</summary>
     private sealed class Frames
@@ -604,7 +612,7 @@ public static unsafe class EditorApp
 
             ImGuiViewport* main = ImGui.GetMainViewport();
             ImGui.SetNextWindowPos(new ImVec2 { X = main->Pos.X + main->Size.X * 0.5f, Y = main->Pos.Y + main->Size.Y * 0.4f }, ImGuiCond.Always, new ImVec2 { X = 0.5f, Y = 0.5f });
-            if (Ui.Begin("Weft Editor##start", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
+            if (Ui.Begin(TitleName + "##start", ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
             {
                 Ui.Text("Open a game folder to edit it.");
                 Ui.Text("A game folder holds game.wgam, its packages and its assets.");

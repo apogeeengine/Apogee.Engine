@@ -81,7 +81,18 @@ public static class GameExporter
             throw new ExportException($"{GameManifest.FileName} of {gameFolder} is wrong:{Environment.NewLine}{string.Join(Environment.NewLine, problems)}");
         }
 
-        return manifest ?? throw new ExportException($"{gameFolder} has no {GameManifest.FileName}: a game needs one (name, organization, version) to be exported.");
+        if (manifest is null)
+        {
+            throw new ExportException($"{gameFolder} has no {GameManifest.FileName}: a game needs one (name, organization, version) to be exported.");
+        }
+
+        // The runtime that is exported is this engine's: a game that names other engines is not exported with it.
+        if (manifest.CheckEngine() is { } engineProblem)
+        {
+            throw new ExportException($"{GameManifest.FileName} of {gameFolder}: {engineProblem}");
+        }
+
+        return manifest;
     }
 
     /// <summary>Checks that the output folder may be written, and empties it when it holds an earlier export.</summary>

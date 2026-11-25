@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Weft.Core;
 using Weft.Core.Logging;
 using Weft.Interop;
 using Weft.Native.Vulkan;
@@ -182,6 +183,7 @@ public sealed unsafe class VulkanInstance : IDisposable
             {
                 PApplicationName = applicationName,
                 PEngineName = engineName,
+                EngineVersion = Vk.MakeApiVersion(0, (uint)EngineVersion.Major, (uint)EngineVersion.Minor, (uint)EngineVersion.Patch),
                 ApiVersion = Vk.ApiVersion13,
             };
             var info = new VkInstanceCreateInfo

@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "weft_metal.h"
+#include "weft_version.h"
 
 #define HANDLE(Type, object) ((Type*)(void*)CFBridgingRetain(object))
 #define GET(MtlType, handle) ((__bridge MtlType)((void*)(handle)))

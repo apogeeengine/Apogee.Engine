@@ -32,6 +32,8 @@ jobs:
       run:
         shell: bash
     env:
+      # The number of the run: the last part of the file version of every assembly and EngineVersion.Build (Docs/manual/core/versions.md).
+      WEFT_BUILD_NUMBER: ${{ github.run_number }}
       # The native libraries that must load (the tests fail instead of skipping).
       WEFT_REQUIRE_NATIVE: SDL3,flecs,luau,cimgui,vma,meshoptimizer,cgltf,stb_image,audio_decode,openal,weft_net,zstd,freetype,ktx,slang_c,jolt,metal_c
       WEFT_REQUIRE_METAL_COMPILER: "1"

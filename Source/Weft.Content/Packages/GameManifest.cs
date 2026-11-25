@@ -53,6 +53,12 @@ public sealed class GameManifest
     /// <summary>The version of the game: what the <c>gameVersion</c> of each package is checked against.</summary>
     public PackageVersion Version { get; }
 
+    /// <summary>
+    /// The versions of the engine the game runs on (<c>engine=">=0.2"</c>, the range syntax of <see cref="VersionRange"/>), or <see cref="VersionRange.Any"/> when the manifest does not say. <c>--game</c> and an export
+    /// refuse a game whose range does not hold the engine (<see cref="CheckEngine"/>).
+    /// </summary>
+    public VersionRange Engine { get; private set; } = VersionRange.Any;
+
     /// <summary>The name of the executable of an export, without its extension. Letters and digits of <see cref="Name"/> when the manifest does not say.</summary>
     public string Executable { get; private set; }
 
@@ -166,6 +172,18 @@ public sealed class GameManifest
             built.UserFolder = userFolder;
         }
 
+        if (Text(record, "engine") is { Length: > 0 } engine)
+        {
+            if (VersionRange.TryParse(engine, out VersionRange? range, out string? rangeProblem))
+            {
+                built.Engine = range!;
+            }
+            else
+            {
+                errors.Add($"{origin}:{node.Line}: the engine range '{engine}' is not valid: {rangeProblem}");
+            }
+        }
+
         built.EntryScene = RelativePath(record, node, "EntryScene", origin, errors);
         built.Icon = RelativePath(record, node, "Icon", origin, errors);
         if (built.Icon is { } icon && !icon.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
@@ -209,6 +227,21 @@ public sealed class GameManifest
         return manifest;
     }
 
+    /// <summary>The version of the engine that is running, without its status: what <see cref="Engine"/> is checked against.</summary>
+    public static PackageVersion RunningEngine { get; } = new(Weft.Core.EngineVersion.Major, Weft.Core.EngineVersion.Minor, Weft.Core.EngineVersion.Patch);
+
+    /// <summary>
+    /// Checks the game against an engine: null when <see cref="Engine"/> holds <paramref name="engine"/>, else a message that says what the game needs and what is running, for the player or the developer to read.
+    /// </summary>
+    /// <param name="engine">The version of the engine; <see cref="RunningEngine"/> by default.</param>
+    public string? CheckEngine(PackageVersion? engine = null)
+    {
+        PackageVersion version = engine ?? RunningEngine;
+        return Engine.Matches(version)
+            ? null
+            : $"{Name} {Version} needs the engine {Engine} ({FileName}: engine=\"{Engine}\"), and this is Weft {(engine is null ? Weft.Core.EngineVersion.Text : version.ToString())}. Use a Weft that the range holds, or change the range in {FileName} when the game works with this one.";
+    }
+
     /// <summary>A copy of the manifest with another icon (or none): an export keeps its icon in the executable or the bundle, not at the path the game folder has it.</summary>
     /// <param name="path">The game-relative path of the icon file, or null for none.</param>
     public GameManifest WithIcon(string? path)
@@ -229,6 +262,11 @@ public sealed class GameManifest
             xml.WriteAttributeString("name", Name);
             xml.WriteAttributeString("organization", Organization);
             xml.WriteAttributeString("version", Version.ToString());
+            if (Engine.Text != VersionRange.Any.Text)
+            {
+                xml.WriteAttributeString("engine", Engine.Text);
+            }
+
             xml.WriteAttributeString("executable", Executable);
             xml.WriteAttributeString("identifier", Identifier);
             xml.WriteAttributeString("userFolder", UserFolder);

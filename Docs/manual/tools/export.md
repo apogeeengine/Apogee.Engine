@@ -97,7 +97,7 @@ writes the executable's headers and resource section itself, with no Windows API
   the first group, which is number 1. A smaller image is scaled up for the sizes above it and the export warns. A game without an icon keeps the runtime's.
 - **The version information** (the Details tab of the file's properties, the name task managers show) is made from `game.wgam`: `CompanyName` is the organization, `FileDescription` the description (the
   name when there is none), `FileVersion` and `ProductVersion` the version as `major.minor.patch.0`, `InternalName` the executable's name, `OriginalFilename` the executable's file name,
-  `LegalCopyright` the copyright, `ProductName` the name; language English (United States), code page Unicode. Each part of the version must be at most 65535. Any version or icon resource the runtime
+  `LegalCopyright` the copyright, `ProductName` the name, `EngineVersion` the version of the engine the executable is made of (`0.2.0-alpha`, see [Versions](../core/versions.md)); language English (United States), code page Unicode. Each part of the version must be at most 65535. Any version or icon resource the runtime
   had is replaced; its other resources (the application manifest above all) are kept as they are.
 - **The subsystem.** The runtime is a console program; a game started by a double-click would open a console window beside its own. The export makes it a windowed program (`IMAGE_SUBSYSTEM_WINDOWS_GUI`).
   A windowed program has no standard output: run the game from a terminal and nothing is printed. `--console` keeps the console subsystem for when you want to read the log.
@@ -194,7 +194,7 @@ Fixture Game.app/                      the bundle, named after the game's name
 
 - **`Info.plist`** is written as an XML property list (the text of `game.wgam` is escaped, so a name with `&` or `<` is fine). It holds `CFBundleName` and `CFBundleDisplayName` (the game's name),
   `CFBundleIdentifier` (its `identifier`), `CFBundleExecutable`, `CFBundleVersion` and `CFBundleShortVersionString` (its version, `major.minor.patch`: `game.wgam` accepts no suffix such as `-beta`, which `CFBundleVersion` could not hold, since it takes only integers separated by dots), `CFBundlePackageType` `APPL`, `CFBundleIconFile` `game.icns` (when the
-  game has an icon), `CFBundleInfoDictionaryVersion` `6.0`, `LSMinimumSystemVersion`, `NSHighResolutionCapable`, `LSApplicationCategoryType` `public.app-category.games` and
+  game has an icon), `CFBundleInfoDictionaryVersion` `6.0`, `LSMinimumSystemVersion`, `NSHighResolutionCapable`, `LSApplicationCategoryType` `public.app-category.games`, `WeftEngineVersion` (the version of the engine the bundle is made of, `0.2.0-alpha`) and
   `NSHumanReadableCopyright` (its copyright, when it has one). `LSMinimumSystemVersion` is the newest minimum system version (`LC_BUILD_VERSION`) among the program and the `.dylib` files beside it, for
   the target's processor, and never below 11.0, the first macOS for Apple silicon (also what it is when none of them says).
 - **The icon** is made into `game.icns`, with PNG images at 16, 32, 64, 128, 256, 512 and 1024 pixels and the `@2x` images of 16 to 256 (the sizes Finder and the Dock use). A size above the game's icon is left

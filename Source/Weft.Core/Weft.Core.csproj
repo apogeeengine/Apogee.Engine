@@ -2,4 +2,64 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Weft.Core.Tests" />
   </ItemGroup>
+
+  <!--
+    EngineVersion.g.cs: the engine's version (Engine.props) and the commit, as constants and no reflection, so that the program says the same under CoreCLR and NativeAOT. The file is written into obj and only when
+    its text changes (WriteOnlyWhenDifferent keeps its time stamp, so the compiler has nothing to redo until Engine.props or the commit changes); the commit is a property, not a constant, so that a new commit
+    does not change what the projects that use EngineVersion are compiled against. Semicolons are %3B because a task's list of lines splits on them.
+  -->
+  <Target Name="WeftEngineVersion" BeforeTargets="BeforeCompile;CoreCompile" DependsOnTargets="PrepareForBuild;InitializeSourceControlInformation">
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(WeftVersionStatus)', '^(alpha|beta|rc[0-9]+|stable)$'))" Text="Engine.props: WeftVersionStatus is '$(WeftVersionStatus)', not alpha, beta, rc&lt;N&gt; or stable." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(WeftVersionMajor).$(WeftVersionMinor).$(WeftVersionPatch).$(WeftApiVersion)', '^[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}$'))" Text="Engine.props: the version parts and WeftApiVersion must be numbers." />
+    <Error Condition="'$(WEFT_BUILD_NUMBER)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(WEFT_BUILD_NUMBER)', '^[0-9]{1,9}$'))" Text="WEFT_BUILD_NUMBER is '$(WEFT_BUILD_NUMBER)': it must be a number (the CI run number)." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(WeftVersionCodename)', '^[A-Za-z0-9 .\-]*$'))" Text="Engine.props: the codename may hold letters, digits, spaces, dots and dashes only." />
+    <PropertyGroup>
+      <_WeftEngineVersionFile>$(IntermediateOutputPath)EngineVersion.g.cs</_WeftEngineVersionFile>
+      <_WeftEngineVersionSource>
+// &lt;auto-generated&gt;
+//   Written by the WeftEngineVersion target of Weft.Core.csproj from Engine.props. Do not edit.
+// &lt;/auto-generated&gt;
+#nullable enable
+namespace Weft.Core%3B
+
+/// &lt;summary&gt;
+/// The version of the engine: the values of &lt;c&gt;Engine.props&lt;/c&gt;, written into the assembly when it is built. Constants and no reflection, so it reads the same under CoreCLR and NativeAOT.
+/// &lt;/summary&gt;
+public static partial class EngineVersion
+{
+    /// &lt;summary&gt;The major version.&lt;/summary&gt;
+    public const int Major = $(WeftVersionMajor)%3B
+
+    /// &lt;summary&gt;The minor version.&lt;/summary&gt;
+    public const int Minor = $(WeftVersionMinor)%3B
+
+    /// &lt;summary&gt;The patch version.&lt;/summary&gt;
+    public const int Patch = $(WeftVersionPatch)%3B
+
+    /// &lt;summary&gt;The number of the build: the CI run number, 0 on a developer's machine.&lt;/summary&gt;
+    public const int Build = $(WeftBuildNumber)%3B
+
+    /// &lt;summary&gt;The level of the mod API: a package's &lt;c&gt;apiVersion&lt;/c&gt; is checked against it.&lt;/summary&gt;
+    public const int Api = $(WeftApiVersion)%3B
+
+    /// &lt;summary&gt;&lt;c&gt;alpha&lt;/c&gt;, &lt;c&gt;beta&lt;/c&gt;, &lt;c&gt;rc&lt;/c&gt; and a number, or &lt;c&gt;stable&lt;/c&gt;.&lt;/summary&gt;
+    public const string Status = "$(WeftVersionStatus)"%3B
+
+    /// &lt;summary&gt;The name of the release, or an empty text.&lt;/summary&gt;
+    public const string Codename = "$(WeftVersionCodename)"%3B
+
+    /// &lt;summary&gt;The version as text: &lt;c&gt;0.2.0-alpha&lt;/c&gt;, or &lt;c&gt;1.0.0&lt;/c&gt; for a stable release. The git tag of a release is &lt;c&gt;v&lt;/c&gt; and this.&lt;/summary&gt;
+    public const string Text = "$(WeftVersion)"%3B
+
+    /// &lt;summary&gt;The short id of the commit the engine was built from, or an empty text when it was built outside a git checkout.&lt;/summary&gt;
+    public static string Commit =&gt; "$(SourceRevisionId)"%3B
+}
+</_WeftEngineVersionSource>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_WeftEngineVersionFile)" Lines="$(_WeftEngineVersionSource)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(_WeftEngineVersionFile)" />
+      <FileWrites Include="$(_WeftEngineVersionFile)" />
+    </ItemGroup>
+  </Target>
 </Project>

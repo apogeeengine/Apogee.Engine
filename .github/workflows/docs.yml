@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 120
     env:
       NO_MKDOCS_2_WARNING: "1"
+      WEFT_BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup

@@ -41,6 +41,7 @@ internal static class InfoPlist
             Entry(xml, "CFBundleVersion", manifest.Version.ToString());
             Entry(xml, "CFBundleShortVersionString", manifest.Version.ToString());
             Entry(xml, "CFBundlePackageType", "APPL");
+            Entry(xml, "WeftEngineVersion", Weft.Core.EngineVersion.Text); // the engine the bundle is made of: the game's own versions are the ones above
             if (hasIcon)
             {
                 Entry(xml, "CFBundleIconFile", IconFileName);

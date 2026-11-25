@@ -157,6 +157,90 @@ public class GameManifestTests
     }
 
     [Fact]
+    public void AGameWithoutAnEngineRangeRunsOnEveryEngine()
+    {
+        GameManifest game = Parse("""<Game name="G" organization="O" version="1.0.0"/>""");
+
+        Assert.Equal("*", game.Engine.Text);
+        Assert.Null(game.CheckEngine());
+        Assert.Null(game.CheckEngine(new PackageVersion(0, 0, 1)));
+        Assert.Null(game.CheckEngine(new PackageVersion(99, 0, 0)));
+        Assert.DoesNotContain("engine=", game.ToXml(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(">=0.2", 0, 2, 0, true)]
+    [InlineData(">=0.2", 0, 1, 9, false)]
+    [InlineData(">=0.2", 3, 0, 0, true)]
+    [InlineData("^0.2.1", 0, 2, 1, true)]
+    [InlineData("^0.2.1", 0, 2, 0, false)]
+    [InlineData("^0.2.1", 0, 3, 0, false)]
+    [InlineData("~0.2.0 <0.2.5", 0, 2, 4, true)]
+    [InlineData("~0.2.0 <0.2.5", 0, 2, 5, false)]
+    [InlineData("0.2", 0, 2, 0, true)]
+    [InlineData("0.2", 0, 2, 1, false)]
+    [InlineData("*", 5, 0, 0, true)]
+    public void TheEngineRangeIsCheckedAgainstTheEngineVersion(string range, int major, int minor, int patch, bool accepted)
+    {
+        GameManifest game = Parse($"""<Game name="G" organization="O" version="1.0.0" engine="{range.Replace("<", "&lt;", StringComparison.Ordinal).Replace(">", "&gt;", StringComparison.Ordinal)}"/>""");
+
+        string? problem = game.CheckEngine(new PackageVersion(major, minor, patch));
+
+        Assert.Equal(accepted, problem is null);
+        Assert.Equal(range, game.Engine.Text);
+    }
+
+    [Fact]
+    public void AnEngineThatTheRangeRefusesGetsAMessageThatSaysWhatTheGameNeeds()
+    {
+        GameManifest game = Parse("""<Game name="Fixture Game" organization="O" version="1.4.2" engine="&gt;=99.0"/>""");
+
+        string problem = game.CheckEngine()!;
+
+        Assert.Contains("Fixture Game 1.4.2 needs the engine >=99.0", problem, StringComparison.Ordinal);
+        Assert.Contains("game.wgam", problem, StringComparison.Ordinal);
+        Assert.Contains("this is Weft " + Weft.Core.EngineVersion.Text, problem, StringComparison.Ordinal);
+        Assert.Contains("this is Weft 0.1.0", game.CheckEngine(new PackageVersion(0, 1, 0)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRunningEngineIsTheOneInEngineProps()
+    {
+        Assert.Equal(new PackageVersion(Weft.Core.EngineVersion.Major, Weft.Core.EngineVersion.Minor, Weft.Core.EngineVersion.Patch), GameManifest.RunningEngine);
+
+        // A range that holds the running engine, written the way a game does, accepts it, with the suffix of its status ignored.
+        GameManifest game = Parse($"""<Game name="G" organization="O" version="1.0.0" engine="&gt;={GameManifest.RunningEngine}"/>""");
+        Assert.Null(game.CheckEngine());
+        Assert.Contains("needs the engine", Parse($"""<Game name="G" organization="O" version="1.0.0" engine="&gt;{GameManifest.RunningEngine}"/>""").CheckEngine(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ABrokenEngineRangeIsAProblemWithItsLine()
+    {
+        string[] problems = Problems("""
+            <Game name="G" organization="O" version="1.0.0"
+                  engine="&gt;=two"/>
+            """);
+
+        Assert.Contains(problems, p => p.StartsWith("game.wgam:1: ", StringComparison.Ordinal) && p.Contains("engine range '>=two' is not valid", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheEngineRangeIsWrittenBackAndRoundTrips()
+    {
+        GameManifest game = Parse("""<Game name="G" organization="O" version="1.0.0" engine="&gt;=0.2 &lt;1"/>""");
+
+        string xml = game.ToXml();
+
+        Assert.Contains("engine=\"&gt;=0.2 &lt;1\"", xml, StringComparison.Ordinal);
+        Assert.Equal(">=0.2 <1", Parse(xml).Engine.Text);
+        Assert.Equal(xml, Parse(xml).ToXml());
+    }
+
+    [Fact]
+    public void TheApiLevelOfThePackagesIsTheOneInEngineProps() => Assert.Equal(Weft.Core.EngineVersion.Api, PackageManifest.EngineApiVersion);
+
+    [Fact]
     public void AnotherIconMakesACopyAndLeavesTheManifestAlone()
     {
         GameManifest game = Parse(Full);

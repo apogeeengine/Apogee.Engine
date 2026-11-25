@@ -10,6 +10,7 @@
 #   ./build.sh pack <folder> <out.wpak> [...]   pack a folder with Weft.Runtime --pack (this wrapper loads .env, so WEFT_PACK_KEY applies)
 #   ./build.sh export <game folder> <out folder> --target <rid> [--cooked] [...]   export a game with Weft.Runtime --export (.env is loaded, so WEFT_PACK_KEY applies; needs ./build.sh aot first)
 #   ./build.sh sdk steam <zip>   unpack the Steamworks SDK headers the bindings generator needs (see ThirdParty/README.md)
+#   ./build.sh version [check [--tag <name>]]   print the engine's version (Engine.props), or check that it is written there only and that a release tag is v<version>
 #   ./build.sh <command>  anything else goes to Tools/Weft.Build (bindings, ...)
 set -euo pipefail
 cd "$(dirname "$0")"

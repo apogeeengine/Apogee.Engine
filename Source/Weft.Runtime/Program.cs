@@ -27,6 +27,9 @@ switch (options.Command)
     case RuntimeCommand.Help:
         Console.WriteLine(RuntimeOptions.Usage);
         return 0;
+    case RuntimeCommand.Version:
+        Console.WriteLine(Weft.Core.EngineVersion.Describe());
+        return 0;
     case RuntimeCommand.LuauTest:
         return Commands.LuauTest(options);
     case RuntimeCommand.Run or RuntimeCommand.Game:

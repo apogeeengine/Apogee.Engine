@@ -12,8 +12,10 @@ switch (args.Length > 0 ? args[0] : "")
         return Weft.Build.SdkCommand.Run(root, args[1..]);
     case "docs":
         return Weft.Build.DocsCommand.Run(root, args[1..]);
+    case "version":
+        return Weft.Build.VersionCommand.Run(root, args[1..]);
     default:
-        Console.Error.WriteLine($"Unknown command: {string.Join(' ', args)}\nCommands: bindings [library…], sdk steam <archive>, docs [serve]");
+        Console.Error.WriteLine($"Unknown command: {string.Join(' ', args)}\nCommands: bindings [library…], sdk steam <archive>, docs [serve], version [check [--tag <name>]]");
         return 1;
 }
 

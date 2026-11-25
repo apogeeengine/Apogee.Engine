@@ -295,6 +295,25 @@ public class GameExporterTests
     }
 
     [Fact]
+    public void AGameForAnotherEngineIsNotExportedAndOneForThisEngineIs()
+    {
+        using var setup = new Setup();
+        ExportTarget target = new("linux", "x64");
+        string xml = File.ReadAllText(Path.Combine(setup.Game, "game.wgam"));
+        setup.Scratch.Write("game/game.wgam", xml.Replace("<Game ", "<Game engine=\"&gt;=99.0\" ", StringComparison.Ordinal));
+
+        string message = Assert.Throws<ExportException>(() => GameExporter.Export(setup.Options(target))).Message;
+
+        Assert.Contains("needs the engine >=99.0", message, StringComparison.Ordinal);
+        Assert.Contains("this is Weft " + Weft.Core.EngineVersion.Text, message, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(setup.Out));
+
+        setup.Scratch.Write("game/game.wgam", xml.Replace("<Game ", "<Game engine=\"&gt;=0.1\" ", StringComparison.Ordinal));
+        ExportResult result = GameExporter.Export(setup.Options(target));
+        Assert.Contains("engine=\"&gt;=0.1\"", File.ReadAllText(Path.Combine(result.GameRoot, "game.wgam")), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ABrokenGameXmlIsReportedWithItsProblems()
     {
         using var setup = new Setup();

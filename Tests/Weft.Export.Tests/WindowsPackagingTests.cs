@@ -144,6 +144,7 @@ public class WindowsPackagingTests
                 ["OriginalFilename"] = "FixtureGame.exe",
                 ["ProductName"] = "Fixture Game",
                 ["ProductVersion"] = "1.2.3.0",
+                ["EngineVersion"] = Weft.Core.EngineVersion.Text,
             },
             Strings(version));
 

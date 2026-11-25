@@ -1,4 +1,5 @@
 #include "weft_slang.h"
+#include "weft_version.h"
 
 #include <slang-com-ptr.h>
 #include <slang-tag-version.h>

@@ -33,7 +33,7 @@ game (`--pack`, `--import`, ...), reports go to `<local application data>/Weft/R
 A crash report is a plain text file `crash-<yyyyMMdd-HHmmss-fff>-<number>-<kind>.txt` (the number orders reports made in the same millisecond) in `<user>/crashes`. The newest 20 are kept. It holds:
 
 - the kind and the time (UTC);
-- the engine version, the .NET version and whether it is a NativeAOT build;
+- the engine version with its commit (`0.2.0-alpha+abc1234`, see [Versions](versions.md)), the .NET version and whether it is a NativeAOT build;
 - the OS and its architecture, the processor count and the memory;
 - the game, its version, and the GPU once the device is created (`CrashHandler.SetContext` adds more lines);
 - the thread, and the exception with its inner exceptions and stack trace;

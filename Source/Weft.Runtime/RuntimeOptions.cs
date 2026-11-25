@@ -14,6 +14,9 @@ internal enum RuntimeCommand
     Smoke,
     Help,
 
+    /// <summary><c>--version</c>: print the engine's version and exit.</summary>
+    Version,
+
     /// <summary>Run the <c>*.test.luau</c> files under a folder.</summary>
     LuauTest,
 
@@ -78,6 +81,7 @@ internal sealed class RuntimeOptions
           --workshop-upload <mod folder> [--item <id>] [--title <text>] [--description <text>] [--preview <image>] [--visibility private|friends|unlisted|public] [--tags <a,b>] [--note <text>] [--confirm]
                                                publish a mod folder (it has a mod.wmod) as a Steam Workshop item of the game in ./steam_appid.txt, or update --item; without --confirm it only says what it would do
           --gpu-info                           list the GPUs of Vulkan and Metal, one line each: `vulkan: <name> (<kind>, <api>) ok` or `... unusable: <reasons>`
+          --version                            print the engine's version, the commit it was built from, the platform and whether the program is CoreCLR or NativeAOT
           --help
 
         Exit codes: 0 fine, 1 bad arguments or failed tests, 2 a script or the engine failed, 3 Vulkan validation errors.
@@ -197,6 +201,9 @@ internal sealed class RuntimeOptions
             {
                 case "--help" or "-h" or "/?":
                     options.Command = RuntimeCommand.Help;
+                    break;
+                case "--version":
+                    options.Command = RuntimeCommand.Version;
                     break;
                 case "--smoke":
                     options.Command = RuntimeCommand.Smoke;
